@@ -53,8 +53,19 @@ FirmataReporting reporting;
 // #include <DhtFirmata.h>
 // DhtFirmata dhtFirmata;
 
-#include <FirmataIlExecutor.h>
+#include "FirmataIlExecutor.h"
 FirmataIlExecutor ilExecutor;
+
+#ifdef DEBUG_STREAM
+const byte SimulatedInput[] PROGMEM =
+{
+    0xFF, 0xF9, 0xF0, 0x79, 0xF7, 0xF0, 0x6B, 0xF7, 0xF0, 0x69, 0xF7, 0xD0, 0x01, 0xD1, 0x01, 0xD2,
+	0x01, // Until here goes the initialisation sequence of the test application
+};
+
+#include <FlashMemoryStream.h>
+FlashMemoryStream debugStream(SimulatedInput, sizeof(SimulatedInput));
+#endif
 
 void systemResetCallback()
 {
@@ -72,7 +83,11 @@ void initTransport()
 {
   // Uncomment to save a couple of seconds by disabling the startup blink sequence.
   // Firmata.disableBlinkVersion();
-  Firmata.begin(115200);
+#ifdef DEBUG_STREAM
+    Firmata.begin(debugStream);
+#else
+    Firmata.begin(115200);
+#endif
 }
 
 void initFirmata()
