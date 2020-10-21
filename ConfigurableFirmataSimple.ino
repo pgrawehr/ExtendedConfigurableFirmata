@@ -3,48 +3,44 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
-#include <ConfigurableFirmata.h>
-
-#include <DigitalInputFirmata.h>
-DigitalInputFirmata digitalInput;
-
-#include <DigitalOutputFirmata.h>
-DigitalOutputFirmata digitalOutput;
-
-#include <AnalogInputFirmata.h>
-AnalogInputFirmata analogInput;
-
-#include <AnalogOutputFirmata.h>
-AnalogOutputFirmata analogOutput;
+#include "ConfigurableFirmata.h"
 
 #include <Wire.h>
-#include <I2CFirmata.h>
+#include "AnalogInputFirmata.h"
+#include "AnalogOutputFirmata.h"
+#include "DigitalInputFirmata.h"
+#include "DigitalOutputFirmata.h"
+#include "FirmataExt.h"
+#include "FirmataIlExecutor.h"
+#include "FirmataScheduler.h"
+#include "I2CFirmata.h"
+#include "SerialFirmata.h"
+#include "SpiFirmata.h"
+DigitalInputFirmata digitalInput;
+DigitalOutputFirmata digitalOutput;
+
+AnalogInputFirmata analogInput;
+
 I2CFirmata i2c;
 
 //#include <OneWireFirmata.h>
 //OneWireFirmata oneWire;
 
-#include <SerialFirmata.h>
 SerialFirmata serial;
 
-#include <FirmataExt.h>
 FirmataExt firmataExt;
 
-#include <SpiFirmata.h>
 SpiFirmata spi;
 
 //#include <Servo.h>
 //#include <ServoFirmata.h>
 //ServoFirmata servo;
 
-#include <AnalogWrite.h>
 
 // The scheduler allows to store scripts on the board, however this requires a kind of compiler on the client side.
 // The feature only needs 20Bytes of Ram, so it doesn't hurt to have it (There's enough flash left)
-#include <FirmataScheduler.h>
 FirmataScheduler scheduler;
 
-#include <FirmataReporting.h>
 FirmataReporting reporting;
 
 // #include <AccelStepperFirmata.h>
@@ -53,7 +49,6 @@ FirmataReporting reporting;
 // #include <DhtFirmata.h>
 // DhtFirmata dhtFirmata;
 
-#include <FirmataIlExecutor.h>
 FirmataIlExecutor ilExecutor;
 
 void systemResetCallback()
@@ -82,7 +77,6 @@ void initFirmata()
   firmataExt.addFeature(digitalInput);
   firmataExt.addFeature(digitalOutput);
   firmataExt.addFeature(analogInput);
-  firmataExt.addFeature(analogOutput);
   // firmataExt.addFeature(servo);
   firmataExt.addFeature(i2c);
   // firmataExt.addFeature(oneWire);
