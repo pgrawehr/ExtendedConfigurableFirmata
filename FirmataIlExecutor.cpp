@@ -158,15 +158,14 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
 {
 	uint32_t result = 0;
-	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
+	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, _methods[codeReference].maxLocals, _methods[codeReference].numArgs);
 	for (int i = 0; i < _methods[codeReference].numArgs; i++)
 	{
 		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
 	}
 	
-	bool execResult = ExecuteIlCode(rootState, _methods[codeReference].methodLength, 
-		_methods[codeReference].methodIl, &result);
+	bool execResult = ExecuteIlCode(rootState, _methods[codeReference].methodLength, _methods[codeReference].methodIl, &result);
 	
 	delete rootState;
 	
@@ -257,7 +256,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 		LastPC = PC;
 		int methodIndex = currentFrame->MethodIndex();
 		
-		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
+		// Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
         
 		if (PC == 0 && (_methods[methodIndex].methodFlags & METHOD_SPECIAL))
 		{
@@ -335,12 +334,11 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 						}
 						// Remove the last frame and set the PC for the new current frame
 						frame->_next = NULL;
-						int methodIndex = currentFrame->MethodIndex();
 						delete currentFrame;
 						currentFrame = frame;
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 						// If the method we just terminated is not of type void, we push the result to the 
-						// stack of the calling method
+						// stack of the calling method (methodIndex still points to the old frame)
 						if ((_methods[methodIndex].methodFlags & METHOD_VOID) == 0)
 						{
 							stack->push(*returnValue);
@@ -991,9 +989,11 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 				
 				// Provide arguments to the new method
-				while (argumentCount > 0)
+                int args2 = argumentCount;
+				while (args2 > 0)
 				{
-					arguments[--argumentCount] = oldStack->pop();
+                    argumentCount--;
+					arguments[args2] = oldStack->pop();
 				}
 				Firmata.sendStringf(F("Pushed stack to method %d"), 2, method);
 				break;
