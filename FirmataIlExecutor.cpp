@@ -40,16 +40,6 @@ FirmataIlExecutor::FirmataIlExecutor()
 
 void FirmataIlExecutor::handleCapability(byte pin)
 {
-	// TEST CODE only!
-	/* if (pin == 0)
-	{
-		// Add args 0 and 1 and return the result
-		byte code[] = { 00, 0x02, 0x03, 0x58, 0x0A, 0x2B, 0x00, 0x06, 0x2A, };
-		int args[] = { 255, 7 };
-		int result = 0;
-		ExecuteIlCode(9, code, 10, 2, args, &result);
-		Firmata.sendString(F("Code execution returned"), result);
-	}*/
 }
 
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
@@ -103,7 +93,7 @@ void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte ma
 	_methods[codeReference].numArgs = argv[0];
 	uint32_t token = DecodeUint32(argv + 1);
 	_methods[codeReference].methodToken = token;
-	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
+	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
 }
 
 void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv)
@@ -138,7 +128,8 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 			  decodedIl[j++] = argv[i] + (argv[i + 1] << 7);
 		}
 	}
-	Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
+
+	// Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
 }
 
 uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
@@ -165,7 +156,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
 	}
 	
-	bool execResult = ExecuteIlCode(rootState, _methods[codeReference].methodLength, _methods[codeReference].methodIl, &result);
+	bool execResult = ExecuteIlCode(rootState, &result);
 	
 	delete rootState;
 	
@@ -232,7 +223,7 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 // - codeLength is correct
 // - argc matches argList
 // - It was validated that the method has exactly argc arguments
-bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength, byte* pCode, uint32_t* returnValue)
+bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
 {
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
@@ -248,15 +239,17 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 	ObjectList* arguments;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-	
-    while (PC < codeLength)
+
+	byte* pCode = _methods[currentFrame->MethodIndex()].methodIl;
+	// The compiler always inserts a return statement, so we can never run past the end of a method
+    while (true)
     {
         DWORD   Len;
         OPCODE  instr;
 		LastPC = PC;
 		int methodIndex = currentFrame->MethodIndex();
 		
-		// Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
+		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
         
 		if (PC == 0 && (_methods[methodIndex].methodFlags & METHOD_SPECIAL))
 		{
@@ -282,9 +275,11 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 			{
 				stack->push(retVal);
 			}
+			
+			pCode = _methods[currentFrame->MethodIndex()].methodIl;
 			continue;
 		}
-		
+
 		instr = DecodeOpcode(&pCode[PC], &Len);
         if (instr == CEE_COUNT)
         {
@@ -297,11 +292,6 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 		uint32_t intermediate;
 		
 		byte opCodeType = pgm_read_byte(OpcodeInfo + instr);
-		
-		if (!stack->empty())
-		{
-			Firmata.sendString(F("Top of Stack: "), stack->peek());
-		}
             
 		switch (opCodeType)
         {
@@ -337,6 +327,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 						delete currentFrame;
 						currentFrame = frame;
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+						pCode = _methods[currentFrame->MethodIndex()].methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
 						// stack of the calling method (methodIndex still points to the old frame)
 						if ((_methods[methodIndex].methodFlags & METHOD_VOID) == 0)
@@ -467,7 +458,8 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 						locals->Set(data, stack->pop());
 						break;
 					case CEE_LDLOCA_S:
-						stack->push(locals->AddressOf(data));
+						// Warn: Pointer to data conversion!
+						stack->push((uint32_t)locals->AddressOf(data));
 						break;
 					case CEE_LDARG_S:
 						stack->push(arguments->Get(data));
@@ -475,7 +467,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 					case CEE_LDARGA_S:
 						// Get address of argument x. 
 						// TOOD: Byref parameter handling is not supported at the moment by the call implementation. 
-						stack->push(arguments->AddressOf(data));
+						stack->push((uint32_t)arguments->AddressOf(data));
 						break;
 					case CEE_STARG_S:
 						arguments->Set(data, stack->pop());
@@ -1000,9 +992,9 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 			
 			case InlineMethod:
             {
-				if (instr != CEE_CALLVIRT) // TODO: Also support CALL, should be the same for most of what we do
+				if (instr != CEE_CALLVIRT && instr != CEE_CALL) 
 				{
-					InvalidOpCode(PC);
+					InvalidOpCode(PC - 1);
 					return false;
 				}
 				
@@ -1032,7 +1024,10 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 				// Start of the called method
 				currentFrame = newState;
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-				
+
+            	// Load data pointer for the new method
+				pCode = _methods[currentFrame->MethodIndex()].methodIl;
+            	
 				// Provide arguments to the new method
                 int args2 = argumentCount;
 				while (args2 > 0)
@@ -1048,10 +1043,6 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength,
 				return false;
         }
 	}
-	
-	// Should never actually reach the end of the code stream - the compiler always inserts a ret statement.
-	InvalidOpCode(-1);
-	return false;
 }
 
 int FirmataIlExecutor::ResolveToken(uint32_t token)

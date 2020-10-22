@@ -106,7 +106,7 @@ class FirmataIlExecutor: public FirmataFeature
     void LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv);
 	void LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
-	bool ExecuteIlCode(ExecutionState *state, int codeLength, byte* pCode, uint32_t* returnValue);
+	bool ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	int ResolveToken(uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	IlCode _methods[MAX_METHODS];
