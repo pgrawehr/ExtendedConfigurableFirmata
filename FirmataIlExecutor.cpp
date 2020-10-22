@@ -232,9 +232,9 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 // - codeLength is correct
 // - argc matches argList
 // - It was validated that the method has exactly argc arguments
-bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byte* pCode, uint32_t* returnValue)
+bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, int codeLength, byte* pCode, uint32_t* returnValue)
 {
-	ExecutionState* currentFrame = state;
+	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
 	{
 		currentFrame = currentFrame->_next;
@@ -265,7 +265,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 			uint32_t retVal = ExecuteSpecialMethod(specialMethod, arguments);
 			// We're called into a "special" (built-in) method. 
 			// Perform a method return
-			ExecutionState* frame = currentFrame;
+			ExecutionState* frame = rootState; // start at root
 			while (frame->_next != currentFrame)
 			{
 				frame = frame->_next;
@@ -320,7 +320,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 							*returnValue = 0;
 						}
 						// Remove current method from execution stack
-						ExecutionState* frame = state;
+						ExecutionState* frame = rootState;
 						if (frame == currentFrame)
 						{
 							// We're at the outermost frame
@@ -407,6 +407,9 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 					case CEE_NOT:
 						stack->push(~stack->pop());
 						break;
+					case CEE_CLT:
+						stack->push(stack->pop() < stack->pop());
+						break;
 					case CEE_LDC_I4_0:
 						stack->push(0);
 						break;
@@ -443,6 +446,46 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
                 }
 				break;
             }
+			case ShortInlineI:
+			case ShortInlineVar:
+	            {
+					char data = (char)pCode[PC];
+
+					PC++;
+		            switch(instr)
+		            {
+					case CEE_UNALIGNED_: /*Ignore prefix, we don't need alignment. Just execute the actual instruction*/
+						PC--;
+						continue;
+					case CEE_LDC_I4_S:
+						stack->push(data);
+						break;
+					case CEE_LDLOC_S:
+						stack->push(locals->Get(data));
+						break;
+					case CEE_STLOC_S:
+						locals->Set(data, stack->pop());
+						break;
+					case CEE_LDLOCA_S:
+						stack->push(locals->AddressOf(data));
+						break;
+					case CEE_LDARG_S:
+						stack->push(arguments->Get(data));
+						break;
+					case CEE_LDARGA_S:
+						// Get address of argument x. 
+						// TOOD: Byref parameter handling is not supported at the moment by the call implementation. 
+						stack->push(arguments->AddressOf(data));
+						break;
+					case CEE_STARG_S:
+						arguments->Set(data, stack->pop());
+						break;
+					default:
+						InvalidOpCode(LastPC);
+						break;
+		            }
+	            }
+                break;
 			/*
             case ShortInlineI:
             case ShortInlineVar:
@@ -972,7 +1015,9 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
 				{
 					return false;
 				}
-				
+
+            	// Save return PC
+                currentFrame->UpdatePc(PC);
 				int stackSize = _methods[method].maxLocals;
 				if (_methods[method].methodFlags & METHOD_SPECIAL)
 				{
@@ -992,8 +1037,8 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *state, int codeLength, byt
                 int args2 = argumentCount;
 				while (args2 > 0)
 				{
-                    argumentCount--;
-					arguments[args2] = oldStack->pop();
+                    args2--;
+					arguments->Set(args2, oldStack->pop());
 				}
 				Firmata.sendStringf(F("Pushed stack to method %d"), 2, method);
 				break;

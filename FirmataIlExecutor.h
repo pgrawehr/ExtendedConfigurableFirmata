@@ -49,16 +49,20 @@ class ExecutionState
 	ObjectStack _executionStack;
 	ObjectList _locals;
 	ObjectList _arguments;
+	int _padding;
+	int _padding2;
 	int _codeReference;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
-	ExecutionState(int codeReference, int maxLocals, int argCount) : _executionStack(maxLocals), _pc(0), 
+	ExecutionState(int codeReference, int maxLocals, int argCount) : _pc(0), _executionStack(maxLocals),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
 		_next = NULL;
+		_padding = 0xcccc;
+		_padding2 = 0xbbbb;
 	}
 	~ExecutionState()
 	{
