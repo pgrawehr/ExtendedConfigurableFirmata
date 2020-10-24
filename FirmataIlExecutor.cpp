@@ -173,8 +173,13 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
-	Firmata.write(execResult ? 1 : 0);
-	Firmata.write(1);
+	Firmata.write(codeReference);
+	
+	// 0: Code execution completed, called method ended
+	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
+	// 2: Intermediate data from method (not used here)
+	Firmata.write(execResult ? 0 : 1);
+	Firmata.write(1); // Number of arguments that follow
 	for (int i = 0; i < 4; i++)
 	{
 		Firmata.sendValueAsTwo7bitBytes(replyData[i]);

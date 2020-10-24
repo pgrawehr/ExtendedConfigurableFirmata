@@ -49,8 +49,6 @@ class ExecutionState
 	ObjectStack _executionStack;
 	ObjectList _locals;
 	ObjectList _arguments;
-	int _padding;
-	int _padding2;
 	int _codeReference;
 	
 	public:
@@ -60,9 +58,7 @@ class ExecutionState
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
-		_next = NULL;
-		_padding = 0xcccc;
-		_padding2 = 0xbbbb;
+		_next = nullptr;
 	}
 	~ExecutionState()
 	{
