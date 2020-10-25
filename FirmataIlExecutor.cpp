@@ -80,6 +80,11 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
   return false;
 }
 
+void FirmataIlExecutor::runStep()
+{
+	// Check that we have an existing execution context, and if so continue there.
+}
+
 void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
 {
 	if (_methods[codeReference].methodIl != NULL)
@@ -187,9 +192,9 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 	Firmata.endSysex();
 }
 
-void InvalidOpCode(int offset)
+void InvalidOpCode(int opCode)
 {
-	Firmata.sendString(F("Invalid/Unsupported opcode at offset "), offset);
+	Firmata.sendString(F("Invalid/Unsupported opcode "), opCode);
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
@@ -228,16 +233,16 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 // - codeLength is correct
 // - argc matches argList
 // - It was validated that the method has exactly argc arguments
-bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
+MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
 {
+	const int NUM_INSTRUCTIONS_AT_ONCE = 10;
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
 	{
 		currentFrame = currentFrame->_next;
 	}
-	
-	short LastPC = 0;
-	
+
+	int instructionsExecuted = 0;
 	short PC = 0;
 	ObjectStack* stack;
 	ObjectList* locals;
@@ -246,17 +251,20 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
 	byte* pCode = _methods[currentFrame->MethodIndex()].methodIl;
-	// The compiler always inserts a return statement, so we can never run past the end of a method
-    while (true)
+	// The compiler always inserts a return statement, so we can never run past the end of a method,
+	// however we use this counter to interrupt code execution every now and then to go back to the main loop
+	// and check for other tasks (i.e. serial input data)
+    while (instructionsExecuted < NUM_INSTRUCTIONS_AT_ONCE)
     {
-        DWORD   Len;
+		instructionsExecuted++;
+    	
+        DWORD   len;
         OPCODE  instr;
-		LastPC = PC;
 		int methodIndex = currentFrame->MethodIndex();
 		
 		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
         
-		if (PC == 0 && (_methods[methodIndex].methodFlags & METHOD_SPECIAL))
+		if (PC == 0 && (_methods[methodIndex].methodFlags & MethodFlags::Special))
 		{
 			int specialMethod = _methods[methodIndex].maxLocals;
 			Firmata.sendString(F("Executing special method "), specialMethod);
@@ -276,7 +284,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-			if ((_methods[methodIndex].methodFlags & METHOD_VOID) == 0)
+			if ((_methods[methodIndex].methodFlags & MethodFlags::Void) == 0)
 			{
 				stack->push(retVal);
 			}
@@ -285,14 +293,14 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 			continue;
 		}
 
-		instr = DecodeOpcode(&pCode[PC], &Len);
+		instr = DecodeOpcode(&pCode[PC], &len);
         if (instr == CEE_COUNT)
         {
-			InvalidOpCode(LastPC);
-            return false;
+			InvalidOpCode(instr);
+            return MethodState::Aborted;
         }
 		
-		PC += Len;
+		PC += len;
 		
 		uint32_t intermediate;
 		
@@ -319,7 +327,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 						if (frame == currentFrame)
 						{
 							// We're at the outermost frame
-							return true;
+							return MethodState::Stopped;
 						}
 						
 						// Find the frame which has the current frame as next (should be the second-last on the stack now)
@@ -335,15 +343,15 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 						pCode = _methods[currentFrame->MethodIndex()].methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
 						// stack of the calling method (methodIndex still points to the old frame)
-						if ((_methods[methodIndex].methodFlags & METHOD_VOID) == 0)
+						if ((_methods[methodIndex].methodFlags & MethodFlags::Void) == 0)
 						{
 							stack->push(*returnValue);
 						}
 					}
 					break;
                     case CEE_THROW:
-						InvalidOpCode(LastPC);
-                        return false;
+						InvalidOpCode(instr);
+                        return MethodState::Aborted;
 					case CEE_NOP:
 						break;
 					case CEE_LDARG_0:
@@ -437,8 +445,8 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 						stack->push(-1);
 						break;
                     default:
-						InvalidOpCode(LastPC);
-                        return false;
+						InvalidOpCode(instr);
+                        return MethodState::Aborted;
                 }
 				break;
             }
@@ -478,7 +486,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 						arguments->Set(data, stack->pop());
 						break;
 					default:
-						InvalidOpCode(LastPC);
+						InvalidOpCode(instr);
 						break;
 		            }
 	            }
@@ -756,8 +764,8 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 						doBranch = stack->pop() == 0;
 						break;
 					default:
-						InvalidOpCode(LastPC);
-						return false;
+						InvalidOpCode(instr);
+						return MethodState::Aborted;
 				}
 				
 				if (doBranch)
@@ -1000,7 +1008,7 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 				if (instr != CEE_CALLVIRT && instr != CEE_CALL) 
 				{
 					InvalidOpCode(PC - 1);
-					return false;
+					return MethodState::Aborted;
 				}
 				
 				uint32_t tk = ((uint32_t)pCode[PC]) | ((uint32_t)pCode[PC+1] << 8) | ((uint32_t)pCode[PC+2] << 16) | ((uint32_t)pCode[PC+3] << 24);
@@ -1010,13 +1018,13 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 				
 				if (method == -1)
 				{
-					return false;
+					return MethodState::Aborted;
 				}
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
 				int stackSize = _methods[method].maxLocals;
-				if (_methods[method].methodFlags & METHOD_SPECIAL)
+				if (_methods[method].methodFlags & MethodFlags::Special)
 				{
 					stackSize = 0;
 				}
@@ -1044,10 +1052,13 @@ bool FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* retur
 				break;
             }
 			default:
-				InvalidOpCode(LastPC);
-				return false;
+				InvalidOpCode(instr);
+				return MethodState::Aborted;
         }
 	}
+	
+	// We interrupted execution to not waste to much time here - the parent will return to us asap
+	return MethodState::Running;
 }
 
 int FirmataIlExecutor::ResolveToken(uint32_t token)

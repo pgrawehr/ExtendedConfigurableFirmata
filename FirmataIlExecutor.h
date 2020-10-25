@@ -23,12 +23,21 @@
 #define IL_DECLARE 2
 
 #define MAX_METHODS 10
-#define MAX_PARAMETERS 10
 
-#define METHOD_STATIC 1
-#define METHOD_VIRTUAL 2
-#define METHOD_SPECIAL 4
-#define METHOD_VOID 8
+typedef enum MethodFlags
+{
+	Static = 1,
+	Virtual = 2,
+	Special = 4,
+	Void = 8
+};
+
+typedef enum MethodState
+{
+	Stopped = 0,
+	Aborted = 1,
+	Running = 2,
+};
 
 struct IlCode
 {
@@ -97,12 +106,13 @@ class FirmataIlExecutor: public FirmataFeature
     void handleCapability(byte pin);
     boolean handleSysex(byte command, byte argc, byte* argv);
 	void reset();
+	void runStep();
  
   private:
     void LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv);
 	void LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
-	bool ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
+	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	int ResolveToken(uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	IlCode _methods[MAX_METHODS];

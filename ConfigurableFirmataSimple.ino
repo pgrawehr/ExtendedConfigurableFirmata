@@ -3,59 +3,99 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
+// Use these defines to easily enable or disable certain modules
+
+/* Note: Currently no client support by dotnet/iot for these, so they're disabled by default */
+/* Enabling all modules on the smaller Arduino boards (such as the UNO or the Nano) won't work anyway, as there is both
+ * not enough flash as well as not enough RAM. 
+ */
+//#define ENABLE_ONE_WIRE
+//#define ENABLE_SERVO 
+//#define ENABLE_ACCELSTEPPER
+//#define ENABLE_BASIC_SCHEDULER
+//#define ENABLE_SERIAL
+
+/* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
+// #define ENABLE_DHT
+// #define ENABLE_I2C
+// #define ENABLE_IL_EXECUTOR
+// #define ENABLE_SPI
+// #define ENABLE_ANALOG
+// #define ENABLE_DIGITAL
+
 #include <ConfigurableFirmata.h>
 
+#ifdef ENABLE_DIGITAL
 #include <DigitalInputFirmata.h>
 DigitalInputFirmata digitalInput;
 
 #include <DigitalOutputFirmata.h>
 DigitalOutputFirmata digitalOutput;
+#endif
 
+#ifdef ENABLE_ANALOG
 #include <AnalogInputFirmata.h>
 AnalogInputFirmata analogInput;
 
 #include <AnalogOutputFirmata.h>
 AnalogOutputFirmata analogOutput;
+#endif
 
+#ifdef ENABLE_I2C
 #include <Wire.h>
 #include <I2CFirmata.h>
 I2CFirmata i2c;
+#endif
 
-//#include <OneWireFirmata.h>
-//OneWireFirmata oneWire;
+#ifdef ENABLE_ONE_WIRE
+#include <OneWireFirmata.h>
+OneWireFirmata oneWire;
+#endif
 
+#ifdef ENABLE_SERIAL
 #include <SerialFirmata.h>
 SerialFirmata serial;
+#endif
 
 #include <FirmataExt.h>
 FirmataExt firmataExt;
 
+#ifdef ENABLE_SPI
 #include <SpiFirmata.h>
 SpiFirmata spi;
+#endif
 
-//#include <Servo.h>
-//#include <ServoFirmata.h>
-//ServoFirmata servo;
-
+#ifdef ENABLE_SERVO
+#include <Servo.h>
+#include <ServoFirmata.h>
+ServoFirmata servo;
+#endif
 #include <AnalogWrite.h>
 
+#ifdef ENABLE_BASIC_SCHDULER
 // The scheduler allows to store scripts on the board, however this requires a kind of compiler on the client side.
-// The feature only needs 20Bytes of Ram, so it doesn't hurt to have it (There's enough flash left)
+// When running dotnet/iot on the client side, prefer using the FirmataIlExecutor module instead
 #include <FirmataScheduler.h>
 FirmataScheduler scheduler;
+#endif
 
 #include <FirmataReporting.h>
 FirmataReporting reporting;
 
-// #include <AccelStepperFirmata.h>
-// AccelStepperFirmata accelStepper;
+#ifdef ENABLE_ACCELSTEPPER
+#include <AccelStepperFirmata.h>
+AccelStepperFirmata accelStepper;
+#endif
 
-// #include <DhtFirmata.h>
-// DhtFirmata dhtFirmata;
+#ifdef ENABLE_DHT
+#include <DhtFirmata.h>
+DhtFirmata dhtFirmata;
+#endif
 
+#ifdef ENABLE_IL_EXECUTOR
 #include "FirmataIlExecutor.h"
 FirmataIlExecutor ilExecutor;
-
+#endif
 #ifdef DEBUG_STREAM
 const byte SimulatedInput[] PROGMEM =
 {
@@ -116,20 +156,51 @@ void initFirmata()
 {
   Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 
+#ifdef ENABLE_DIGITAL
   firmataExt.addFeature(digitalInput);
   firmataExt.addFeature(digitalOutput);
+#endif
+	
+#ifdef ENABLE_ANALOG
   firmataExt.addFeature(analogInput);
   firmataExt.addFeature(analogOutput);
-  // firmataExt.addFeature(servo);
+#endif
+	
+#ifdef ENABLE_SERVO
+  firmataExt.addFeature(servo);
+#endif
+	
+#ifdef ENABLE_I2C
   firmataExt.addFeature(i2c);
-  // firmataExt.addFeature(oneWire);
+#endif
+	
+#ifdef ENABLE_ONE_WIRE
+  firmataExt.addFeature(oneWire);
+#endif
+	
+#ifdef ENABLE_SERIAL
   firmataExt.addFeature(serial);
+#endif
+	
+#ifdef ENABLE_BASIC_SCHEDULER
   firmataExt.addFeature(scheduler);
+#endif
+	
   firmataExt.addFeature(reporting);
+#ifdef ENABLE_SPI
   firmataExt.addFeature(spi);
-  // firmataExt.addFeature(accelStepper);
-  // firmataExt.addFeature(dhtFirmata);
+#endif
+#ifdef ENABLE_ACCELSTEPPER
+  firmataExt.addFeature(accelStepper);
+#endif
+	
+#ifdef ENABLE_DHT
+  firmataExt.addFeature(dhtFirmata);
+#endif
+	
+#ifdef ENABLE_IL_EXECUTOR
   firmataExt.addFeature(ilExecutor);
+#endif
 
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 }
@@ -145,23 +216,42 @@ void setup()
 
 void loop()
 {
-  digitalInput.report();
-
   while(Firmata.available()) {
     Firmata.processInput();
     if (!Firmata.isParsingMessage()) {
       goto runtasks;
     }
   }
-  if (!Firmata.isParsingMessage()) {
-runtasks: scheduler.runTasks();
+  if (!Firmata.isParsingMessage()) 
+  {
+runtasks:
+#ifdef ENABLE_BASIC_SCHEDULER
+  	scheduler.runTasks();
+#endif
+#ifdef ENABLE_IL_EXECUTOR
+    ilExecutor.runStep();
+#else
+    0 == 0; // Do something useless
+#endif
   }
   
   if (reporting.elapsed()) {
+#ifdef ENABLE_ANALOG
     analogInput.report();
+#endif
+#ifdef ENABLE_I2C
     i2c.report();
+#endif
   }
 
-  // accelStepper.update();
+#ifdef ENABLE_DIGITAL 
+  digitalInput.report();
+#endif
+
+#ifdef ENABLE_ACCELSTEPPER
+  accelStepper.update();
+#endif
+#ifdef ENABLE_SERIAL
   serial.update();
+#endif
 }
