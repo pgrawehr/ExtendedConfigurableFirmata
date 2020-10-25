@@ -24,7 +24,7 @@
 
 #define MAX_METHODS 10
 
-typedef enum MethodFlags
+enum MethodFlags
 {
 	Static = 1,
 	Virtual = 2,
@@ -32,7 +32,7 @@ typedef enum MethodFlags
 	Void = 8
 };
 
-typedef enum MethodState
+enum MethodState
 {
 	Stopped = 0,
 	Aborted = 1,
@@ -105,17 +105,20 @@ class FirmataIlExecutor: public FirmataFeature
     boolean handlePinMode(byte pin, int mode);
     void handleCapability(byte pin);
     boolean handleSysex(byte command, byte argc, byte* argv);
-	void reset();
+    void reset();
 	void runStep();
  
   private:
     void LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv);
 	void LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
+	bool IsExecutingCode();
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	int ResolveToken(uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
-	IlCode _methods[MAX_METHODS];
+    void SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult);
+    IlCode _methods[MAX_METHODS];
+	ExecutionState* _methodCurrentlyExecuting;
 };
 
 

@@ -36,6 +36,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 
 FirmataIlExecutor::FirmataIlExecutor()
 {
+	_methodCurrentlyExecuting = nullptr;
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -59,19 +60,34 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 		  
 		switch(argv[1])
 		{
-			case IL_LOAD: 
-				if (argc < 4)
+			case IL_LOAD:
+				if (IsExecutingCode())
+				{
+					Firmata.sendString(F("Cannot load code while executing"));
+					return true;
+				}
+				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					return false;
+					return true;
 				}
 				LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 			break;
 			case IL_EXECUTE_NOW:
-				DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
+				if (IsExecutingCode())
+				{
+					Firmata.sendString(F("Cannot execute task - already busy"));
+					return true;
+				}
+			DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
 			break;
 			case IL_DECLARE:
-				LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+				if (IsExecutingCode())
+				{
+					Firmata.sendString(F("Executor busy"));
+					return true;
+				}
+			LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 				break;
 		}
         
@@ -80,9 +96,33 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
   return false;
 }
 
+bool FirmataIlExecutor::IsExecutingCode()
+{
+	return _methodCurrentlyExecuting != nullptr;
+}
+
 void FirmataIlExecutor::runStep()
 {
 	// Check that we have an existing execution context, and if so continue there.
+	if (!IsExecutingCode())
+	{
+		return;
+	}
+
+	uint32_t retVal = 0;
+	MethodState execResult = ExecuteIlCode(_methodCurrentlyExecuting, &retVal);
+
+	if (execResult == MethodState::Running)
+	{
+		// The method is still running
+		return;
+	}
+	
+	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), retVal, execResult);
+
+	// The method ended
+	delete _methodCurrentlyExecuting;
+	_methodCurrentlyExecuting = nullptr;
 }
 
 void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
@@ -151,20 +191,9 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
-void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
+void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult)
 {
-	uint32_t result = 0;
-	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
-	ExecutionState* rootState = new ExecutionState(codeReference, _methods[codeReference].maxLocals, _methods[codeReference].numArgs);
-	for (int i = 0; i < _methods[codeReference].numArgs; i++)
-	{
-		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
-	}
-	
-	bool execResult = ExecuteIlCode(rootState, &result);
-	
-	delete rootState;
-	
+	Firmata.sendString(F("Method return state is "), execResult);
 	byte replyData[4];
 	// Reply format:
 	// byte 0: 1 on success, 0 on (technical) failure, such as unsupported opcode
@@ -183,13 +212,39 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 	// 0: Code execution completed, called method ended
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
 	// 2: Intermediate data from method (not used here)
-	Firmata.write(execResult ? 0 : 1);
+	Firmata.write(execResult);
 	Firmata.write(1); // Number of arguments that follow
 	for (int i = 0; i < 4; i++)
 	{
 		Firmata.sendValueAsTwo7bitBytes(replyData[i]);
 	}
 	Firmata.endSysex();
+}
+
+void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
+{
+	uint32_t result = 0;
+	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
+	ExecutionState* rootState = new ExecutionState(codeReference, _methods[codeReference].maxLocals, _methods[codeReference].numArgs);
+	_methodCurrentlyExecuting = rootState;
+	for (int i = 0; i < _methods[codeReference].numArgs; i++)
+	{
+		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
+	}
+	
+	MethodState execResult = ExecuteIlCode(rootState, &result);
+
+	if (execResult == MethodState::Running)
+	{
+		// The method is still running
+		return;
+	}
+
+	// The method ended very quickly
+	_methodCurrentlyExecuting = nullptr;
+	delete rootState;
+	
+	SendExecutionResult(codeReference, result, execResult);
 }
 
 void InvalidOpCode(int opCode)
@@ -235,7 +290,7 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 // - It was validated that the method has exactly argc arguments
 MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
 {
-	const int NUM_INSTRUCTIONS_AT_ONCE = 10;
+	const int NUM_INSTRUCTIONS_AT_ONCE = 5;
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
 	{
@@ -1058,6 +1113,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	}
 	
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
+	currentFrame->UpdatePc(PC);
 	return MethodState::Running;
 }
 

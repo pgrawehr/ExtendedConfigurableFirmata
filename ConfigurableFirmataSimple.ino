@@ -18,10 +18,10 @@
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
 // #define ENABLE_DHT
 // #define ENABLE_I2C
-// #define ENABLE_IL_EXECUTOR
+#define ENABLE_IL_EXECUTOR
 // #define ENABLE_SPI
-// #define ENABLE_ANALOG
-// #define ENABLE_DIGITAL
+#define ENABLE_ANALOG
+#define ENABLE_DIGITAL
 
 #include <ConfigurableFirmata.h>
 
@@ -154,7 +154,11 @@ void initTransport()
 
 void initFirmata()
 {
-  Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+  // Set firmware name and version. The name is automatically derived from the name of this file.
+  // Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+  // The usage of the above shortcut is not recommended, since it stores the full path of the file name in a 
+  // string constant, using both flash and ram. 
+  Firmata.setFirmwareNameAndVersion("ConfigurableFirmata", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 
 #ifdef ENABLE_DIGITAL
   firmataExt.addFeature(digitalInput);
