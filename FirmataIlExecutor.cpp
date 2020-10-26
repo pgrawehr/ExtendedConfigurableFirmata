@@ -12,6 +12,7 @@
 
 
 #include <ConfigurableFirmata.h>
+#include <FreeMemory.h>
 #include "FirmataIlExecutor.h"
 #include "openum.h"
 #include "ObjectStack.h"
@@ -60,11 +61,13 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 			  return false;
 		  }
 		  subCommand = argv[1];
-		  if (IsExecutingCode())
+		  if (IsExecutingCode() && subCommand != IL_RESET && subCommand != IL_KILLTASK)
 		  {
 			  Firmata.sendString(F("Execution engine busy. Ignoring command."));
 			  return true;
 		  }
+  	
+		  // Firmata.sendString(F("Executing Scheduler command 0x"), subCommand);
 		switch(subCommand)
 		{
 			case IL_LOAD:
@@ -74,16 +77,36 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 					return true;
 				}
 				LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
-			break;
+				SendAck(subCommand);
+				break;
 			case IL_EXECUTE_NOW:
 				DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
-			break;
+				SendAck(subCommand);
+				break;
 			case IL_DECLARE:
 				LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+				SendAck(subCommand);
 				break;
 			case IL_TOKEN_MAP:
 				LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
+				SendAck(subCommand);
 				break;
+			case IL_RESET:
+				if (argv[2] == 1)
+				{
+					// KillCurrentTask();
+					reset();
+					// Better not confuse anybody by sending out-of-order acks
+				}
+				break;
+			case IL_KILLTASK:
+				{
+					// KillCurrentTask();
+					SendAck(subCommand);
+					break;
+				}
+				break;
+			
 		}
         
         return true;
@@ -94,6 +117,32 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 bool FirmataIlExecutor::IsExecutingCode()
 {
 	return _methodCurrentlyExecuting != nullptr;
+}
+
+void FirmataIlExecutor::KillCurrentTask()
+{
+	if (_methodCurrentlyExecuting == nullptr)
+	{
+		return;
+	}
+
+	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
+	ExecutionState* currentFrame = _methodCurrentlyExecuting;
+	while (currentFrame != nullptr)
+	{
+		// destruct the stack top to bottom (to ensure we regain the complete memory chain)
+		while (currentFrame->_next != nullptr)
+		{
+			currentFrameVar = &currentFrame->_next;
+			currentFrame = currentFrame->_next;
+		}
+
+		delete currentFrame;
+		*currentFrameVar = nullptr; // sets the parent's _next pointer to null
+		
+		currentFrame = _methodCurrentlyExecuting;
+		currentFrameVar = &_methodCurrentlyExecuting;
+	}
 }
 
 void FirmataIlExecutor::runStep()
@@ -140,7 +189,7 @@ void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte ma
 	method->numArgs = argv[0];
 	uint32_t token = DecodeUint32(argv + 1);
 	method->methodToken = token;
-	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
+	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
 }
 
 void FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv)
@@ -181,7 +230,7 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
-		Firmata.sendString(F("LoadIlDataStream for unknown codeReference"));
+		Firmata.sendString(F("LoadIlDataStream for unknown codeReference 0x"), codeReference);
 		return;
 	}
 
@@ -216,7 +265,7 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 		}
 	}
 
-	// Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
+	Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
 }
 
 uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
@@ -1221,6 +1270,16 @@ IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 	return GetMethodByToken(token);
 }
 
+void FirmataIlExecutor::SendAck(byte subCommand)
+{
+	Firmata.startSysex();
+	Firmata.write(SCHEDULER_DATA);
+	Firmata.write(0x7f);
+	Firmata.write(subCommand);
+	Firmata.endSysex();
+}
+
+
 void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
 {
 	if (_firstMethod == nullptr)
@@ -1247,6 +1306,8 @@ IlCode* FirmataIlExecutor::GetMethodByCodeReference(byte codeReference)
 		{
 			return current;
 		}
+
+		current = current->next;
 	}
 
 	Firmata.sendString(F("Reference not found: "), codeReference);
@@ -1262,6 +1323,8 @@ IlCode* FirmataIlExecutor::GetMethodByToken(uint32_t token)
 		{
 			return current;
 		}
+
+		current = current->next;
 	}
 
 	Firmata.sendString(F("Token not found: "), token);
@@ -1309,5 +1372,7 @@ void FirmataIlExecutor::reset()
 	}
 
 	_firstMethod = nullptr;
+
+	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
 }
 

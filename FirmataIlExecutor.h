@@ -22,6 +22,8 @@
 #define IL_LOAD 1
 #define IL_DECLARE 2
 #define IL_TOKEN_MAP 3
+#define IL_RESET 4
+#define IL_KILLTASK 5
 
 enum MethodFlags
 {
@@ -176,6 +178,8 @@ class FirmataIlExecutor: public FirmataFeature
 	void LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv);
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
+	void KillCurrentTask();
+	void SendAck(byte subCommand);
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
