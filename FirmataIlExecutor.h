@@ -21,6 +21,7 @@
 #define IL_EXECUTE_NOW 0
 #define IL_LOAD 1
 #define IL_DECLARE 2
+#define IL_TOKEN_MAP 3
 
 #define MAX_METHODS 10
 
@@ -48,7 +49,12 @@ struct IlCode
 	byte maxLocals; 
 	byte numArgs;
 	byte* methodIl;
-	uint32_t methodToken;
+	// this contains alternate tokens for the methods called from this method.
+	// Typically, these will be mappings from 0x0A (memberRef tokens) to 0x06 (methodDef tokens)
+	// for methods defined in another assembly than this method. 
+	uint32_t* tokenMap;
+	byte tokenMapEntries;
+	uint32_t methodToken; // Primary method token (a methodDef token)
 };
 
 class ExecutionState
@@ -63,18 +69,27 @@ class ExecutionState
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
+
+	uint32_t _memoryGuard;
 	ExecutionState(int codeReference, int maxLocals, int argCount) : _pc(0), _executionStack(maxLocals),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
 		_next = nullptr;
+		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
 	{
+		_next = nullptr;
+		_memoryGuard = 0xDEADBEEF;
 	}
 	
 	void ActivateState(short* pc, ObjectStack** stack, ObjectList** locals, ObjectList** arguments)
 	{
+		if (_memoryGuard != 0xCCCCCCCC)
+		{
+			Firmata.sendString(F("FATAL: MEMORY CORRUPTED: (should be 0xCCCCCCCC): "), _memoryGuard);
+		}
 		*pc = _pc;
 		*stack = &_executionStack;
 		*locals = &_locals;
@@ -88,6 +103,11 @@ class ExecutionState
 	
 	void UpdatePc(short pc)
 	{
+		if (_memoryGuard != 0xCCCCCCCC)
+		{
+			Firmata.sendString(F("FATAL: MEMORY CORRUPTED2: (should be 0xCCCCCCCC): "), _memoryGuard);
+		}
+		
 		_pc = pc;
 	}
 	
@@ -111,13 +131,17 @@ class FirmataIlExecutor: public FirmataFeature
   private:
     void LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv);
 	void LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
+	void LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv);
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
-	int ResolveToken(uint32_t token);
+	int ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
     void SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult);
     IlCode _methods[MAX_METHODS];
+
+	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
+	// and everything will be disposed afterwards.
 	ExecutionState* _methodCurrentlyExecuting;
 };
 

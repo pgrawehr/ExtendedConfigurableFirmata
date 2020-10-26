@@ -37,6 +37,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
+	memset(_methods, 0, 10 * sizeof(IlCode));
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -45,6 +46,7 @@ void FirmataIlExecutor::handleCapability(byte pin)
 
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 {
+	byte subCommand = 0;
   switch (command) {
     case SCHEDULER_DATA:
 		  if (argc < 3)
@@ -57,15 +59,15 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 			  // Scheduler message type must be 0xFF, specific meaning follows
 			  return false;
 		  }
-		  
-		switch(argv[1])
+		  subCommand = argv[1];
+		  if (IsExecutingCode())
+		  {
+			  Firmata.sendString(F("Execution engine busy. Ignoring command."));
+			  return true;
+		  }
+		switch(subCommand)
 		{
 			case IL_LOAD:
-				if (IsExecutingCode())
-				{
-					Firmata.sendString(F("Cannot load code while executing"));
-					return true;
-				}
 				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -74,20 +76,13 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
 				LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 			break;
 			case IL_EXECUTE_NOW:
-				if (IsExecutingCode())
-				{
-					Firmata.sendString(F("Cannot execute task - already busy"));
-					return true;
-				}
-			DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
+				DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
 			break;
 			case IL_DECLARE:
-				if (IsExecutingCode())
-				{
-					Firmata.sendString(F("Executor busy"));
-					return true;
-				}
-			LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+				LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+				break;
+			case IL_TOKEN_MAP:
+				LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
 				break;
 		}
         
@@ -127,10 +122,16 @@ void FirmataIlExecutor::runStep()
 
 void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
 {
-	if (_methods[codeReference].methodIl != NULL)
+	if (_methods[codeReference].methodIl != nullptr)
 	{
 		free(_methods[codeReference].methodIl);
-		_methods[codeReference].methodIl = NULL;
+		_methods[codeReference].methodIl = nullptr;
+	}
+
+	if (_methods[codeReference].tokenMap != nullptr)
+	{
+		free(_methods[codeReference].tokenMap);
+		_methods[codeReference].tokenMap = nullptr;
 	}
 	
 	_methods[codeReference].methodFlags = flags;
@@ -139,6 +140,30 @@ void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte ma
 	uint32_t token = DecodeUint32(argv + 1);
 	_methods[codeReference].methodToken = token;
 	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
+}
+
+void FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv)
+{
+	if (_methods[codeReference].tokenMap != nullptr)
+	{
+		free(_methods[codeReference].tokenMap);
+		_methods[codeReference].tokenMap = nullptr;
+	}
+
+	// No need to care about signed/unsigned here, because the top bit of metadata tokens is never used
+	byte numTokens = argc / 16;
+	uint32_t* tokens = (uint32_t*)malloc(numTokens * 8);
+	for (int i = 0; i < numTokens * 2; i++)
+	{
+		tokens[i] = DecodeUint32(argv + (8 * i));
+		//Firmata.sendStringf(F("Metadata token loaded: 0x%lx (%x, %x, %x, %x, %x, %x, %x, %x)"), 20, token, 
+		//	(int)argv[(8 * i)], (int)argv[(8 * i) + 1], (int)argv[(8 * i) + 2], (int)argv[(8 * i) + 3], 
+		//	(int)argv[(8 * i) + 4], (int)argv[(8 * i) + 5], (int)argv[(8 * i) + 6], (int)argv[(8 * i) + 7]);
+	}
+
+	_methods[codeReference].tokenMapEntries = numTokens;
+	_methods[codeReference].tokenMap = tokens;
+	Firmata.sendStringf(F("%d metadata tokens loaded for method %d"), 4, (int)numTokens, (int)codeReference);
 }
 
 void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv)
@@ -277,6 +302,8 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 		case 2: // Write(int pin, int value)
 			digitalWrite(args->Get(1), args->Get(2));
 			break;
+		case 5: // TickCount
+			return millis();
 		default:
 			Firmata.sendString(F("Unknown internal method: "), method);
 			break;
@@ -304,6 +331,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	ObjectList* arguments;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+
+	Firmata.sendStringf(F("Continuation at: 0x%x in Method %d"), 4, PC, currentFrame->MethodIndex());
 
 	byte* pCode = _methods[currentFrame->MethodIndex()].methodIl;
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
@@ -377,6 +406,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						{
 							*returnValue = 0;
 						}
+                    		
+						bool oldMethodIsVoid = _methods[methodIndex].methodFlags & MethodFlags::Void;
 						// Remove current method from execution stack
 						ExecutionState* frame = rootState;
 						if (frame == currentFrame)
@@ -398,9 +429,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						pCode = _methods[currentFrame->MethodIndex()].methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
 						// stack of the calling method (methodIndex still points to the old frame)
-						if ((_methods[methodIndex].methodFlags & MethodFlags::Void) == 0)
+						if (!stack->empty())
+						{
+							Firmata.sendString(F("For debug apps, stack should be empty now"));
+						}
+						else
+						{
+							Firmata.sendString(F("Stack is empty - returning now."));
+						}
+                    		
+						if (!oldMethodIsVoid)
 						{
 							stack->push(*returnValue);
+
+							Firmata.sendString(F("Pushing return value: "), *returnValue);
 						}
 					}
 					break;
@@ -1069,7 +1111,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				uint32_t tk = ((uint32_t)pCode[PC]) | ((uint32_t)pCode[PC+1] << 8) | ((uint32_t)pCode[PC+2] << 16) | ((uint32_t)pCode[PC+3] << 24);
                 PC += 4;
 
-                int method = ResolveToken(tk);
+                int method = ResolveToken(currentFrame->MethodIndex(), tk);
 				
 				if (method == -1)
 				{
@@ -1110,16 +1152,37 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				InvalidOpCode(instr);
 				return MethodState::Aborted;
         }
+    	
+    	// TODO: This is unneccessary
+		currentFrame->UpdatePc(PC);
 	}
 	
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	currentFrame->UpdatePc(PC);
+	Firmata.sendString(F("Interrupting method at 0x"), PC);
 	return MethodState::Running;
 }
 
-int FirmataIlExecutor::ResolveToken(uint32_t token)
+int FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 {
-	// uint32_t tkType = TypeFromToken(tk);
+	if ((token >> 24) == 0x0A)
+	{
+		// Use the token map first
+		int mapEntry = 0;
+		uint32_t* entries = _methods[codeReference].tokenMap;
+		while (mapEntry < _methods[codeReference].tokenMapEntries * 2)
+		{
+			uint32_t memberRef = entries[mapEntry + 1];
+			Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]);
+			Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]);
+			if (memberRef == token)
+			{
+				token = entries[mapEntry];
+				break;
+			}
+			mapEntry += 2;
+		}
+	}
 
     for (int i = 0; i < MAX_METHODS; i++)
 	{
