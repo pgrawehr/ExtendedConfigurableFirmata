@@ -23,8 +23,6 @@
 #define IL_DECLARE 2
 #define IL_TOKEN_MAP 3
 
-#define MAX_METHODS 10
-
 enum MethodFlags
 {
 	Static = 1,
@@ -40,10 +38,54 @@ enum MethodState
 	Running = 2,
 };
 
-struct IlCode
+class IlCode
 {
+public:
+	IlCode()
+	{
+		methodToken = 0;
+		methodFlags = 0;
+		methodLength = 0;
+		methodIl = nullptr;
+		tokenMap = nullptr;
+		tokenMapEntries = 0;
+		maxLocals = 0;
+		numArgs = 0;
+		next = nullptr;
+		codeReference = -1;
+	}
+
+	~IlCode()
+	{
+		Clear();
+	}
+
+	/// <summary>
+	/// Clear the current entry, so it can be reused.
+	/// </summary>
+	void Clear()
+	{
+		methodToken = 0;
+		if (tokenMap != nullptr)
+		{
+			free(tokenMap);
+			tokenMap = nullptr;
+			tokenMapEntries = 0;
+		}
+		if (methodIl != nullptr)
+		{
+			free(methodIl);
+			methodIl = nullptr;
+			methodLength = 0;
+		}
+
+		codeReference = -1;
+	}
+	
+	uint32_t methodToken; // Primary method token (a methodDef token)
 	byte methodFlags;
 	byte methodLength;
+	byte codeReference;
 	// the maximum of (number of local variables, execution stack size)
 	// For special methods (see methodFlags field), this contains the method number
 	byte maxLocals; 
@@ -54,7 +96,7 @@ struct IlCode
 	// for methods defined in another assembly than this method. 
 	uint32_t* tokenMap;
 	byte tokenMapEntries;
-	uint32_t methodToken; // Primary method token (a methodDef token)
+	IlCode* next;
 };
 
 class ExecutionState
@@ -122,10 +164,10 @@ class FirmataIlExecutor: public FirmataFeature
 {
   public:
     FirmataIlExecutor();
-    boolean handlePinMode(byte pin, int mode);
-    void handleCapability(byte pin);
-    boolean handleSysex(byte command, byte argc, byte* argv);
-    void reset();
+    boolean handlePinMode(byte pin, int mode) override;
+    void handleCapability(byte pin) override;
+    boolean handleSysex(byte command, byte argc, byte* argv) override;
+    void reset() override;
 	void runStep();
  
   private:
@@ -135,10 +177,13 @@ class FirmataIlExecutor: public FirmataFeature
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
-	int ResolveToken(byte codeReference, uint32_t token);
+	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
     void SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult);
-    IlCode _methods[MAX_METHODS];
+	IlCode* GetMethodByToken(uint32_t token);
+	IlCode* GetMethodByCodeReference(byte codeReference);
+	void AttachToMethodList(IlCode* newCode);
+	IlCode* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.

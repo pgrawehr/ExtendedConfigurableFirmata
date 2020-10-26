@@ -37,7 +37,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
-	memset(_methods, 0, 10 * sizeof(IlCode));
+	_firstMethod = nullptr;
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -122,32 +122,41 @@ void FirmataIlExecutor::runStep()
 
 void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
 {
-	if (_methods[codeReference].methodIl != nullptr)
+	IlCode* method = GetMethodByCodeReference(codeReference);
+	if (method != nullptr)
 	{
-		free(_methods[codeReference].methodIl);
-		_methods[codeReference].methodIl = nullptr;
+		method->Clear();
+	}
+	else
+	{
+		method = new IlCode();
+		method->codeReference = codeReference;
+		// And immediately attach to the list
+		AttachToMethodList(method);
 	}
 
-	if (_methods[codeReference].tokenMap != nullptr)
-	{
-		free(_methods[codeReference].tokenMap);
-		_methods[codeReference].tokenMap = nullptr;
-	}
-	
-	_methods[codeReference].methodFlags = flags;
-	_methods[codeReference].maxLocals = maxLocals;
-	_methods[codeReference].numArgs = argv[0];
+	method->methodFlags = flags;
+	method->maxLocals = maxLocals;
+	method->numArgs = argv[0];
 	uint32_t token = DecodeUint32(argv + 1);
-	_methods[codeReference].methodToken = token;
-	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
+	method->methodToken = token;
+	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, flags);
 }
 
 void FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv)
 {
-	if (_methods[codeReference].tokenMap != nullptr)
+	IlCode* method = GetMethodByCodeReference(codeReference);
+	if (method == nullptr)
 	{
-		free(_methods[codeReference].tokenMap);
-		_methods[codeReference].tokenMap = nullptr;
+		// This operation is illegal if the method is unknown
+		Firmata.sendString(F("LoadMetadataTokenMapping for unknown codeReference"));
+		return;
+	}
+	
+	if (method->tokenMap != nullptr)
+	{
+		free(method->tokenMap);
+		method->tokenMap = nullptr;
 	}
 
 	// No need to care about signed/unsigned here, because the top bit of metadata tokens is never used
@@ -161,22 +170,30 @@ void FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, byte argc, 
 		//	(int)argv[(8 * i) + 4], (int)argv[(8 * i) + 5], (int)argv[(8 * i) + 6], (int)argv[(8 * i) + 7]);
 	}
 
-	_methods[codeReference].tokenMapEntries = numTokens;
-	_methods[codeReference].tokenMap = tokens;
+	method->tokenMapEntries = numTokens;
+	method->tokenMap = tokens;
 	Firmata.sendStringf(F("%d metadata tokens loaded for method %d"), 4, (int)numTokens, (int)codeReference);
 }
 
 void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv)
 {
+	IlCode* method = GetMethodByCodeReference(codeReference);
+	if (method == nullptr)
+	{
+		// This operation is illegal if the method is unknown
+		Firmata.sendString(F("LoadIlDataStream for unknown codeReference"));
+		return;
+	}
+
 	if (offset == 0)
 	{
-		if (_methods[codeReference].methodIl != NULL)
+		if (method->methodIl != nullptr)
 		{
-			free(_methods[codeReference].methodIl);
-			_methods[codeReference].methodIl = NULL;
+			free(method->methodIl);
+			method->methodIl = nullptr;
 		}
 		byte* decodedIl = (byte*)malloc(codeLength);
-		if (decodedIl == NULL)
+		if (decodedIl == nullptr)
 		{
 			Firmata.sendString(F("Not enough memory. "), codeLength);
 			return;
@@ -186,12 +203,12 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 		{
 			  decodedIl[j++] = argv[i] + (argv[i + 1] << 7);
 		}
-		_methods[codeReference].methodLength = codeLength;
-		_methods[codeReference].methodIl = decodedIl;
+		method->methodLength = codeLength;
+		method->methodIl = decodedIl;
 	}
 	else 
 	{
-		byte* decodedIl = _methods[codeReference].methodIl + offset;
+		byte* decodedIl = method->methodIl + offset;
 		int j = 0;
 		for (byte i = 0; i < argc; i += 2) 
 		{
@@ -249,10 +266,11 @@ void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result,
 void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
 {
 	uint32_t result = 0;
+	IlCode* method = GetMethodByCodeReference(codeReference);
 	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
-	ExecutionState* rootState = new ExecutionState(codeReference, _methods[codeReference].maxLocals, _methods[codeReference].numArgs);
+	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs);
 	_methodCurrentlyExecuting = rootState;
-	for (int i = 0; i < _methods[codeReference].numArgs; i++)
+	for (int i = 0; i < method->numArgs; i++)
 	{
 		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
 	}
@@ -318,6 +336,7 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
 {
 	const int NUM_INSTRUCTIONS_AT_ONCE = 5;
+	
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
 	{
@@ -332,9 +351,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
-	Firmata.sendStringf(F("Continuation at: 0x%x in Method %d"), 4, PC, currentFrame->MethodIndex());
+	IlCode* currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+	int currentMethodReference = currentMethod->codeReference;
 
-	byte* pCode = _methods[currentFrame->MethodIndex()].methodIl;
+	Firmata.sendStringf(F("Continuation at: 0x%x in Method %d"), 4, PC, currentMethodReference);
+	byte* pCode = currentMethod->methodIl;
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
@@ -344,15 +365,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
     	
         DWORD   len;
         OPCODE  instr;
-		int methodIndex = currentFrame->MethodIndex();
 		
-		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, methodIndex);
+		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethodReference);
         
-		if (PC == 0 && (_methods[methodIndex].methodFlags & MethodFlags::Special))
+		if (PC == 0 && (currentMethod->methodFlags & MethodFlags::Special))
 		{
-			int specialMethod = _methods[methodIndex].maxLocals;
+			int specialMethod = currentMethod->maxLocals;
+			
 			Firmata.sendString(F("Executing special method "), specialMethod);
 			uint32_t retVal = ExecuteSpecialMethod(specialMethod, arguments);
+			
 			// We're called into a "special" (built-in) method. 
 			// Perform a method return
 			ExecutionState* frame = rootState; // start at root
@@ -361,19 +383,21 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				frame = frame->_next;
 			}
 			// Remove the last frame and set the PC for the new current frame
-			frame->_next = NULL;
+			frame->_next = nullptr;
 			
 			delete currentFrame;
 			currentFrame = frame;
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-			if ((_methods[methodIndex].methodFlags & MethodFlags::Void) == 0)
+			if ((currentMethod->methodFlags & MethodFlags::Void) == 0)
 			{
 				stack->push(retVal);
 			}
-			
-			pCode = _methods[currentFrame->MethodIndex()].methodIl;
+
+			currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+
+			pCode = currentMethod->methodIl;
 			continue;
 		}
 
@@ -407,7 +431,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 							*returnValue = 0;
 						}
                     		
-						bool oldMethodIsVoid = _methods[methodIndex].methodFlags & MethodFlags::Void;
+						bool oldMethodIsVoid = currentMethod->methodFlags & MethodFlags::Void;
 						// Remove current method from execution stack
 						ExecutionState* frame = rootState;
 						if (frame == currentFrame)
@@ -422,11 +446,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 							frame = frame->_next;
 						}
 						// Remove the last frame and set the PC for the new current frame
-						frame->_next = NULL;
+                    		
+						frame->_next = nullptr;
 						delete currentFrame;
 						currentFrame = frame;
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-						pCode = _methods[currentFrame->MethodIndex()].methodIl;
+
+						currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+                    	
+						pCode = currentMethod->methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
 						// stack of the calling method (methodIndex still points to the old frame)
 						if (!stack->empty())
@@ -1111,23 +1139,25 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				uint32_t tk = ((uint32_t)pCode[PC]) | ((uint32_t)pCode[PC+1] << 8) | ((uint32_t)pCode[PC+2] << 16) | ((uint32_t)pCode[PC+3] << 24);
                 PC += 4;
 
-                int method = ResolveToken(currentFrame->MethodIndex(), tk);
+                IlCode* newMethod = ResolveToken(currentMethod->codeReference, tk);
 				
-				if (method == -1)
+				if (newMethod == nullptr)
 				{
+					Firmata.sendString(F("Unknown token 0x"), tk);
 					return MethodState::Aborted;
 				}
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
-				int stackSize = _methods[method].maxLocals;
-				if (_methods[method].methodFlags & MethodFlags::Special)
+				int stackSize = newMethod->maxLocals;
+            		
+				if (newMethod->methodFlags & MethodFlags::Special)
 				{
 					stackSize = 0;
 				}
 				
-				int argumentCount = _methods[method].numArgs;
-				ExecutionState* newState = new ExecutionState(method, stackSize, argumentCount);
+				int argumentCount = newMethod->numArgs;
+				ExecutionState* newState = new ExecutionState(newMethod->codeReference, stackSize, argumentCount);
 				currentFrame->_next = newState;
 				
 				ObjectStack* oldStack = stack;
@@ -1136,16 +1166,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
             	// Load data pointer for the new method
-				pCode = _methods[currentFrame->MethodIndex()].methodIl;
+				currentMethod = newMethod;
+				pCode = newMethod->methodIl;
             	
 				// Provide arguments to the new method
-                int args2 = argumentCount;
-				while (args2 > 0)
+				while (argumentCount > 0)
 				{
-                    args2--;
-					arguments->Set(args2, oldStack->pop());
+					argumentCount--;
+					arguments->Set(argumentCount, oldStack->pop());
 				}
-				Firmata.sendStringf(F("Pushed stack to method %d"), 2, method);
+            		
+				Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference);
 				break;
             }
 			default:
@@ -1163,14 +1194,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	return MethodState::Running;
 }
 
-int FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
+IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 {
+	IlCode* method;
 	if ((token >> 24) == 0x0A)
 	{
 		// Use the token map first
 		int mapEntry = 0;
-		uint32_t* entries = _methods[codeReference].tokenMap;
-		while (mapEntry < _methods[codeReference].tokenMapEntries * 2)
+
+		method = GetMethodByCodeReference(codeReference);
+		uint32_t* entries = method -> tokenMap;
+		while (mapEntry < method->tokenMapEntries * 2)
 		{
 			uint32_t memberRef = entries[mapEntry + 1];
 			Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]);
@@ -1184,19 +1218,57 @@ int FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 		}
 	}
 
-    for (int i = 0; i < MAX_METHODS; i++)
+	return GetMethodByToken(token);
+}
+
+void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
+{
+	if (_firstMethod == nullptr)
 	{
-		if (_methods[i].methodToken == token)
+		_firstMethod = newCode;
+		return;
+	}
+
+	IlCode* parent = _firstMethod;
+	while (parent->next != nullptr)
+	{
+		parent = parent->next;
+	}
+
+	parent->next = newCode;
+}
+
+IlCode* FirmataIlExecutor::GetMethodByCodeReference(byte codeReference)
+{
+	IlCode* current = _firstMethod;
+	while (current != nullptr)
+	{
+		if (current->codeReference == codeReference)
 		{
-			Firmata.sendString(F("Resolved method token for method: "), i);
-			Firmata.sendString(F("Method flags: "), _methods[i].methodFlags);
-			return i;
+			return current;
 		}
 	}
-	
-	Firmata.sendString(F("Unresolved method token: "), token);
-	return -1;
+
+	Firmata.sendString(F("Reference not found: "), codeReference);
+	return nullptr;
 }
+
+IlCode* FirmataIlExecutor::GetMethodByToken(uint32_t token)
+{
+	IlCode* current = _firstMethod;
+	while (current != nullptr)
+	{
+		if (current->methodToken == token)
+		{
+			return current;
+		}
+	}
+
+	Firmata.sendString(F("Token not found: "), token);
+	return nullptr;
+}
+
+
 
 OPCODE DecodeOpcode(const BYTE *pCode, DWORD *pdwLen)
 {
@@ -1228,13 +1300,14 @@ OPCODE DecodeOpcode(const BYTE *pCode, DWORD *pdwLen)
 
 void FirmataIlExecutor::reset()
 {
-	for (int i = 0; i < MAX_METHODS; i++)
+	auto method = _firstMethod;
+
+	while (method != nullptr)
 	{
-		if (_methods[i].methodIl != NULL)
-		{
-			free(_methods[i].methodIl);
-			_methods[i].methodIl = NULL;
-		}
+		method = method->next;
+		delete method;
 	}
+
+	_firstMethod = nullptr;
 }
 
