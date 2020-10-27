@@ -18,14 +18,23 @@
 #include <ObjectStack.h>
 #include <ObjectList.h>
 
-#define IL_EXECUTE_NOW 0
-#define IL_LOAD 1
-#define IL_DECLARE 2
-#define IL_TOKEN_MAP 3
-#define IL_RESET 4
-#define IL_KILLTASK 5
+#define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
 
-enum MethodFlags
+enum class ExecutorCommand : byte
+{
+	None = 0,
+	DeclareMethod = 1,
+	SetMethodTokens = 2,
+	LoadIl = 3,
+	StartTask = 4,
+	ResetExecutor = 5,
+	KillTask = 6,
+
+	Nack = 0x7e,
+	Ack = 0x7f,
+};
+
+enum class MethodFlags
 {
 	Static = 1,
 	Virtual = 2,
@@ -33,11 +42,17 @@ enum MethodFlags
 	Void = 8
 };
 
-enum MethodState
+enum class MethodState
 {
 	Stopped = 0,
 	Aborted = 1,
 	Running = 2,
+};
+
+enum class ExecutionError : byte
+{
+	None = 0,
+	EngineBusy = 1,
 };
 
 class IlCode
@@ -179,7 +194,8 @@ class FirmataIlExecutor: public FirmataFeature
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
-	void SendAck(byte subCommand);
+	void SendAck(ExecutorCommand subCommand);
+	void SendNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);

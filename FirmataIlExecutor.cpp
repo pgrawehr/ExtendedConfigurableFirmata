@@ -45,73 +45,74 @@ void FirmataIlExecutor::handleCapability(byte pin)
 {
 }
 
-boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte *argv)
+boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 {
-	byte subCommand = 0;
-  switch (command) {
-    case SCHEDULER_DATA:
-		  if (argc < 3)
-		  {
-			  Firmata.sendString(F("Error in Scheduler command: Not enough parameters"));
-			  return false;
-		  }
-		  if (argv[0] != 0xFF)
-		  {
-			  // Scheduler message type must be 0xFF, specific meaning follows
-			  return false;
-		  }
-		  subCommand = argv[1];
-		  if (IsExecutingCode() && subCommand != IL_RESET && subCommand != IL_KILLTASK)
-		  {
-			  Firmata.sendString(F("Execution engine busy. Ignoring command."));
-			  return true;
-		  }
-  	
-		  // Firmata.sendString(F("Executing Scheduler command 0x"), subCommand);
-		switch(subCommand)
+	ExecutorCommand subCommand = ExecutorCommand::None;
+	switch (command) {
+	case SCHEDULER_DATA:
+		if (argc < 3)
 		{
-			case IL_LOAD:
-				if (argc < 6)
-				{
-					Firmata.sendString(F("Not enough IL data parameters"));
-					return true;
-				}
-				LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
-				SendAck(subCommand);
-				break;
-			case IL_EXECUTE_NOW:
-				DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
-				SendAck(subCommand);
-				break;
-			case IL_DECLARE:
-				LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
-				SendAck(subCommand);
-				break;
-			case IL_TOKEN_MAP:
-				LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
-				SendAck(subCommand);
-				break;
-			case IL_RESET:
-				if (argv[2] == 1)
-				{
-					// KillCurrentTask();
-					reset();
-					// Better not confuse anybody by sending out-of-order acks
-				}
-				break;
-			case IL_KILLTASK:
-				{
-					// KillCurrentTask();
-					SendAck(subCommand);
-					break;
-				}
-				break;
-			
+			Firmata.sendString(F("Error in Scheduler command: Not enough parameters"));
+			return false;
 		}
-        
-        return true;
-  }
-  return false;
+		if (argv[0] != 0xFF)
+		{
+			// Scheduler message type must be 0xFF, specific meaning follows
+			return false;
+		}
+		subCommand = (ExecutorCommand)argv[1];
+		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
+		{
+			Firmata.sendString(F("Execution engine busy. Ignoring command."));
+			SendNack(subCommand, ExecutionError::EngineBusy);
+			return true;
+		}
+
+		// Firmata.sendString(F("Executing Scheduler command 0x"), subCommand);
+		switch (subCommand)
+		{
+		case ExecutorCommand::LoadIl:
+			if (argc < 6)
+			{
+				Firmata.sendString(F("Not enough IL data parameters"));
+				return true;
+			}
+			LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+			SendAck(subCommand);
+			break;
+		case ExecutorCommand::StartTask:
+			DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
+			SendAck(subCommand);
+			break;
+		case ExecutorCommand::DeclareMethod:
+			LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
+			SendAck(subCommand);
+			break;
+		case ExecutorCommand::SetMethodTokens:
+			LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
+			SendAck(subCommand);
+			break;
+		case ExecutorCommand::ResetExecutor:
+			if (argv[2] == 1)
+			{
+				// KillCurrentTask();
+				reset();
+				// Better not confuse anybody by sending out-of-order acks
+			}
+			break;
+		case ExecutorCommand::KillTask:
+		{
+			// KillCurrentTask();
+			SendAck(subCommand);
+			break;
+		}
+		break;
+
+		}
+
+		return true;
+	}
+	return false;
 }
 
 bool FirmataIlExecutor::IsExecutingCode()
@@ -284,7 +285,6 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 
 void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult)
 {
-	Firmata.sendString(F("Method return state is "), execResult);
 	byte replyData[4];
 	// Reply format:
 	// byte 0: 1 on success, 0 on (technical) failure, such as unsupported opcode
@@ -303,7 +303,7 @@ void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result,
 	// 0: Code execution completed, called method ended
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
 	// 2: Intermediate data from method (not used here)
-	Firmata.write(execResult);
+	Firmata.write((byte)execResult);
 	Firmata.write(1); // Number of arguments that follow
 	for (int i = 0; i < 4; i++)
 	{
@@ -417,7 +417,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		
 		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethodReference);
         
-		if (PC == 0 && (currentMethod->methodFlags & MethodFlags::Special))
+		if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
 		{
 			int specialMethod = currentMethod->maxLocals;
 			
@@ -439,7 +439,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-			if ((currentMethod->methodFlags & MethodFlags::Void) == 0)
+			if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
 			{
 				stack->push(retVal);
 			}
@@ -480,7 +480,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 							*returnValue = 0;
 						}
                     		
-						bool oldMethodIsVoid = currentMethod->methodFlags & MethodFlags::Void;
+						bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::Void;
 						// Remove current method from execution stack
 						ExecutionState* frame = rootState;
 						if (frame == currentFrame)
@@ -1200,7 +1200,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
                 currentFrame->UpdatePc(PC);
 				int stackSize = newMethod->maxLocals;
             		
-				if (newMethod->methodFlags & MethodFlags::Special)
+				if (newMethod->methodFlags & (byte)MethodFlags::Special)
 				{
 					stackSize = 0;
 				}
@@ -1270,12 +1270,23 @@ IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 	return GetMethodByToken(token);
 }
 
-void FirmataIlExecutor::SendAck(byte subCommand)
+void FirmataIlExecutor::SendAck(ExecutorCommand subCommand)
 {
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
-	Firmata.write(0x7f);
-	Firmata.write(subCommand);
+	Firmata.write((byte)ExecutorCommand::Ack);
+	Firmata.write((byte)subCommand);
+	Firmata.write(0); // Error code, just for completeness
+	Firmata.endSysex();
+}
+
+void FirmataIlExecutor::SendNack(ExecutorCommand subCommand, ExecutionError errorCode)
+{
+	Firmata.startSysex();
+	Firmata.write(SCHEDULER_DATA);
+	Firmata.write((byte)ExecutorCommand::Nack);
+	Firmata.write((byte)subCommand);
+	Firmata.write((byte)errorCode);
 	Firmata.endSysex();
 }
 
