@@ -551,6 +551,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
                         return MethodState::Aborted;
 					case CEE_NOP:
 						break;
+					case CEE_BREAK:
+						// This should not normally occur in code
+						InvalidOpCode(instr);
+						return MethodState::Aborted;
+						break;
 					case CEE_LDARG_0:
 						stack->push(arguments->Get(0));
 						break;
@@ -599,6 +604,47 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						intermediate = stack->pop() - stack->pop();
 						stack->push(intermediate);
 						break;
+					case CEE_MUL:
+						intermediate = stack->pop() * stack->pop();
+						stack->push(intermediate);
+						break;
+					case CEE_DIV:
+						// TODO: Proper typing required for this and the next
+						intermediate = stack->pop();
+						if (intermediate == 0)
+						{
+							return MethodState::Aborted;
+						}
+						intermediate = stack->pop() / intermediate;
+						stack->push(intermediate);
+						break;
+					case CEE_REM:
+						intermediate = stack->pop();
+						if (intermediate == 0)
+						{
+							return MethodState::Aborted;
+						}
+						intermediate = stack->pop() % intermediate;
+						stack->push(intermediate);
+						break;
+					case CEE_DIV_UN:
+						intermediate = stack->pop();
+						if (intermediate == 0)
+						{
+							return MethodState::Aborted;
+						}
+						intermediate = stack->pop() / intermediate;
+						stack->push(intermediate);
+						break;
+					case CEE_REM_UN:
+						intermediate = stack->pop();
+						if (intermediate == 0)
+						{
+							return MethodState::Aborted;
+						}
+						intermediate = stack->pop() % intermediate;
+						stack->push(intermediate);
+						break;
 					case CEE_CEQ:
 						stack->push(stack->pop() == stack->pop());
 						break;
@@ -608,8 +654,29 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 					case CEE_NOT:
 						stack->push(~stack->pop());
 						break;
+					case CEE_NEG:
+						stack->push(-stack->pop());
+						break;
+					case CEE_AND:
+						stack->push(stack->pop() & stack->pop());
+						break;
+					case CEE_OR:
+						stack->push(stack->pop() | stack->pop());
+						break;
+					case CEE_XOR:
+						stack->push(stack->pop() ^ stack->pop());
+						break;
 					case CEE_CLT:
 						stack->push(stack->pop() < stack->pop());
+						break;
+					case CEE_SHL:
+						stack->push(stack->pop() << stack->pop());
+						break;
+					case CEE_SHR:
+						stack->push((int)stack->pop() >> stack->pop());
+						break;
+					case CEE_SHR_UN:
+						stack->push((uint32_t)stack->pop() >> stack->pop());
 						break;
 					case CEE_LDC_I4_0:
 						stack->push(0);
@@ -640,6 +707,56 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						break;
 					case CEE_LDC_I4_M1:
 						stack->push(-1);
+						break;
+					case CEE_DUP:
+						intermediate = stack->peek();
+						stack->push(intermediate);
+						break;
+					case CEE_POP:
+						stack->pop();
+						break;
+					case CEE_LDIND_I1:
+						// TODO: Fix type of stack (must support dynamic typing)
+						intermediate = stack->pop();
+                    {
+							int8_t b = *((int8_t*)intermediate);
+							stack->push(b);
+                    }
+					break;
+					case CEE_LDIND_I2:
+						intermediate = stack->pop();
+						{
+							int16_t s = *((int16_t*)intermediate);
+							stack->push(s);
+						}
+						break;
+					case CEE_LDIND_I4:
+						intermediate = stack->pop();
+						{
+							int32_t i = *((int32_t*)intermediate);
+							stack->push(i);
+						}
+						break;
+					case CEE_LDIND_U1:
+						intermediate = stack->pop();
+						{
+							byte b = *((byte*)intermediate);
+							stack->push(b);
+						}
+						break;
+					case CEE_LDIND_U2:
+						intermediate = stack->pop();
+						{
+							uint16_t s = *((uint16_t*)intermediate);
+							stack->push(s);
+						}
+						break;
+					case CEE_LDIND_U4:
+						intermediate = stack->pop();
+						{
+							uint32_t i = *((uint32_t*)intermediate);
+							stack->push(i);
+						}
 						break;
                     default:
 						InvalidOpCode(instr);
