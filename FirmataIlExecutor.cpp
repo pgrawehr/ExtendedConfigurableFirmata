@@ -75,6 +75,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			if (argc < 6)
 			{
 				Firmata.sendString(F("Not enough IL data parameters"));
+				SendNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
 			LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
@@ -85,24 +86,40 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			SendAck(subCommand);
 			break;
 		case ExecutorCommand::DeclareMethod:
+			if (argc < 6)
+			{
+				Firmata.sendString(F("Not enough IL data parameters"));
+				SendNack(subCommand, ExecutionError::InvalidArguments);
+				return true;
+			}
 			LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 			SendAck(subCommand);
 			break;
 		case ExecutorCommand::SetMethodTokens:
+			if (argc < 6)
+			{
+				Firmata.sendString(F("Not enough IL data parameters"));
+				SendNack(subCommand, ExecutionError::InvalidArguments);
+				return true;
+			}
 			LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
 			SendAck(subCommand);
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
 			{
-				// KillCurrentTask();
+				KillCurrentTask();
 				reset();
-				// Better not confuse anybody by sending out-of-order acks
+				SendAck(subCommand);
+			}
+			else
+			{
+				SendNack(subCommand, ExecutionError::InvalidArguments);
 			}
 			break;
 		case ExecutorCommand::KillTask:
 		{
-			// KillCurrentTask();
+			KillCurrentTask();
 			SendAck(subCommand);
 			break;
 		}
@@ -127,6 +144,8 @@ void FirmataIlExecutor::KillCurrentTask()
 		return;
 	}
 
+	byte topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
+
 	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
 	ExecutionState* currentFrame = _methodCurrentlyExecuting;
 	while (currentFrame != nullptr)
@@ -144,6 +163,10 @@ void FirmataIlExecutor::KillCurrentTask()
 		currentFrame = _methodCurrentlyExecuting;
 		currentFrameVar = &_methodCurrentlyExecuting;
 	}
+
+	// Send a status report, to end any process waiting for this method to return.
+	SendExecutionResult(topLevelMethod, 0, MethodState::Killed);
+	Firmata.sendString(F("Code execution aborted"));
 }
 
 void FirmataIlExecutor::runStep()
@@ -1382,6 +1405,7 @@ void FirmataIlExecutor::reset()
 		delete method;
 	}
 
+	delete _firstMethod;
 	_firstMethod = nullptr;
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());

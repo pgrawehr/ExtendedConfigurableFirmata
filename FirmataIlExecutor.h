@@ -47,12 +47,14 @@ enum class MethodState
 	Stopped = 0,
 	Aborted = 1,
 	Running = 2,
+	Killed = 3,
 };
 
 enum class ExecutionError : byte
 {
 	None = 0,
 	EngineBusy = 1,
+	InvalidArguments,
 };
 
 class IlCode
