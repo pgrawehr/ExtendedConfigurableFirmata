@@ -54,7 +54,8 @@ enum class ExecutionError : byte
 {
 	None = 0,
 	EngineBusy = 1,
-	InvalidArguments,
+	InvalidArguments = 2,
+	OutOfMemory = 3,
 };
 
 class IlCode
@@ -101,9 +102,9 @@ public:
 		codeReference = -1;
 	}
 	
-	uint32_t methodToken; // Primary method token (a methodDef token)
+	u32 methodToken; // Primary method token (a methodDef token)
 	byte methodFlags;
-	byte methodLength;
+	u16 methodLength;
 	byte codeReference;
 	// the maximum of (number of local variables, execution stack size)
 	// For special methods (see methodFlags field), this contains the method number
@@ -190,14 +191,16 @@ class FirmataIlExecutor: public FirmataFeature
 	void runStep();
  
   private:
-    void LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv);
-	void LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
-	void LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv);
+    ExecutionError LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
+	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
+
+	static uint32_t ExecuteSpecialMethod(byte method, ObjectList* args);
+	
 	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
-	void SendAck(ExecutorCommand subCommand);
-	void SendNack(ExecutorCommand subCommand, ExecutionError errorCode);
+	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);

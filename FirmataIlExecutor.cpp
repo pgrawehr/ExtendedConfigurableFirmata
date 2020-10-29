@@ -19,10 +19,29 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
+#define TRACE(x) x;
+//#define TRACE(x)
+
+// TODO: Remove opcodes we'll never support (i.e MONO from definition list)
 const byte OpcodeInfo[] PROGMEM =
 {
-#define OPDEF(c,s,pop,push,type,args,l,s1,s2,ctrl) type,
-//OPDEF(CEE_NOP, "nop", Pop0, Push0, InlineNone, 0, 1, 0xFF, 0x00, NEXT)
+	#define OPDEF(c,s,pop,push,type,args,l,s1,s2,ctrl) type,
+	//OPDEF(CEE_NOP, "nop", Pop0, Push0, InlineNone, 0, 1, 0xFF, 0x00, NEXT)
+	#include "opcode.def.h"
+	#undef OPDEF
+};
+
+#define VarPop 0x7f
+#define Pop1 1
+#define Pop0 0
+#define PopRef 1
+#define PopI 1
+#define PopI8 2
+#define PopR4 1
+#define PopR8 2
+const byte OpcodePops[] PROGMEM =
+{
+#define OPDEF(c,s,pop,push,type,args,l,s1,s2,ctrl) pop,
 #include "opcode.def.h"
 #undef OPDEF
 };
@@ -64,63 +83,60 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
-			SendNack(subCommand, ExecutionError::EngineBusy);
+			SendAckOrNack(subCommand, ExecutionError::EngineBusy);
 			return true;
 		}
 
-		// Firmata.sendString(F("Executing Scheduler command 0x"), subCommand);
 		switch (subCommand)
 		{
 		case ExecutorCommand::LoadIl:
-			if (argc < 6)
+			if (argc < 8)
 			{
 				Firmata.sendString(F("Not enough IL data parameters"));
-				SendNack(subCommand, ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			LoadIlDataStream(argv[2], argv[3], argv[4], argc - 5, argv + 5);
-			SendAck(subCommand);
+			// 14-bit values transmitted for length and offset
+			SendAckOrNack(subCommand, LoadIlDataStream(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
 			break;
 		case ExecutorCommand::StartTask:
 			DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
-			SendAck(subCommand);
+			SendAckOrNack(subCommand, ExecutionError::None);
 			break;
 		case ExecutorCommand::DeclareMethod:
 			if (argc < 6)
 			{
 				Firmata.sendString(F("Not enough IL data parameters"));
-				SendNack(subCommand, ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5);
-			SendAck(subCommand);
+			SendAckOrNack(subCommand, LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5));
 			break;
 		case ExecutorCommand::SetMethodTokens:
 			if (argc < 6)
 			{
 				Firmata.sendString(F("Not enough IL data parameters"));
-				SendNack(subCommand, ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			LoadMetadataTokenMapping(argv[2], argc - 3, argv + 3);
-			SendAck(subCommand);
+			SendAckOrNack(subCommand, LoadMetadataTokenMapping(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
 			{
 				KillCurrentTask();
 				reset();
-				SendAck(subCommand);
+				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 			else
 			{
-				SendNack(subCommand, ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 			}
 			break;
 		case ExecutorCommand::KillTask:
 		{
 			KillCurrentTask();
-			SendAck(subCommand);
+			SendAckOrNack(subCommand, ExecutionError::None);
 			break;
 		}
 		break;
@@ -193,7 +209,7 @@ void FirmataIlExecutor::runStep()
 	_methodCurrentlyExecuting = nullptr;
 }
 
-void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
 {
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
@@ -213,49 +229,67 @@ void FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte ma
 	method->numArgs = argv[0];
 	uint32_t token = DecodeUint32(argv + 1);
 	method->methodToken = token;
+	
+	return ExecutionError::None;
 	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
 }
 
-void FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, u16 totalTokens, u16 offset, byte argc, byte* argv)
 {
+	Firmata.sendStringf(F("Loading %d tokens from offset %d."), 4, (int)totalTokens, (int)offset);
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
 		Firmata.sendString(F("LoadMetadataTokenMapping for unknown codeReference"));
-		return;
+		return ExecutionError::InvalidArguments;
+	}
+
+	u32* tokens = nullptr;
+	if (offset == 0)
+	{
+		if (method->tokenMap != nullptr)
+		{
+			free(method->tokenMap);
+		}
+
+		tokens = (u32*)malloc(totalTokens * 4);
+		
+		memset(tokens, 0, totalTokens * 4);
+		method->tokenMapEntries = totalTokens;
+		method->tokenMap = tokens;
+	}
+	else
+	{
+		if (method->tokenMap == nullptr || method->tokenMapEntries != totalTokens)
+		{
+			return ExecutionError::InvalidArguments;
+		}
+		
+		tokens = method->tokenMap;
 	}
 	
-	if (method->tokenMap != nullptr)
-	{
-		free(method->tokenMap);
-		method->tokenMap = nullptr;
-	}
-
 	// No need to care about signed/unsigned here, because the top bit of metadata tokens is never used
 	byte numTokens = argc / 16;
-	uint32_t* tokens = (uint32_t*)malloc(numTokens * 8);
 	for (int i = 0; i < numTokens * 2; i++)
 	{
-		tokens[i] = DecodeUint32(argv + (8 * i));
-		//Firmata.sendStringf(F("Metadata token loaded: 0x%lx (%x, %x, %x, %x, %x, %x, %x, %x)"), 20, token, 
-		//	(int)argv[(8 * i)], (int)argv[(8 * i) + 1], (int)argv[(8 * i) + 2], (int)argv[(8 * i) + 3], 
-		//	(int)argv[(8 * i) + 4], (int)argv[(8 * i) + 5], (int)argv[(8 * i) + 6], (int)argv[(8 * i) + 7]);
+		tokens[i + offset] = DecodeUint32(argv + (8 * i));
 	}
 
-	method->tokenMapEntries = numTokens;
-	method->tokenMap = tokens;
 	Firmata.sendStringf(F("%d metadata tokens loaded for method %d"), 4, (int)numTokens, (int)codeReference);
+	
+	return ExecutionError::None;
 }
 
-void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, byte offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
 {
+	TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
 		Firmata.sendString(F("LoadIlDataStream for unknown codeReference 0x"), codeReference);
-		return;
+		return ExecutionError::InvalidArguments;
 	}
 
 	if (offset == 0)
@@ -269,7 +303,7 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 		if (decodedIl == nullptr)
 		{
 			Firmata.sendString(F("Not enough memory. "), codeLength);
-			return;
+			return ExecutionError::OutOfMemory;
 		}
 		int j = 0;
 		for (byte i = 0; i < argc; i += 2) 
@@ -290,6 +324,7 @@ void FirmataIlExecutor::LoadIlDataStream(byte codeReference, byte codeLength, by
 	}
 
 	Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
+	return ExecutionError::None;
 }
 
 uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
@@ -368,8 +403,9 @@ void InvalidOpCode(int opCode)
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
-uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
+uint32_t FirmataIlExecutor::ExecuteSpecialMethod(byte method, ObjectList* args)
 {
+	u32 mil = 0;
 	switch(method)
 	{
 		case 0: // Sleep(int delay)
@@ -378,22 +414,37 @@ uint32_t ExecuteSpecialMethod(byte method, ObjectList* args)
 		case 1: // PinMode(int pin, PinMode mode)
 		{
 			int mode = INPUT;
-			if (args->Get(2) == 1)
+			if (args->Get(2) == 1) // Must match PullMode enum on C# side
 			{
 				mode = OUTPUT;
 			}
-			if (args->Get(2) == 2)
+			if (args->Get(2) == 3)
 			{
 				mode = INPUT_PULLUP;
 			}
 			pinMode(args->Get(1), mode);
+			Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
+
 			break;
 		}
 		case 2: // Write(int pin, int value)
+			Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
 			digitalWrite(args->Get(1), args->Get(2));
 			break;
-		case 5: // TickCount
-			return millis();
+		case 3:
+			return digitalRead(args->Get(1));
+		case 4: // TickCount
+			mil = millis();
+			Firmata.sendString(F("TickCount "), mil);
+			return mil;
+		case 5:
+			delayMicroseconds(args->Get(1));
+			return 0;
+		case 6:
+			return micros();
+		case 7:
+			Firmata.sendString(F("Debug "), args->Get(1));
+			return 0;
 		default:
 			Firmata.sendString(F("Unknown internal method: "), method);
 			break;
@@ -424,9 +475,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
 	IlCode* currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
-	int currentMethodReference = currentMethod->codeReference;
 
-	Firmata.sendStringf(F("Continuation at: 0x%x in Method %d"), 4, PC, currentMethodReference);
 	byte* pCode = currentMethod->methodIl;
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
@@ -438,13 +487,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
         DWORD   len;
         OPCODE  instr;
 		
-		Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethodReference);
-        
-		if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethod->codeReference));
+    	if (!stack->empty())
+    	{
+			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
+    	}
+    	
+    	if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
 		{
 			int specialMethod = currentMethod->maxLocals;
-			
-			Firmata.sendString(F("Executing special method "), specialMethod);
+
+			TRACE(Firmata.sendString(F("Executing special method "), specialMethod));
 			uint32_t retVal = ExecuteSpecialMethod(specialMethod, arguments);
 			
 			// We're called into a "special" (built-in) method. 
@@ -485,14 +538,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		uint32_t intermediate;
 		
 		byte opCodeType = pgm_read_byte(OpcodeInfo + instr);
-            
+
 		switch (opCodeType)
-        {
-            case InlineNone:
-            {
-                switch (instr)
-                {
-                    case CEE_RET:
+		{
+			case InlineNone:
+			{
+				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
+				u32 value1 = 0;
+				u32 value2 = 0;
+				if (numArgumensToPop == 1)
+				{
+					value1 = stack->pop();
+				}
+				if (numArgumensToPop == 2)
+				{
+					value2 = stack->pop();
+					value1 = stack->pop();
+				}
+				switch (instr)
+				{
+					case CEE_RET:
 					{
 						if (!stack->empty())
 						{
@@ -529,20 +594,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						pCode = currentMethod->methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
 						// stack of the calling method (methodIndex still points to the old frame)
-						if (!stack->empty())
-						{
-							Firmata.sendString(F("For debug apps, stack should be empty now"));
-						}
-						else
-						{
-							Firmata.sendString(F("Stack is empty - returning now."));
-						}
-                    		
 						if (!oldMethodIsVoid)
 						{
 							stack->push(*returnValue);
 
-							Firmata.sendString(F("Pushing return value: "), *returnValue);
+							TRACE(Firmata.sendString(F("Pushing return value: "), *returnValue));
 						}
 					}
 					break;
@@ -569,19 +625,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						stack->push(arguments->Get(3));
 						break;
 					case CEE_STLOC_0:
-						intermediate = stack->pop();
+						intermediate = value1;
 						locals->Set(0, intermediate);
 						break;
 					case CEE_STLOC_1:
-						intermediate = stack->pop();
+						intermediate = value1;
 						locals->Set(1, intermediate);
 						break;
 					case CEE_STLOC_2:
-						intermediate = stack->pop();
+						intermediate = value1;
 						locals->Set(2, intermediate);
 						break;
 					case CEE_STLOC_3:
-						intermediate = stack->pop();
+						intermediate = value1;
 						locals->Set(3, intermediate);
 						break;
 					case CEE_LDLOC_0:
@@ -597,86 +653,88 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						stack->push(locals->Get(3));
 						break;
 					case CEE_ADD:
-						intermediate = stack->pop() + stack->pop();
+						intermediate = value1 + value2;
 						stack->push(intermediate);
 						break;
 					case CEE_SUB:
-						intermediate = stack->pop() - stack->pop();
+						intermediate = value1 - value2;
 						stack->push(intermediate);
 						break;
 					case CEE_MUL:
-						intermediate = stack->pop() * stack->pop();
+						intermediate = value1 * value2;
 						stack->push(intermediate);
 						break;
 					case CEE_DIV:
 						// TODO: Proper typing required for this and the next
-						intermediate = stack->pop();
+						intermediate = value2;
 						if (intermediate == 0)
 						{
 							return MethodState::Aborted;
 						}
-						intermediate = stack->pop() / intermediate;
+						intermediate = value1 / intermediate;
 						stack->push(intermediate);
 						break;
 					case CEE_REM:
-						intermediate = stack->pop();
+						intermediate = value2;
 						if (intermediate == 0)
 						{
 							return MethodState::Aborted;
 						}
-						intermediate = stack->pop() % intermediate;
+						intermediate = value1 % intermediate;
 						stack->push(intermediate);
 						break;
 					case CEE_DIV_UN:
-						intermediate = stack->pop();
+						intermediate = value2;
 						if (intermediate == 0)
 						{
 							return MethodState::Aborted;
 						}
-						intermediate = stack->pop() / intermediate;
+						intermediate = value1 / intermediate;
 						stack->push(intermediate);
 						break;
 					case CEE_REM_UN:
-						intermediate = stack->pop();
+						intermediate = value2;
 						if (intermediate == 0)
 						{
 							return MethodState::Aborted;
 						}
-						intermediate = stack->pop() % intermediate;
+						intermediate = value1 % intermediate;
 						stack->push(intermediate);
 						break;
 					case CEE_CEQ:
-						stack->push(stack->pop() == stack->pop());
+						stack->push(value1 == value2);
 						break;
 					case CEE_CGT:
-						stack->push(stack->pop() > stack->pop());
+					{
+						stack->push(value1 > value2);
 						break;
+					}
 					case CEE_NOT:
-						stack->push(~stack->pop());
+						stack->push(~value1);
 						break;
 					case CEE_NEG:
-						stack->push(-stack->pop());
+						stack->push(-value2);
 						break;
 					case CEE_AND:
-						stack->push(stack->pop() & stack->pop());
+						stack->push(value1 & value2);
 						break;
 					case CEE_OR:
-						stack->push(stack->pop() | stack->pop());
+						stack->push(value1 | value2);
 						break;
 					case CEE_XOR:
-						stack->push(stack->pop() ^ stack->pop());
+						stack->push(value1 ^ value2);
 						break;
 					case CEE_CLT:
-						stack->push(stack->pop() < stack->pop());
+						stack->push(value1 < value2);
 						break;
 					case CEE_SHL:
-						stack->push(stack->pop() << stack->pop());
+						stack->push(value1 << value2);
 						break;
 					case CEE_SHR:
-						stack->push((int)stack->pop() >> stack->pop());
+						stack->push((int)value1 >> value2);
 						break;
 					case CEE_SHR_UN:
-						stack->push((uint32_t)stack->pop() >> stack->pop());
+						stack->push((uint32_t)value1 >> value2);
 						break;
 					case CEE_LDC_I4_0:
 						stack->push(0);
@@ -709,52 +767,47 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						stack->push(-1);
 						break;
 					case CEE_DUP:
-						intermediate = stack->peek();
+						intermediate = value1;
+						stack->push(intermediate);
 						stack->push(intermediate);
 						break;
 					case CEE_POP:
-						stack->pop();
+						// Nothing to do, already popped
 						break;
 					case CEE_LDIND_I1:
 						// TODO: Fix type of stack (must support dynamic typing)
-						intermediate = stack->pop();
                     {
-							int8_t b = *((int8_t*)intermediate);
+							int8_t b = *((int8_t*)value1);
 							stack->push(b);
                     }
 					break;
 					case CEE_LDIND_I2:
-						intermediate = stack->pop();
 						{
-							int16_t s = *((int16_t*)intermediate);
+							int16_t s = *((int16_t*)value1);
 							stack->push(s);
 						}
 						break;
 					case CEE_LDIND_I4:
-						intermediate = stack->pop();
 						{
-							int32_t i = *((int32_t*)intermediate);
+							int32_t i = *((int32_t*)value1);
 							stack->push(i);
 						}
 						break;
 					case CEE_LDIND_U1:
-						intermediate = stack->pop();
 						{
-							byte b = *((byte*)intermediate);
+							byte b = *((byte*)value1);
 							stack->push(b);
 						}
 						break;
 					case CEE_LDIND_U2:
-						intermediate = stack->pop();
 						{
-							uint16_t s = *((uint16_t*)intermediate);
+							uint16_t s = *((uint16_t*)value1);
 							stack->push(s);
 						}
 						break;
 					case CEE_LDIND_U4:
-						intermediate = stack->pop();
 						{
-							uint32_t i = *((uint32_t*)intermediate);
+							uint32_t i = *((uint32_t*)value1);
 							stack->push(i);
 						}
 						break;
@@ -767,7 +820,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 			case ShortInlineI:
 			case ShortInlineVar:
 	            {
-					char data = (char)pCode[PC];
+					byte data = (byte)pCode[PC];
 
 					PC++;
 		            switch(instr)
@@ -777,6 +830,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						continue;
 					case CEE_LDC_I4_S:
 						stack->push(data);
+						Firmata.sendString(F("Loaded constant"), data);
 						break;
 					case CEE_LDLOC_S:
 						stack->push(locals->Get(data));
@@ -917,23 +971,25 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
                 }
                 PC += 2;
                 break;
-            }
+            } */
 
             case InlineI:
-            case InlineRVA:
             {
-                DWORD v = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ", pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                    Len += 9;
-                    PadTheString;
-                }
-                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s 0x%x", pszInstrName, v);
+                u32 v = pCode[PC] + ((u32)pCode[PC+1] << 8) + ((u32)pCode[PC+2] << 16) + ((u32)pCode[PC+3] << 24);
                 PC += 4;
-                break;
+				if (instr == CEE_LDC_I4)
+				{
+					stack->push(v);
+				}
+				else
+				{
+					InvalidOpCode(instr);
+					return MethodState::Aborted;
+				}
+				break;
             }
-
+			
+			/*
             case InlineI8:
             {
                 __int64 v = (__int64) pCode[PC] +
@@ -1075,7 +1131,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						doBranch = stack->pop() == 0;
 						break;
 					case CEE_BRTRUE_S:
-						doBranch = stack->pop() == 0;
+						doBranch = stack->pop() != 0;
 						break;
 					default:
 						InvalidOpCode(instr);
@@ -1365,7 +1421,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 					arguments->Set(argumentCount, oldStack->pop());
 				}
             		
-				Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference);
+				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
 				break;
             }
 			default:
@@ -1373,13 +1429,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				return MethodState::Aborted;
         }
     	
-    	// TODO: This is unneccessary
-		currentFrame->UpdatePc(PC);
 	}
 	
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	currentFrame->UpdatePc(PC);
-	Firmata.sendString(F("Interrupting method at 0x"), PC);
+	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
 	return MethodState::Running;
 }
 
@@ -1396,8 +1450,8 @@ IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 		while (mapEntry < method->tokenMapEntries * 2)
 		{
 			uint32_t memberRef = entries[mapEntry + 1];
-			Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]);
-			Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]);
+			TRACE(Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]));
+			TRACE(Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]));
 			if (memberRef == token)
 			{
 				token = entries[mapEntry];
@@ -1410,21 +1464,11 @@ IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 	return GetMethodByToken(token);
 }
 
-void FirmataIlExecutor::SendAck(ExecutorCommand subCommand)
+void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode)
 {
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
-	Firmata.write((byte)ExecutorCommand::Ack);
-	Firmata.write((byte)subCommand);
-	Firmata.write(0); // Error code, just for completeness
-	Firmata.endSysex();
-}
-
-void FirmataIlExecutor::SendNack(ExecutorCommand subCommand, ExecutionError errorCode)
-{
-	Firmata.startSysex();
-	Firmata.write(SCHEDULER_DATA);
-	Firmata.write((byte)ExecutorCommand::Nack);
+	Firmata.write((byte)(errorCode == ExecutionError::None ? ExecutorCommand::Ack : ExecutorCommand::Nack));
 	Firmata.write((byte)subCommand);
 	Firmata.write((byte)errorCode);
 	Firmata.endSysex();
