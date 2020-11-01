@@ -122,7 +122,7 @@ public:
 class ExecutionState
 {
 	private:
-	short _pc;
+	u16 _pc;
 	ObjectStack _executionStack;
 	ObjectList _locals;
 	ObjectList _arguments;
@@ -131,13 +131,16 @@ class ExecutionState
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
+	IlCode* _executingMethod;
 
-	uint32_t _memoryGuard;
-	ExecutionState(int codeReference, int maxLocals, int argCount) : _pc(0), _executionStack(maxLocals),
+	u32 _memoryGuard;
+	ExecutionState(int codeReference, int maxLocals, int argCount, IlCode* executingMethod) :
+	_pc(0), _executionStack(maxLocals),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
 		_next = nullptr;
+		_executingMethod = executingMethod;
 		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
@@ -146,7 +149,7 @@ class ExecutionState
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
-	void ActivateState(short* pc, ObjectStack** stack, ObjectList** locals, ObjectList** arguments)
+	void ActivateState(u16* pc, ObjectStack** stack, ObjectList** locals, ObjectList** arguments)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
@@ -163,7 +166,7 @@ class ExecutionState
 		_arguments.Set(argNo, value);
 	}
 	
-	void UpdatePc(short pc)
+	void UpdatePc(u16 pc)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
@@ -201,6 +204,7 @@ class FirmataIlExecutor: public FirmataFeature
 	bool IsExecutingCode();
 	void KillCurrentTask();
 	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
+	void InvalidOpCode(u16 pc, u16 opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
 	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);

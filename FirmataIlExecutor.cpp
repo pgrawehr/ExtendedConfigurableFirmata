@@ -19,8 +19,8 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
-#define TRACE(x) x;
-//#define TRACE(x)
+// #define TRACE(x) x;
+#define TRACE(x)
 
 // TODO: Remove opcodes we'll never support (i.e MONO from definition list)
 const byte OpcodeInfo[] PROGMEM =
@@ -375,7 +375,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 	uint32_t result = 0;
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
-	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs);
+	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
 	{
@@ -397,9 +397,9 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 	SendExecutionResult(codeReference, result, execResult);
 }
 
-void InvalidOpCode(int opCode)
+void FirmataIlExecutor::InvalidOpCode(u16 pc, u16 opCode)
 {
-	Firmata.sendString(F("Invalid/Unsupported opcode "), opCode);
+	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
@@ -428,14 +428,14 @@ uint32_t FirmataIlExecutor::ExecuteSpecialMethod(byte method, ObjectList* args)
 			break;
 		}
 		case 2: // Write(int pin, int value)
-			Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
-			digitalWrite(args->Get(1), args->Get(2));
+			TRACE(Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2)));
+			digitalWrite(args->Get(1), args->Get(2) != 0);
 			break;
 		case 3:
 			return digitalRead(args->Get(1));
 		case 4: // TickCount
 			mil = millis();
-			Firmata.sendString(F("TickCount "), mil);
+			TRACE(Firmata.sendString(F("TickCount "), mil));
 			return mil;
 		case 5:
 			delayMicroseconds(args->Get(1));
@@ -458,7 +458,7 @@ uint32_t FirmataIlExecutor::ExecuteSpecialMethod(byte method, ObjectList* args)
 // - It was validated that the method has exactly argc arguments
 MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
 {
-	const int NUM_INSTRUCTIONS_AT_ONCE = 5;
+	const int NUM_INSTRUCTIONS_AT_ONCE = 5000;
 	
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
@@ -467,16 +467,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	}
 
 	int instructionsExecuted = 0;
-	short PC = 0;
+	u16 PC = 0;
+	u32* hlpCodePtr;
 	ObjectStack* stack;
 	ObjectList* locals;
 	ObjectList* arguments;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
-	IlCode* currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+	IlCode* currentMethod = currentFrame->_executingMethod;
 
 	byte* pCode = currentMethod->methodIl;
+	u32 startTime = micros();
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
@@ -488,10 +490,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
         OPCODE  instr;
 		
 		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethod->codeReference));
-    	if (!stack->empty())
+    	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
-    	}
+    	}*/
     	
     	if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
 		{
@@ -520,7 +522,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				stack->push(retVal);
 			}
 
-			currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+			currentMethod = currentFrame->_executingMethod;
 
 			pCode = currentMethod->methodIl;
 			continue;
@@ -529,7 +531,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		instr = DecodeOpcode(&pCode[PC], &len);
         if (instr == CEE_COUNT)
         {
-			InvalidOpCode(instr);
+			InvalidOpCode(PC, instr);
             return MethodState::Aborted;
         }
 		
@@ -589,7 +591,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						currentFrame = frame;
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
-						currentMethod = GetMethodByCodeReference(currentFrame->MethodIndex());
+						currentMethod = currentFrame->_executingMethod;
                     	
 						pCode = currentMethod->methodIl;
 						// If the method we just terminated is not of type void, we push the result to the 
@@ -603,13 +605,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 					}
 					break;
                     case CEE_THROW:
-						InvalidOpCode(instr);
+						InvalidOpCode(PC, instr);
                         return MethodState::Aborted;
 					case CEE_NOP:
 						break;
 					case CEE_BREAK:
 						// This should not normally occur in code
-						InvalidOpCode(instr);
+						InvalidOpCode(PC, instr);
 						return MethodState::Aborted;
 						break;
 					case CEE_LDARG_0:
@@ -709,6 +711,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						stack->push(value1 > value2);
 						break;
 					}
+					case CEE_CGT_UN:
+						stack->push((u32)value1 > (u32)value2);
+						break;
 					case CEE_NOT:
 						stack->push(~value1);
 						break;
@@ -812,7 +817,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						}
 						break;
                     default:
-						InvalidOpCode(instr);
+						InvalidOpCode(PC, instr);
                         return MethodState::Aborted;
                 }
 				break;
@@ -827,10 +832,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		            {
 					case CEE_UNALIGNED_: /*Ignore prefix, we don't need alignment. Just execute the actual instruction*/
 						PC--;
-						continue;
+						break;
 					case CEE_LDC_I4_S:
 						stack->push(data);
-						Firmata.sendString(F("Loaded constant"), data);
 						break;
 					case CEE_LDLOC_S:
 						stack->push(locals->Get(data));
@@ -854,136 +858,24 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						arguments->Set(data, stack->pop());
 						break;
 					default:
-						InvalidOpCode(instr);
+						InvalidOpCode(PC, instr);
 						break;
 		            }
 	            }
                 break;
-			/*
-            case ShortInlineI:
-            case ShortInlineVar:
-            {
-                unsigned char  ch= pCode[PC];
-                short sh = OpcodeInfo[instr].Type==ShortInlineVar ? ch : (ch > 127 ? -(256-ch) : ch);
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X ", ch);
-                    Len += 3;
-                    PadTheString;
-                }
-                switch(instr)
-                {
-                    case CEE_LDARG_S:
-                    case CEE_LDARGA_S:
-                    case CEE_STARG_S:
-                        if(g_fThisIsInstanceMethod &&(ch==0))
-                        { // instance methods have arg0="this", do not label it!
-                            szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %d", pszInstrName, ch);
-                        }
-                        else
-                        {
-                            if(pszArgname)
-                            {
-                                unsigned char ch1 = g_fThisIsInstanceMethod ? ch-1 : ch;
-                                if(ch1 < ulArgs)
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),"%-10s %s",pszInstrName,
-                                                    ProperLocalName(pszArgname[ch1].name));
-                                else
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),ERRORMSG(RstrUTF(IDS_E_ARGINDEX)),pszInstrName, ch,ulArgs);
-                            }
-                            else szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s A_%d",pszInstrName, ch);
-                        }
-                        break;
-
-                    case CEE_LDLOC_S:
-                    case CEE_LDLOCA_S:
-                    case CEE_STLOC_S:
-                        if(pszLVname)
-                        {
-                            if(ch < ulVars) szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %s", pszInstrName,
-                                ProperLocalName(pszLVname[ch].name));
-                            else
-                                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),ERRORMSG(RstrUTF(IDS_E_LVINDEX)),pszInstrName, ch, ulVars);
-                        }
-                        else szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s V_%d",pszInstrName, ch);
-                        break;
-
-                    default:
-                        szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %d", pszInstrName,sh);
-                }
-
-                PC++;
-                break;
-            }
-
-            case InlineVar:
-            {
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X ", pCode[PC], pCode[PC+1]);
-                    Len += 5;
-                    PadTheString;
-                }
-
-                USHORT v = pCode[PC] + (pCode[PC+1] << 8);
-                long l = OpcodeInfo[instr].Type==InlineVar ? v : (v > 0x7FFF ? -(0x10000 - v) : v);
-
-                switch(instr)
-                {
-                    case CEE_LDARGA:
-                    case CEE_LDARG:
-                    case CEE_STARG:
-                        if(g_fThisIsInstanceMethod &&(v==0))
-                        { // instance methods have arg0="this", do not label it!
-                            szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %d", pszInstrName, v);
-                        }
-                        else
-                        {
-                            if(pszArgname)
-                            {
-                                USHORT v1 = g_fThisIsInstanceMethod ? v-1 : v;
-                                if(v1 < ulArgs)
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),"%-10s %s",pszInstrName,
-                                                    ProperLocalName(pszArgname[v1].name));
-                                else
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),ERRORMSG(RstrUTF(IDS_E_ARGINDEX)),pszInstrName, v,ulArgs);
-                            }
-                            else szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s A_%d",pszInstrName, v);
-                        }
-                        break;
-
-                    case CEE_LDLOCA:
-                    case CEE_LDLOC:
-                    case CEE_STLOC:
-                        if(pszLVname)
-                        {
-                            if(v < ulVars)  szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %s", pszInstrName,
-                                ProperLocalName(pszLVname[v].name));
-                            else
-                                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),ERRORMSG(RstrUTF(IDS_E_LVINDEX)),pszInstrName, v,ulVars);
-                        }
-                        else szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s V_%d",pszInstrName, v);
-                        break;
-
-                    default:
-                        szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %d", pszInstrName, l);
-                        break;
-                }
-                PC += 2;
-                break;
-            } */
-
             case InlineI:
             {
-                u32 v = pCode[PC] + ((u32)pCode[PC+1] << 8) + ((u32)pCode[PC+2] << 16) + ((u32)pCode[PC+3] << 24);
+				hlpCodePtr = (u32*)(pCode + PC);
+				u32 v = *hlpCodePtr;
                 PC += 4;
 				if (instr == CEE_LDC_I4)
 				{
+					TRACE(Firmata.sendString(F("LDC_I4"), v));
 					stack->push(v);
 				}
 				else
 				{
-					InvalidOpCode(instr);
+					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
 				}
 				break;
@@ -1090,67 +982,108 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
             } */
 
             case ShortInlineBrTarget:
+			case InlineBrTarget:
             {
+				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
+				u32 value1 = 0;
+				u32 value2 = 0;
+				if (numArgumensToPop == 1)
+				{
+					value1 = stack->pop();
+				}
+				if (numArgumensToPop == 2)
+				{
+					value2 = stack->pop();
+					value1 = stack->pop();
+				}
+            		
 				bool doBranch = false;
 				switch (instr)
 				{
+					case CEE_BR:
 					case CEE_BR_S:
 						doBranch = true;
 						break;
+					case CEE_BEQ:
 					case CEE_BEQ_S:
-						doBranch = stack->pop() == stack->pop();
+						doBranch = value1 == value2;
 						break;
+					case CEE_BGE:
 					case CEE_BGE_S:
-						doBranch = stack->pop() >= stack->pop();
+						doBranch = value1 >= value2;
 						break;
+					case CEE_BLE:
 					case CEE_BLE_S:
-						doBranch = stack->pop() <= stack->pop();
+						doBranch = value1 <= value2;
 						break;
+					case CEE_BGT:
 					case CEE_BGT_S:
-						doBranch = stack->pop() > stack->pop();
+						doBranch = value1 > value2;
 						break;
+					case CEE_BLT:
 					case CEE_BLT_S:
-						doBranch = stack->pop() < stack->pop();
+						doBranch = value1 < value2;
 						break;
+					case CEE_BGE_UN:
 					case CEE_BGE_UN_S:
-						doBranch = (uint32_t)stack->pop() >= (uint32_t)stack->pop();
+					// Type cast looks redundant here, but it won't be later, when the type is correct
+						doBranch = (u32)value1 >= (u32)value2;
 						break;
+					case CEE_BGT_UN:
 					case CEE_BGT_UN_S:
-						doBranch = (uint32_t)stack->pop() > (uint32_t)stack->pop();
+						doBranch = (u32)value1 > (u32)value2;
 						break;
+					case CEE_BLE_UN:
 					case CEE_BLE_UN_S:
-						doBranch = (uint32_t)stack->pop() <= (uint32_t)stack->pop();
+						doBranch = (u32)value1 <= (u32)value2;
 						break;
+					case CEE_BLT_UN:
 					case CEE_BLT_UN_S:
-						doBranch = (uint32_t)stack->pop() < (uint32_t)stack->pop();
+						doBranch = (u32)value1 < (u32)value2;
 						break;
+					case CEE_BNE_UN:
 					case CEE_BNE_UN_S:
-						doBranch = (uint32_t)stack->pop() != (uint32_t)stack->pop();
+						doBranch = (u32)value1 != (u32)value2;
 						break;
+					case CEE_BRFALSE:
 					case CEE_BRFALSE_S:
-						doBranch = stack->pop() == 0;
+						doBranch = value1 == 0;
 						break;
+					case CEE_BRTRUE:
 					case CEE_BRTRUE_S:
-						doBranch = stack->pop() != 0;
+						doBranch = value1 != 0;
 						break;
 					default:
-						InvalidOpCode(instr);
+						InvalidOpCode(PC, instr);
 						return MethodState::Aborted;
 				}
-				
-				if (doBranch)
+
+				if (opCodeType == ShortInlineBrTarget)
 				{
-					char offset = (char) pCode[PC];
-					long dest = (PC + 1) + (long) offset;
-                
-					PC = dest;
+					if (doBranch)
+					{
+						char offset = (char)pCode[PC];
+						long dest = (PC + 1) + (long)offset;
+
+						PC = dest;
+					}
+					else
+					{
+						PC++; // Skip offset byte
+					}
 				}
-				else 
+				else if (doBranch)
 				{
-					PC++; // Skip offset byte
+					int32_t offset = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					long dest = (PC + 4) + offset;
+					PC = (short)dest;
 				}
-				
-                break;
+				else
+				{
+					PC += 4;
+				}
+				TRACE(Firmata.sendString(F("Branch instr. Next is "), PC));
+				break;
             }
 /*
             case InlineBrTarget:
@@ -1377,19 +1310,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
             {
 				if (instr != CEE_CALLVIRT && instr != CEE_CALL) 
 				{
-					InvalidOpCode(PC - 1);
+					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
 				}
-				
-				uint32_t tk = ((uint32_t)pCode[PC]) | ((uint32_t)pCode[PC+1] << 8) | ((uint32_t)pCode[PC+2] << 16) | ((uint32_t)pCode[PC+3] << 24);
+
+				hlpCodePtr = (u32*)(pCode + PC);
+				u32 tk = *hlpCodePtr;
                 PC += 4;
 
                 IlCode* newMethod = ResolveToken(currentMethod->codeReference, tk);
-				
-				if (newMethod == nullptr)
+            	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
 					return MethodState::Aborted;
+				}
+
+            	// I hope we know what we do here...
+				if (*hlpCodePtr != (u32)newMethod)
+				{
+					// Patch the code to use the method pointer, that's faster for next time we see this piece of code
+					*hlpCodePtr = (u32)newMethod;
 				}
 
             	// Save return PC
@@ -1402,7 +1342,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				}
 				
 				int argumentCount = newMethod->numArgs;
-				ExecutionState* newState = new ExecutionState(newMethod->codeReference, stackSize, argumentCount);
+				ExecutionState* newState = new ExecutionState(newMethod->codeReference, stackSize, argumentCount, newMethod);
 				currentFrame->_next = newState;
 				
 				ObjectStack* oldStack = stack;
@@ -1425,21 +1365,27 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				break;
             }
 			default:
-				InvalidOpCode(instr);
+				InvalidOpCode(PC, instr);
 				return MethodState::Aborted;
         }
-    	
 	}
-	
+
+	startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE;
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	currentFrame->UpdatePc(PC);
 	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
+	Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), 4, startTime);
 	return MethodState::Running;
 }
 
 IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 {
 	IlCode* method;
+	if ((token >> 24) == 0x0)
+	{
+		// We've previously patched the code directly with the method pointer
+		return (IlCode*)token;
+	}
 	if ((token >> 24) == 0x0A)
 	{
 		// Use the token map first
