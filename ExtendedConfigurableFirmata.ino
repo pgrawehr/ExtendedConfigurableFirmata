@@ -205,7 +205,7 @@ void systemResetCallback()
 {
   for (byte i = 0; i < TOTAL_PINS; i++) {
     if (IS_PIN_ANALOG(i)) {
-      Firmata.setPinMode(i, ANALOG);
+      Firmata.setPinMode(i, PIN_MODE_ANALOG);
     } else if (IS_PIN_DIGITAL(i)) {
       Firmata.setPinMode(i, OUTPUT);
     }
