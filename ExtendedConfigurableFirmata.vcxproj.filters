@@ -15,13 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ConfigurableFirmataSimple.ino" />
+    <None Include="ExtendedConfigurableFirmata.ino" />
     <None Include="opcode.def.h">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="__vm\.ConfigurableFirmataSimple.vsarduino.h">
+    <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="FirmataIlExecutor.h">
