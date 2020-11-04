@@ -15,8 +15,8 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
-#include <ObjectStack.h>
-#include <ObjectList.h>
+#include "ObjectStack.h"
+#include "ObjectList.h"
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
 
