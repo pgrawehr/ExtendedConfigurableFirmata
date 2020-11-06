@@ -77,9 +77,11 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		if (argv[0] != 0xFF)
 		{
 			// Scheduler message type must be 0xFF, specific meaning follows
+			Firmata.sendString(F("Error in Scheduler command: Unknown command syntax"));
 			return false;
 		}
 		subCommand = (ExecutorCommand)argv[1];
+
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
@@ -155,11 +157,13 @@ bool FirmataIlExecutor::IsExecutingCode()
 
 void FirmataIlExecutor::KillCurrentTask()
 {
+	Firmata.sendString(F("Kill0"));
 	if (_methodCurrentlyExecuting == nullptr)
 	{
 		return;
 	}
 
+	Firmata.sendString(F("Kill1"));
 	byte topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
 
 	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
@@ -211,13 +215,16 @@ void FirmataIlExecutor::runStep()
 
 ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
 {
+	Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags);
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
 	{
+		Firmata.sendString(F("Method is replaced"));
 		method->Clear();
 	}
 	else
 	{
+		Firmata.sendString(F("Method is new"));
 		method = new IlCode();
 		method->codeReference = codeReference;
 		// And immediately attach to the list
@@ -229,9 +236,9 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 	method->numArgs = argv[0];
 	uint32_t token = DecodeUint32(argv + 1);
 	method->methodToken = token;
-	
+
+	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
 	return ExecutionError::None;
-	// Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
 }
 
 ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, u16 totalTokens, u16 offset, byte argc, byte* argv)
@@ -374,7 +381,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 {
 	uint32_t result = 0;
 	IlCode* method = GetMethodByCodeReference(codeReference);
-	// Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, _methods[codeReference].maxLocals);
+	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
@@ -485,8 +492,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
     while (instructionsExecuted < NUM_INSTRUCTIONS_AT_ONCE)
     {
 		instructionsExecuted++;
-    	
-        DWORD   len;
+		
+		DWORD   len;
         OPCODE  instr;
 		
 		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethod->codeReference));
@@ -526,6 +533,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 
 			pCode = currentMethod->methodIl;
 			continue;
+		}
+		
+		if (PC >= currentMethod->methodLength)
+		{
+			// Except for a hacking attempt, this may happen if a branch instruction missbehaves
+			Firmata.sendString(F("Security violation: Attempted to execute code past end of method"));
+			return MethodState::Aborted;
 		}
 
 		instr = DecodeOpcode(&pCode[PC], &len);
@@ -1062,10 +1076,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				{
 					if (doBranch)
 					{
-						char offset = (char)pCode[PC];
-						long dest = (PC + 1) + (long)offset;
-
-						PC = dest;
+						int32_t offset = pCode[PC];
+						// Manually ensure correct sign extension
+						if (offset & 0x80)
+						{
+							offset |= 0xFFFFFF00;
+						}
+						int32_t dest = (PC + 1) + offset;
+						
+						// This certainly is > 0 again, now. 
+						PC = (short)dest;
 					}
 					else
 					{
@@ -1075,7 +1095,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				else if (doBranch)
 				{
 					int32_t offset = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-					long dest = (PC + 4) + offset;
+					int32_t dest = (PC + 4) + offset;
 					PC = (short)dest;
 				}
 				else
@@ -1325,12 +1345,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 					return MethodState::Aborted;
 				}
 
-            	// I hope we know what we do here...
-				if (*hlpCodePtr != (u32)newMethod)
-				{
-					// Patch the code to use the method pointer, that's faster for next time we see this piece of code
-					*hlpCodePtr = (u32)newMethod;
-				}
+    ////        	if (*hlpCodePtr != (u32)newMethod)
+				////{
+				////	// Patch the code to use the method pointer, that's faster for next time we see this piece of code.
+    ////        		// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
+				////	u32 method = (u32)newMethod;
+				////	method &= ~0xFF000000;
+				////	*hlpCodePtr = method;
+				////}
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
@@ -1383,7 +1405,9 @@ IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 	IlCode* method;
 	if ((token >> 24) == 0x0)
 	{
-		// We've previously patched the code directly with the method pointer
+		// We've previously patched the code directly with the lower 3 bytes of the method pointer
+		// Now we extend that again with the RAM base address (0x20000000 on a Due, 0x0 on an Uno)
+		token = token | ((u32)_firstMethod & 0xFF000000);
 		return (IlCode*)token;
 	}
 	if ((token >> 24) == 0x0A)
