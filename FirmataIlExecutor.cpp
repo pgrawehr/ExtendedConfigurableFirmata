@@ -1532,11 +1532,11 @@ void FirmataIlExecutor::reset()
 
 	while (method != nullptr)
 	{
+		auto current = method;
 		method = method->next;
-		delete method;
+		delete current;
 	}
 
-	delete _firstMethod;
 	_firstMethod = nullptr;
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());

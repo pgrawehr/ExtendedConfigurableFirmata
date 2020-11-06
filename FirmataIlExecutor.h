@@ -73,13 +73,11 @@ public:
 		numArgs = 0;
 		next = nullptr;
 		codeReference = -1;
-		guard = 0xBCDEBCDE;
 	}
 
 	~IlCode()
 	{
 		Clear();
-		guard = 0x01010101;
 	}
 
 	/// <summary>
@@ -87,11 +85,6 @@ public:
 	/// </summary>
 	void Clear()
 	{
-		if (guard != 0xBCDEBCDE)
-		{
-			Firmata.sendString(F("FATAL: MEMORY CORRUPTION"));
-		}
-		
 		methodToken = 0;
 		if (tokenMap != nullptr)
 		{
@@ -109,7 +102,6 @@ public:
 		codeReference = -1;
 	}
 
-	u32 guard;
 	u32 methodToken; // Primary method token (a methodDef token)
 	byte methodFlags;
 	u16 methodLength;
