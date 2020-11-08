@@ -16,6 +16,7 @@
 //#define ENABLE_SERIAL
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
+#include <avr_stl.h>
 #define ENABLE_DHT
 #define ENABLE_I2C
 #define ENABLE_IL_EXECUTOR

@@ -15,7 +15,7 @@
 #include "FreeMemory.h"
 #include "FirmataIlExecutor.h"
 #include "openum.h"
-#include "ObjectStack.h"
+#include <vector>
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
@@ -157,13 +157,11 @@ bool FirmataIlExecutor::IsExecutingCode()
 
 void FirmataIlExecutor::KillCurrentTask()
 {
-	Firmata.sendString(F("Kill0"));
 	if (_methodCurrentlyExecuting == nullptr)
 	{
 		return;
 	}
 
-	Firmata.sendString(F("Kill1"));
 	byte topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
 
 	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
@@ -185,7 +183,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	}
 
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult(topLevelMethod, 0, MethodState::Killed);
+	SendExecutionResult(topLevelMethod, Variable(false, VariableKind::Void), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 }
 
@@ -197,7 +195,7 @@ void FirmataIlExecutor::runStep()
 		return;
 	}
 
-	uint32_t retVal = 0;
+	Variable retVal;
 	MethodState execResult = ExecuteIlCode(_methodCurrentlyExecuting, &retVal);
 
 	if (execResult == MethodState::Running)
@@ -219,12 +217,10 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
 	{
-		Firmata.sendString(F("Method is replaced"));
 		method->Clear();
 	}
 	else
 	{
-		Firmata.sendString(F("Method is new"));
 		method = new IlCode();
 		method->codeReference = codeReference;
 		// And immediately attach to the list
@@ -238,6 +234,26 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 	method->methodToken = token;
 
 	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
+	return ExecutionError::None;
+}
+
+ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv)
+{
+	Firmata.sendStringf(F("Loading Declaration."), 0);
+	IlCode* method = GetMethodByCodeReference(codeReference);
+	if (method == nullptr)
+	{
+		// This operation is illegal if the method is unknown
+		Firmata.sendString(F("LoadMethodSignature for unknown codeReference"));
+		return ExecutionError::InvalidArguments;
+	}
+
+	if (signatureType == 0)
+	{
+		// Arguments types. Argument 0 is the return type.
+		
+	}
+	
 	return ExecutionError::None;
 }
 
@@ -348,13 +364,16 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
-void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult)
 {
 	byte replyData[4];
 	// Reply format:
 	// byte 0: 1 on success, 0 on (technical) failure, such as unsupported opcode
 	// byte 1: Number of integer values returned
 	// bytes 2+: Integer return values
+
+	// Todo: Fix
+	u32 result = returnValue.Uint32;
 	
 	replyData[0] = result & 0xFF;
 	replyData[1] = (result >> 8) & 0xFF;
@@ -379,14 +398,16 @@ void FirmataIlExecutor::SendExecutionResult(byte codeReference, uint32_t result,
 
 void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
 {
-	uint32_t result = 0;
+	Variable result;
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
 	{
-		rootState->UpdateArg(i, DecodeUint32(argv + (8 * i)));
+		// TODO: Use correct type
+		Variable v(DecodeUint32(argv + (8 * i)), VariableKind::Uint32);
+		rootState->UpdateArg(i, v);
 	}
 	
 	MethodState execResult = ExecuteIlCode(rootState, &result);
@@ -410,62 +431,349 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, u16 opCode)
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
-uint32_t FirmataIlExecutor::ExecuteSpecialMethod(byte method, ObjectList* args)
+Variable FirmataIlExecutor::ExecuteSpecialMethod(byte method, const vector<Variable>& args)
 {
 	u32 mil = 0;
 	switch(method)
 	{
 		case 0: // Sleep(int delay)
-			delay(args->Get(1));
+			delay(args[1].Int32);
 			break;
 		case 1: // PinMode(int pin, PinMode mode)
 		{
 			int mode = INPUT;
-			if (args->Get(2) == 1) // Must match PullMode enum on C# side
+			if (args[2].Int32 == 1) // Must match PullMode enum on C# side
 			{
 				mode = OUTPUT;
 			}
-			if (args->Get(2) == 3)
+			if (args[2].Int32 == 3)
 			{
 				mode = INPUT_PULLUP;
 			}
-			pinMode(args->Get(1), mode);
-			Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
+			pinMode(args[1].Int32, mode);
+			// Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
 
 			break;
 		}
 		case 2: // Write(int pin, int value)
-			TRACE(Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2)));
-			digitalWrite(args->Get(1), args->Get(2) != 0);
+			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
+			digitalWrite(args[1].Int32, args[2].Int32 != 0);
 			break;
 		case 3:
-			return digitalRead(args->Get(1));
+			return { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
 		case 4: // TickCount
 			mil = millis();
-			TRACE(Firmata.sendString(F("TickCount "), mil));
-			return mil;
+			// Firmata.sendString(F("TickCount "), mil);
+			return { (int32_t)mil, VariableKind::Int32 };
 		case 5:
-			delayMicroseconds(args->Get(1));
-			return 0;
+			delayMicroseconds(args[1].Int32);
+			return {false, VariableKind::Void};
 		case 6:
-			return micros();
+			return { (int32_t)micros(), VariableKind::Int32 };
 		case 7:
-			Firmata.sendString(F("Debug "), args->Get(1));
-			return 0;
+			Firmata.sendString(F("Debug "), args[1].Uint32);
+			return {false, VariableKind::Void};
 		default:
 			Firmata.sendString(F("Unknown internal method: "), method);
 			break;
 	}
-	return 0;
+	return {false, VariableKind::Void};
+}
+
+MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
+	OPCODE instr, Variable value1, Variable value2)
+{
+	Variable intermediate;
+	switch (instr)
+	{
+	case CEE_THROW:
+		InvalidOpCode(PC, instr);
+		return MethodState::Aborted;
+	case CEE_NOP:
+		break;
+	case CEE_BREAK:
+		// This should not normally occur in code
+		InvalidOpCode(PC, instr);
+		return MethodState::Aborted;
+	case CEE_LDARG_0:
+		stack->push(arguments->at(0));
+		break;
+	case CEE_LDARG_1:
+		stack->push(arguments->at(1));
+		break;
+	case CEE_LDARG_2:
+		stack->push(arguments->at(2));
+		break;
+	case CEE_LDARG_3:
+		stack->push(arguments->at(3));
+		break;
+	case CEE_STLOC_0:
+		intermediate = value1;
+		locals->at(0) = intermediate;
+		break;
+	case CEE_STLOC_1:
+		intermediate = value1;
+		locals->at(1) = intermediate;
+		break;
+	case CEE_STLOC_2:
+		intermediate = value1;
+		locals->at(2) = intermediate;
+		break;
+	case CEE_STLOC_3:
+		intermediate = value1;
+		locals->at(3) = intermediate;
+		break;
+	case CEE_LDLOC_0:
+		stack->push(locals->at(0));
+		break;
+	case CEE_LDLOC_1:
+		stack->push(locals->at(1));
+		break;
+	case CEE_LDLOC_2:
+		stack->push(locals->at(2));
+		break;
+	case CEE_LDLOC_3:
+		stack->push(locals->at(3));
+		break;
+	case CEE_CEQ:
+		stack->push({ value1.Uint32 == value2.Uint32, VariableKind::Boolean });
+		break;
+		
+	case CEE_ADD:
+		// TODO: Verify. It seems that the compiler guarantees that the left and right hand operator of a binary operation are always the exactly same type
+		// For some of the operations, the result doesn't depend on the sign, due to correct overflow
+		intermediate = { value1.Uint32 + value2.Uint32, value1.Type };
+		stack->push(intermediate);
+		break;
+	case CEE_SUB:
+		intermediate = { value1.Uint32 - value2.Uint32, value1.Type };
+		stack->push(intermediate);
+		break;
+	case CEE_MUL:
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Int32 = value1.Int32 * value2.Int32;
+			intermediate.Type = value1.Type;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 * value2.Uint32, value1.Type };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_DIV:
+		if (intermediate.Uint32 == 0)
+		{
+			return MethodState::Aborted;
+		}
+		
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Int32 = value1.Int32 / value2.Int32;
+			intermediate.Type = value1.Type;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 / value2.Uint32, value1.Type };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_REM:
+		if (intermediate.Uint32 == 0)
+		{
+			return MethodState::Aborted;
+		}
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Int32 = value1.Int32 % value2.Int32;
+			intermediate.Type = value1.Type;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 % value2.Uint32, value1.Type };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_DIV_UN:
+		if (intermediate.Uint32 == 0)
+		{
+			return MethodState::Aborted;
+		}
+		intermediate = { value1.Uint32 / value2.Uint32, VariableKind::Uint32 };
+		stack->push(intermediate);
+		break;
+	case CEE_REM_UN:
+		if (intermediate.Uint32 == 0)
+		{
+			return MethodState::Aborted;
+		}
+		intermediate = { value1.Uint32 % value2.Uint32, VariableKind::Uint32 };
+		stack->push(intermediate);
+		break;
+	case CEE_CGT:
+		{
+			if (value1.Type == VariableKind::Int32)
+			{
+				intermediate.Boolean = value1.Int32 > value2.Int32;
+				intermediate.Type = VariableKind::Boolean;
+			}
+			else
+			{
+				intermediate = { value1.Uint32 > value2.Uint32, VariableKind::Boolean };
+			}
+			stack->push(intermediate);
+			break;
+		}
+	case CEE_CGT_UN:
+		intermediate = { value1.Uint32 > value2.Uint32, VariableKind::Boolean };
+		stack->push(intermediate);
+		break;
+	case CEE_NOT:
+		stack->push({ ~value1.Uint32, value1.Type });
+		break;
+	case CEE_NEG:
+		stack->push({ -value2.Int32, value1.Type });
+		break;
+	case CEE_AND:
+		stack->push({ value1.Uint32 & value2.Uint32, value1.Type });
+		break;
+	case CEE_OR:
+		stack->push({ value1.Uint32 | value2.Uint32, value1.Type });
+		break;
+	case CEE_XOR:
+		stack->push({ value1.Uint32 ^ value2.Uint32, value1.Type });
+		break;
+	case CEE_CLT:
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Boolean = value1.Int32 < value2.Int32;
+			intermediate.Type = VariableKind::Boolean;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 < value2.Uint32, VariableKind::Boolean };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_SHL:
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Int32 = value1.Int32 << value2.Int32;
+			intermediate.Type = VariableKind::Int32;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 << value2.Uint32, VariableKind::Uint32 };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_SHR:
+		// The right-hand-side of a shift operation always requires to be of type signed int
+		if (value1.Type == VariableKind::Int32)
+		{
+			intermediate.Int32 = value1.Int32 >> value2.Int32;
+			intermediate.Type = VariableKind::Int32;
+		}
+		else
+		{
+			intermediate = { value1.Uint32 >> value2.Int32, VariableKind::Uint32 };
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_SHR_UN:
+		intermediate = { value1.Uint32 >> value2.Int32, VariableKind::Uint32 };
+		break;
+	case CEE_LDC_I4_0:
+		stack->push({ (int32_t)0, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_1:
+		stack->push({ (int32_t)1, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_2:
+		stack->push({ (int32_t)2, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_3:
+		stack->push({ (int32_t)3, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_4:
+		stack->push({ (int32_t)4, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_5:
+		stack->push({ (int32_t)5, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_6:
+		stack->push({ (int32_t)6, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_7:
+		stack->push({ (int32_t)7, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_8:
+		stack->push({ (int32_t)8, VariableKind::Int32 });
+		break;
+	case CEE_LDC_I4_M1:
+		stack->push({ (int32_t)-1, VariableKind::Int32 });
+		break;
+	case CEE_DUP:
+		intermediate = value1;
+		stack->push(intermediate);
+		stack->push(intermediate);
+		break;
+	case CEE_POP:
+		// Nothing to do, already popped
+		break;
+	case CEE_LDIND_I1:
+		// TODO: Fix type of stack (must support dynamic typing)
+		{
+			int8_t b = *((int8_t*)value1.Object);
+			stack->push({ (int32_t)b, VariableKind::Int32 });
+		}
+		break;
+	case CEE_LDIND_I2:
+		{
+			int16_t s = *((int16_t*)value1.Object);
+			stack->push({ (int32_t)s, VariableKind::Int32 });
+		}
+		break;
+	case CEE_LDIND_I4:
+		{
+			int32_t i = *((int32_t*)value1.Object);
+			stack->push({ (int32_t)i, VariableKind::Int32 });
+		}
+		break;
+	case CEE_LDIND_U1:
+		{
+			// Weird: The definition says that this loads as Int32 as well
+			byte b = *((byte*)value1.Object);
+			stack->push({ (int32_t)b, VariableKind::Int32 });
+		}
+		break;
+	case CEE_LDIND_U2:
+		{
+			uint16_t s = *((uint16_t*)value1.Object);
+			stack->push({ (int32_t)s, VariableKind::Int32 });
+		}
+		break;
+	case CEE_LDIND_U4:
+		{
+			uint32_t i = *((uint32_t*)value1.Object);
+			stack->push({ (int32_t)i, VariableKind::Int32 });
+		}
+		break;
+	default:
+		InvalidOpCode(PC, instr);
+		return MethodState::Aborted;
+	}
+	
+	return MethodState::Running;
 }
 
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
 // - It was validated that the method has exactly argc arguments
-MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t* returnValue)
+MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable* returnValue)
 {
-	const int NUM_INSTRUCTIONS_AT_ONCE = 5000;
+	const int NUM_INSTRUCTIONS_AT_ONCE = 50;
 	
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
@@ -476,16 +784,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 	int instructionsExecuted = 0;
 	u16 PC = 0;
 	u32* hlpCodePtr;
-	ObjectStack* stack;
-	ObjectList* locals;
-	ObjectList* arguments;
+	stack<Variable>* stack;
+	vector<Variable>* locals;
+	vector<Variable>* arguments;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
 	IlCode* currentMethod = currentFrame->_executingMethod;
 
 	byte* pCode = currentMethod->methodIl;
-	u32 startTime = micros();
+	TRACE(u32 startTime = micros());
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
@@ -507,7 +815,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 			int specialMethod = currentMethod->maxLocals;
 
 			TRACE(Firmata.sendString(F("Executing special method "), specialMethod));
-			uint32_t retVal = ExecuteSpecialMethod(specialMethod, arguments);
+			Variable retVal = ExecuteSpecialMethod(specialMethod, *arguments);
 			
 			// We're called into a "special" (built-in) method. 
 			// Perform a method return
@@ -551,7 +859,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		
 		PC += len;
 		
-		uint32_t intermediate;
+		Variable intermediate;
 		
 		byte opCodeType = pgm_read_byte(OpcodeInfo + instr);
 
@@ -559,283 +867,78 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 		{
 			case InlineNone:
 			{
+				if (instr == CEE_RET)
+				{
+					if (!stack->empty())
+					{
+						*returnValue = stack->top();
+						stack->pop();
+					}
+					else
+					{
+						*returnValue = { false, VariableKind::Void };
+					}
+
+					bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::Void;
+					// Remove current method from execution stack
+					ExecutionState* frame = rootState;
+					if (frame == currentFrame)
+					{
+						// We're at the outermost frame
+						return MethodState::Stopped;
+					}
+
+					// Find the frame which has the current frame as next (should be the second-last on the stack now)
+					while (frame->_next != currentFrame)
+					{
+						frame = frame->_next;
+					}
+					// Remove the last frame and set the PC for the new current frame
+
+					frame->_next = nullptr;
+					delete currentFrame;
+					currentFrame = frame;
+					currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+
+					currentMethod = currentFrame->_executingMethod;
+
+					pCode = currentMethod->methodIl;
+					// If the method we just terminated is not of type void, we push the result to the 
+					// stack of the calling method (methodIndex still points to the old frame)
+					if (!oldMethodIsVoid)
+					{
+						stack->push(*returnValue);
+
+						TRACE(Firmata.sendString(F("Pushing return value: "), *returnValue));
+					}
+					
+					break;
+				}
+					
 				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
-				u32 value1 = 0;
-				u32 value2 = 0;
+				Variable value1;
+				Variable value2;
 				if (numArgumensToPop == 1)
 				{
-					value1 = stack->pop();
+					value1 = stack->top();
+					stack->pop();
 				}
 				if (numArgumensToPop == 2)
 				{
-					value2 = stack->pop();
-					value1 = stack->pop();
+					value2 = stack->top();
+					stack->pop();
+					value1 = stack->top();
+					stack->pop();
 				}
-				switch (instr)
+
+				MethodState errorState = BasicStackInstructions(PC, stack, locals, arguments, instr, value1, value2);
+				if (errorState != MethodState::Running)
 				{
-					case CEE_RET:
-					{
-						if (!stack->empty())
-						{
-							*returnValue = stack->pop();
-						}
-						else 
-						{
-							*returnValue = 0;
-						}
-                    		
-						bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::Void;
-						// Remove current method from execution stack
-						ExecutionState* frame = rootState;
-						if (frame == currentFrame)
-						{
-							// We're at the outermost frame
-							return MethodState::Stopped;
-						}
-						
-						// Find the frame which has the current frame as next (should be the second-last on the stack now)
-						while (frame->_next != currentFrame)
-						{
-							frame = frame->_next;
-						}
-						// Remove the last frame and set the PC for the new current frame
-                    		
-						frame->_next = nullptr;
-						delete currentFrame;
-						currentFrame = frame;
-						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-
-						currentMethod = currentFrame->_executingMethod;
-                    	
-						pCode = currentMethod->methodIl;
-						// If the method we just terminated is not of type void, we push the result to the 
-						// stack of the calling method (methodIndex still points to the old frame)
-						if (!oldMethodIsVoid)
-						{
-							stack->push(*returnValue);
-
-							TRACE(Firmata.sendString(F("Pushing return value: "), *returnValue));
-						}
-					}
-					break;
-                    case CEE_THROW:
-						InvalidOpCode(PC, instr);
-                        return MethodState::Aborted;
-					case CEE_NOP:
-						break;
-					case CEE_BREAK:
-						// This should not normally occur in code
-						InvalidOpCode(PC, instr);
-						return MethodState::Aborted;
-						break;
-					case CEE_LDARG_0:
-						stack->push(arguments->Get(0));
-						break;
-					case CEE_LDARG_1:
-						stack->push(arguments->Get(1));
-						break;
-					case CEE_LDARG_2:
-						stack->push(arguments->Get(2));
-						break;
-					case CEE_LDARG_3:
-						stack->push(arguments->Get(3));
-						break;
-					case CEE_STLOC_0:
-						intermediate = value1;
-						locals->Set(0, intermediate);
-						break;
-					case CEE_STLOC_1:
-						intermediate = value1;
-						locals->Set(1, intermediate);
-						break;
-					case CEE_STLOC_2:
-						intermediate = value1;
-						locals->Set(2, intermediate);
-						break;
-					case CEE_STLOC_3:
-						intermediate = value1;
-						locals->Set(3, intermediate);
-						break;
-					case CEE_LDLOC_0:
-						stack->push(locals->Get(0));
-						break;
-					case CEE_LDLOC_1:
-						stack->push(locals->Get(1));
-						break;
-					case CEE_LDLOC_2:
-						stack->push(locals->Get(2));
-						break;
-					case CEE_LDLOC_3:
-						stack->push(locals->Get(3));
-						break;
-					case CEE_ADD:
-						intermediate = value1 + value2;
-						stack->push(intermediate);
-						break;
-					case CEE_SUB:
-						intermediate = value1 - value2;
-						stack->push(intermediate);
-						break;
-					case CEE_MUL:
-						intermediate = value1 * value2;
-						stack->push(intermediate);
-						break;
-					case CEE_DIV:
-						// TODO: Proper typing required for this and the next
-						intermediate = value2;
-						if (intermediate == 0)
-						{
-							return MethodState::Aborted;
-						}
-						intermediate = value1 / intermediate;
-						stack->push(intermediate);
-						break;
-					case CEE_REM:
-						intermediate = value2;
-						if (intermediate == 0)
-						{
-							return MethodState::Aborted;
-						}
-						intermediate = value1 % intermediate;
-						stack->push(intermediate);
-						break;
-					case CEE_DIV_UN:
-						intermediate = value2;
-						if (intermediate == 0)
-						{
-							return MethodState::Aborted;
-						}
-						intermediate = value1 / intermediate;
-						stack->push(intermediate);
-						break;
-					case CEE_REM_UN:
-						intermediate = value2;
-						if (intermediate == 0)
-						{
-							return MethodState::Aborted;
-						}
-						intermediate = value1 % intermediate;
-						stack->push(intermediate);
-						break;
-					case CEE_CEQ:
-						stack->push(value1 == value2);
-						break;
-					case CEE_CGT:
-					{
-						stack->push(value1 > value2);
-						break;
-					}
-					case CEE_CGT_UN:
-						stack->push((u32)value1 > (u32)value2);
-						break;
-					case CEE_NOT:
-						stack->push(~value1);
-						break;
-					case CEE_NEG:
-						stack->push(-value2);
-						break;
-					case CEE_AND:
-						stack->push(value1 & value2);
-						break;
-					case CEE_OR:
-						stack->push(value1 | value2);
-						break;
-					case CEE_XOR:
-						stack->push(value1 ^ value2);
-						break;
-					case CEE_CLT:
-						stack->push(value1 < value2);
-						break;
-					case CEE_SHL:
-						stack->push(value1 << value2);
-						break;
-					case CEE_SHR:
-						stack->push((int)value1 >> value2);
-						break;
-					case CEE_SHR_UN:
-						stack->push((uint32_t)value1 >> value2);
-						break;
-					case CEE_LDC_I4_0:
-						stack->push(0);
-						break;
-					case CEE_LDC_I4_1:
-						stack->push(1);
-						break;
-					case CEE_LDC_I4_2:
-						stack->push(2);
-						break;
-					case CEE_LDC_I4_3:
-						stack->push(3);
-						break;
-					case CEE_LDC_I4_4:
-						stack->push(4);
-						break;
-					case CEE_LDC_I4_5:
-						stack->push(5);
-						break;
-					case CEE_LDC_I4_6:
-						stack->push(6);
-						break;
-					case CEE_LDC_I4_7:
-						stack->push(7);
-						break;
-					case CEE_LDC_I4_8:
-						stack->push(8);
-						break;
-					case CEE_LDC_I4_M1:
-						stack->push(-1);
-						break;
-					case CEE_DUP:
-						intermediate = value1;
-						stack->push(intermediate);
-						stack->push(intermediate);
-						break;
-					case CEE_POP:
-						// Nothing to do, already popped
-						break;
-					case CEE_LDIND_I1:
-						// TODO: Fix type of stack (must support dynamic typing)
-                    {
-							int8_t b = *((int8_t*)value1);
-							stack->push(b);
-                    }
-					break;
-					case CEE_LDIND_I2:
-						{
-							int16_t s = *((int16_t*)value1);
-							stack->push(s);
-						}
-						break;
-					case CEE_LDIND_I4:
-						{
-							int32_t i = *((int32_t*)value1);
-							stack->push(i);
-						}
-						break;
-					case CEE_LDIND_U1:
-						{
-							byte b = *((byte*)value1);
-							stack->push(b);
-						}
-						break;
-					case CEE_LDIND_U2:
-						{
-							uint16_t s = *((uint16_t*)value1);
-							stack->push(s);
-						}
-						break;
-					case CEE_LDIND_U4:
-						{
-							uint32_t i = *((uint32_t*)value1);
-							stack->push(i);
-						}
-						break;
-                    default:
-						InvalidOpCode(PC, instr);
-                        return MethodState::Aborted;
-                }
+					return errorState;
+				};
+				
 				break;
-            }
+			}
 			case ShortInlineI:
 			case ShortInlineVar:
 	            {
@@ -848,28 +951,34 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						PC--;
 						break;
 					case CEE_LDC_I4_S:
-						stack->push(data);
+						stack->push({ (int32_t)data, VariableKind::Int32 });
 						break;
 					case CEE_LDLOC_S:
-						stack->push(locals->Get(data));
+						stack->push(locals->at(data));
 						break;
 					case CEE_STLOC_S:
-						locals->Set(data, stack->pop());
+						locals->at(data) = stack->top();
+						stack->pop();
 						break;
 					case CEE_LDLOCA_S:
 						// Warn: Pointer to data conversion!
-						stack->push((uint32_t)locals->AddressOf(data));
+						intermediate.Object = &locals->at(data);
+						intermediate.Type = VariableKind::Object;
+						stack->push(intermediate);
 						break;
 					case CEE_LDARG_S:
-						stack->push(arguments->Get(data));
+						stack->push(arguments->at(data));
 						break;
 					case CEE_LDARGA_S:
 						// Get address of argument x. 
-						// TOOD: Byref parameter handling is not supported at the moment by the call implementation. 
-						stack->push((uint32_t)arguments->AddressOf(data));
+						// TODO: Byref parameter handling is not supported at the moment by the call implementation. 
+						intermediate.Object = &arguments->at(data);
+						intermediate.Type = VariableKind::Object;
+						stack->push(intermediate);
 						break;
 					case CEE_STARG_S:
-						arguments->Set(data, stack->pop());
+						arguments->at(data) = stack->top();
+						stack->pop();
 						break;
 					default:
 						InvalidOpCode(PC, instr);
@@ -884,8 +993,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
                 PC += 4;
 				if (instr == CEE_LDC_I4)
 				{
-					TRACE(Firmata.sendString(F("LDC_I4"), v));
-					stack->push(v);
+					stack->push({ (int32_t)v, VariableKind::Int32 });
 				}
 				else
 				{
@@ -999,16 +1107,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 			case InlineBrTarget:
             {
 				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
-				u32 value1 = 0;
-				u32 value2 = 0;
+				Variable value1;
+				Variable value2;
 				if (numArgumensToPop == 1)
 				{
-					value1 = stack->pop();
+					value1 = stack->top();
+					stack->pop();
 				}
 				if (numArgumensToPop == 2)
 				{
-					value2 = stack->pop();
-					value1 = stack->pop();
+					value2 = stack->top();
+					stack->pop();
+					value1 = stack->top();
+					stack->pop();
 				}
             		
 				bool doBranch = false;
@@ -1020,52 +1131,82 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 						break;
 					case CEE_BEQ:
 					case CEE_BEQ_S:
-						doBranch = value1 == value2;
+						doBranch = value1.Uint32 == value2.Uint32;
 						break;
 					case CEE_BGE:
 					case CEE_BGE_S:
-						doBranch = value1 >= value2;
+						if (value1.Type == VariableKind::Int32)
+						{
+							doBranch = value1.Int32 >= value2.Int32;
+						}
+						else
+						{
+							doBranch = value1.Uint32 >= value2.Uint32;
+						}
 						break;
 					case CEE_BLE:
 					case CEE_BLE_S:
-						doBranch = value1 <= value2;
+						if (value1.Type == VariableKind::Int32)
+						{
+							doBranch = value1.Int32 <= value2.Int32;
+						}
+						else
+						{
+							doBranch = value1.Uint32 <= value2.Uint32;
+						}
+						break;
 						break;
 					case CEE_BGT:
 					case CEE_BGT_S:
-						doBranch = value1 > value2;
+						if (value1.Type == VariableKind::Int32)
+						{
+							doBranch = value1.Int32 > value2.Int32;
+						}
+						else
+						{
+							doBranch = value1.Uint32 > value2.Uint32;
+						}
+						break;
 						break;
 					case CEE_BLT:
 					case CEE_BLT_S:
-						doBranch = value1 < value2;
+						if (value1.Type == VariableKind::Int32)
+						{
+							doBranch = value1.Int32 < value2.Int32;
+						}
+						else
+						{
+							doBranch = value1.Uint32 < value2.Uint32;
+						}
+						break;
 						break;
 					case CEE_BGE_UN:
 					case CEE_BGE_UN_S:
-					// Type cast looks redundant here, but it won't be later, when the type is correct
-						doBranch = (u32)value1 >= (u32)value2;
+						doBranch = value1.Uint32 >= value2.Uint32;
 						break;
 					case CEE_BGT_UN:
 					case CEE_BGT_UN_S:
-						doBranch = (u32)value1 > (u32)value2;
+						doBranch = value1.Uint32 > value2.Uint32;
 						break;
 					case CEE_BLE_UN:
 					case CEE_BLE_UN_S:
-						doBranch = (u32)value1 <= (u32)value2;
+						doBranch = value1.Uint32 <= value2.Uint32;
 						break;
 					case CEE_BLT_UN:
 					case CEE_BLT_UN_S:
-						doBranch = (u32)value1 < (u32)value2;
+						doBranch = value1.Uint32 < value2.Uint32;
 						break;
 					case CEE_BNE_UN:
 					case CEE_BNE_UN_S:
-						doBranch = (u32)value1 != (u32)value2;
+						doBranch = value1.Uint32 != value2.Uint32;
 						break;
 					case CEE_BRFALSE:
 					case CEE_BRFALSE_S:
-						doBranch = value1 == 0;
+						doBranch = value1.Uint32 == 0;
 						break;
 					case CEE_BRTRUE:
 					case CEE_BRTRUE_S:
-						doBranch = value1 != 0;
+						doBranch = value1.Uint32 != 0;
 						break;
 					default:
 						InvalidOpCode(PC, instr);
@@ -1344,30 +1485,22 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 					Firmata.sendString(F("Unknown token 0x"), tk);
 					return MethodState::Aborted;
 				}
-
-    ////        	if (*hlpCodePtr != (u32)newMethod)
-				////{
-				////	// Patch the code to use the method pointer, that's faster for next time we see this piece of code.
-    ////        		// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
-				////	u32 method = (u32)newMethod;
-				////	method &= ~0xFF000000;
-				////	*hlpCodePtr = method;
-				////}
+            	
+				u32 method = (u32)newMethod;
+				method &= ~0xFF000000;
+            	            	
+				// Patch the code to use the method pointer, that's faster for next time we see this piece of code.
+            	// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
+				*hlpCodePtr = method;
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
-				int stackSize = newMethod->maxLocals;
-            		
-				if (newMethod->methodFlags & (byte)MethodFlags::Special)
-				{
-					stackSize = 0;
-				}
 				
 				int argumentCount = newMethod->numArgs;
-				ExecutionState* newState = new ExecutionState(newMethod->codeReference, stackSize, argumentCount, newMethod);
+				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxLocals, argumentCount, newMethod);
 				currentFrame->_next = newState;
 				
-				ObjectStack* oldStack = stack;
+				std::stack<Variable>* oldStack = stack;
 				// Start of the called method
 				currentFrame = newState;
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
@@ -1380,7 +1513,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
 				while (argumentCount > 0)
 				{
 					argumentCount--;
-					arguments->Set(argumentCount, oldStack->pop());
+					arguments->at(argumentCount) = oldStack->top();
+					oldStack->pop();
 				}
             		
 				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
@@ -1392,11 +1526,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, uint32_t
         }
 	}
 
-	startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE;
-	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	currentFrame->UpdatePc(PC);
+
+	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
 	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
-	Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), 4, startTime);
+	TRACE(Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), 4, startTime));
+
+	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
 }
 
