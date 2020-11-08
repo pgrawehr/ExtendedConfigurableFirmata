@@ -183,7 +183,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	}
 
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult(topLevelMethod, Variable(false, VariableKind::Void), MethodState::Killed);
+	SendExecutionResult(topLevelMethod, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 }
 
@@ -467,17 +467,17 @@ Variable FirmataIlExecutor::ExecuteSpecialMethod(byte method, const vector<Varia
 			return { (int32_t)mil, VariableKind::Int32 };
 		case 5:
 			delayMicroseconds(args[1].Int32);
-			return {false, VariableKind::Void};
+			return {};
 		case 6:
 			return { (int32_t)micros(), VariableKind::Int32 };
 		case 7:
 			Firmata.sendString(F("Debug "), args[1].Uint32);
-			return {false, VariableKind::Void};
+			return {};
 		default:
 			Firmata.sendString(F("Unknown internal method: "), method);
 			break;
 	}
-	return {false, VariableKind::Void};
+	return {};
 }
 
 MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
@@ -536,7 +536,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(locals->at(3));
 		break;
 	case CEE_CEQ:
-		stack->push({ value1.Uint32 == value2.Uint32, VariableKind::Boolean });
+		stack->push({ (uint32_t)(value1.Uint32 == value2.Uint32), VariableKind::Boolean });
 		break;
 		
 	case CEE_ADD:
@@ -562,7 +562,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(intermediate);
 		break;
 	case CEE_DIV:
-		if (intermediate.Uint32 == 0)
+		if (value2.Uint32 == 0)
 		{
 			return MethodState::Aborted;
 		}
@@ -579,7 +579,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(intermediate);
 		break;
 	case CEE_REM:
-		if (intermediate.Uint32 == 0)
+		if (value2.Uint32 == 0)
 		{
 			return MethodState::Aborted;
 		}
@@ -595,7 +595,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(intermediate);
 		break;
 	case CEE_DIV_UN:
-		if (intermediate.Uint32 == 0)
+		if (value2.Uint32 == 0)
 		{
 			return MethodState::Aborted;
 		}
@@ -619,13 +619,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 			}
 			else
 			{
-				intermediate = { value1.Uint32 > value2.Uint32, VariableKind::Boolean };
+				intermediate = { (uint32_t)(value1.Uint32 > value2.Uint32), VariableKind::Boolean };
 			}
 			stack->push(intermediate);
 			break;
 		}
 	case CEE_CGT_UN:
-		intermediate = { value1.Uint32 > value2.Uint32, VariableKind::Boolean };
+		intermediate = { (uint32_t)(value1.Uint32 > value2.Uint32), VariableKind::Boolean };
 		stack->push(intermediate);
 		break;
 	case CEE_NOT:
@@ -651,7 +651,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		}
 		else
 		{
-			intermediate = { value1.Uint32 < value2.Uint32, VariableKind::Boolean };
+			intermediate = { (uint32_t)(value1.Uint32 < value2.Uint32), VariableKind::Boolean };
 		}
 		stack->push(intermediate);
 		break;
@@ -876,7 +876,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					else
 					{
-						*returnValue = { false, VariableKind::Void };
+						*returnValue = Variable();
 					}
 
 					bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::Void;

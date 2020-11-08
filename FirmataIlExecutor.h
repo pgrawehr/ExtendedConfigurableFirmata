@@ -99,12 +99,6 @@ struct Variable
 		Type = type;
 	}
 
-	Variable(bool value, VariableKind type)
-	{
-		Boolean = value;
-		Type = type;
-	}
-
 	Variable()
 	{
 		Uint32 = 0;
