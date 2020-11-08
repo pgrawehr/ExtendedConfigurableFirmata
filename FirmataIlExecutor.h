@@ -36,6 +36,7 @@ enum class ExecutorCommand : byte
 	StartTask = 4,
 	ResetExecutor = 5,
 	KillTask = 6,
+	MethodSignature = 7,
 
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -154,10 +155,11 @@ public:
 	byte methodFlags;
 	u16 methodLength;
 	byte codeReference;
-	// the maximum of (number of local variables, execution stack size)
 	// For special methods (see methodFlags field), this contains the method number
-	byte maxLocals; 
+	byte maxLocals;
+	vector<VariableKind> localTypes;
 	byte numArgs;
+	vector<VariableKind> argumentTypes;
 	byte* methodIl;
 	// this contains alternate tokens for the methods called from this method.
 	// Typically, these will be mappings from 0x0A (memberRef tokens) to 0x06 (methodDef tokens)
@@ -182,13 +184,27 @@ class ExecutionState
 	IlCode* _executingMethod;
 
 	u32 _memoryGuard;
-	ExecutionState(int codeReference, int maxLocals, int argCount, IlCode* executingMethod) :
+	ExecutionState(int codeReference, unsigned maxLocals, unsigned argCount, IlCode* executingMethod) :
 	_pc(0), _executionStack(),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
 		_next = nullptr;
 		_executingMethod = executingMethod;
+		for(unsigned i = 0; i < maxLocals && i < executingMethod->localTypes.size(); i++)
+		{
+			// Initialize locals with correct type
+			_locals.at(i).Uint32 = 0;
+			_locals.at(i).Type = executingMethod->localTypes.at(i);
+		}
+
+		for (unsigned i = 0; i < executingMethod->numArgs && i < executingMethod->argumentTypes.size(); i++)
+		{
+			// Initialize locals with correct type
+			_arguments.at(i).Uint32 = 0;
+			_arguments.at(i).Type = executingMethod->argumentTypes.at(i);
+		}
+		
 		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
@@ -209,9 +225,10 @@ class ExecutionState
 		*arguments = &_arguments;
 	}
 	
-	void UpdateArg(int argNo, Variable value)
+	void SetArgumentValue(int argNo, uint32_t value)
 	{
-		_arguments[argNo] = value;
+		// Doesn't matter which actual value it is - we're just byte-copying here
+		_arguments[argNo].Uint32 = value;
 	}
 	
 	void UpdatePc(u16 pc)

@@ -114,6 +114,15 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 			SendAckOrNack(subCommand, LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5));
 			break;
+		case ExecutorCommand::MethodSignature:
+			if (argc < 4)
+			{
+				Firmata.sendString(F("Not enough IL data parameters"));
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+				return true;
+			}
+			SendAckOrNack(subCommand, LoadMethodSignature(argv[2], argv[3], argc - 4, argv + 4));
+			break;
 		case ExecutorCommand::SetMethodTokens:
 			if (argc < 6)
 			{
@@ -229,7 +238,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 
 	method->methodFlags = flags;
 	method->maxLocals = maxLocals;
-	method->numArgs = argv[0];
+	method->numArgs = argv[0]; // Argument count
 	uint32_t token = DecodeUint32(argv + 1);
 	method->methodToken = token;
 
@@ -250,8 +259,23 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte s
 
 	if (signatureType == 0)
 	{
-		// Arguments types. Argument 0 is the return type.
-		
+		// Argument types. (This can be called multiple times for very long argument lists)
+		for (byte i = 0; i < argc; i++)
+		{
+			method->argumentTypes.push_back((VariableKind)argv[i]);
+		}
+	}
+	else if (signatureType == 1)
+	{
+		// Type of the locals (also possibly called several times)
+		for (byte i = 0; i < argc; i++)
+		{
+			method->localTypes.push_back((VariableKind)argv[i]);
+		}
+	}
+	else
+	{
+		return ExecutionError::InvalidArguments;
 	}
 	
 	return ExecutionError::None;
@@ -405,9 +429,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
 	{
-		// TODO: Use correct type
-		Variable v(DecodeUint32(argv + (8 * i)), VariableKind::Uint32);
-		rootState->UpdateArg(i, v);
+		rootState->SetArgumentValue(i, DecodeUint32(argv + (8 * i)));
 	}
 	
 	MethodState execResult = ExecuteIlCode(rootState, &result);
@@ -603,7 +625,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(intermediate);
 		break;
 	case CEE_REM_UN:
-		if (intermediate.Uint32 == 0)
+		if (value2.Uint32 == 0)
 		{
 			return MethodState::Aborted;
 		}
@@ -632,7 +654,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push({ ~value1.Uint32, value1.Type });
 		break;
 	case CEE_NEG:
-		stack->push({ -value2.Int32, value1.Type });
+		stack->push({ -value1.Int32, value1.Type });
 		break;
 	case CEE_AND:
 		stack->push({ value1.Uint32 & value2.Uint32, value1.Type });
@@ -682,6 +704,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		break;
 	case CEE_SHR_UN:
 		intermediate = { value1.Uint32 >> value2.Int32, VariableKind::Uint32 };
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_0:
 		stack->push({ (int32_t)0, VariableKind::Int32 });
