@@ -15,8 +15,15 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
-#include "ObjectStack.h"
-#include "ObjectList.h"
+#include <avr_stl.h>
+#include <basic_definitions>
+#include <cstddef>
+#include <new>
+#include <vector>
+#include <stack>
+
+#include "openum.h"
+using namespace std;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
 
@@ -56,6 +63,53 @@ enum class ExecutionError : byte
 	EngineBusy = 1,
 	InvalidArguments = 2,
 	OutOfMemory = 3,
+};
+
+enum class VariableKind : byte
+{
+	Void = 0,
+	Uint32 = 1,
+	Int32 = 2,
+	Boolean = 3,
+	Object = 4,
+};
+
+struct Variable
+{
+	// Important: Data must come first (because we sometimes take the address of this)
+	union
+	{
+		uint32_t Uint32;
+		int32_t Int32;
+		bool Boolean;
+		void* Object;
+	};
+
+	VariableKind Type;
+
+	Variable(uint32_t value, VariableKind type)
+	{
+		Uint32 = value;
+		Type = type;
+	}
+
+	Variable(int32_t value, VariableKind type)
+	{
+		Int32 = value;
+		Type = type;
+	}
+
+	Variable(bool value, VariableKind type)
+	{
+		Boolean = value;
+		Type = type;
+	}
+
+	Variable()
+	{
+		Uint32 = 0;
+		Type = VariableKind::Void;
+	}
 };
 
 class IlCode
@@ -123,9 +177,9 @@ class ExecutionState
 {
 	private:
 	u16 _pc;
-	ObjectStack _executionStack;
-	ObjectList _locals;
-	ObjectList _arguments;
+	std::stack<Variable> _executionStack;
+	std::vector<Variable> _locals;
+	std::vector<Variable> _arguments;
 	int _codeReference;
 	
 	public:
@@ -135,7 +189,7 @@ class ExecutionState
 
 	u32 _memoryGuard;
 	ExecutionState(int codeReference, int maxLocals, int argCount, IlCode* executingMethod) :
-	_pc(0), _executionStack(maxLocals),
+	_pc(0), _executionStack(),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
@@ -149,7 +203,7 @@ class ExecutionState
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
-	void ActivateState(u16* pc, ObjectStack** stack, ObjectList** locals, ObjectList** arguments)
+	void ActivateState(u16* pc, stack<Variable>** stack, vector<Variable>** locals, vector<Variable>** arguments)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
@@ -161,9 +215,9 @@ class ExecutionState
 		*arguments = &_arguments;
 	}
 	
-	void UpdateArg(int argNo, uint32_t value)
+	void UpdateArg(int argNo, Variable value)
 	{
-		_arguments.Set(argNo, value);
+		_arguments[argNo] = value;
 	}
 	
 	void UpdatePc(u16 pc)
@@ -202,19 +256,22 @@ class FirmataIlExecutor: public FirmataFeature
   private:
     ExecutionError LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
+	ExecutionError LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
 
-	static uint32_t ExecuteSpecialMethod(byte method, ObjectList* args);
-	
-	void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
+	static Variable ExecuteSpecialMethod(byte method, const vector<Variable> &args);
+    MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
+                                OPCODE instr, Variable value1, Variable value2);
+
+    void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
 	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, u16 opCode);
-	MethodState ExecuteIlCode(ExecutionState *state, uint32_t* returnValue);
+	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
-    void SendExecutionResult(byte codeReference, uint32_t result, MethodState execResult);
+    void SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(uint32_t token);
 	IlCode* GetMethodByCodeReference(byte codeReference);
 	void AttachToMethodList(IlCode* newCode);
