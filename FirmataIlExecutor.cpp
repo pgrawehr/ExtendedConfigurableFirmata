@@ -69,8 +69,8 @@ void FirmataIlExecutor::handleCapability(byte pin)
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 {
 	ExecutorCommand subCommand = ExecutorCommand::None;
-	switch (command) {
-	case SCHEDULER_DATA:
+	if (command == SCHEDULER_DATA)
+	{
 		if (argc < 3)
 		{
 			Firmata.sendString(F("Error in Scheduler command: Not enough parameters"));
@@ -152,9 +152,12 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			SendAckOrNack(subCommand, ExecutionError::None);
 			break;
 		}
-		break;
+		default:
+			// Unknown command
+			SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+			break;
 
-		}
+		} // End of switch
 
 		return true;
 	}
@@ -1030,106 +1033,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				break;
             }
 			
-			/*
-            case InlineI8:
-            {
-                __int64 v = (__int64) pCode[PC] +
-                            (((__int64) pCode[PC+1]) << 8) +
-                            (((__int64) pCode[PC+2]) << 16) +
-                            (((__int64) pCode[PC+3]) << 24) +
-                            (((__int64) pCode[PC+4]) << 32) +
-                            (((__int64) pCode[PC+5]) << 40) +
-                            (((__int64) pCode[PC+6]) << 48) +
-                            (((__int64) pCode[PC+7]) << 56);
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),
-                        "%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X",
-                        pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3],
-                        pCode[PC+4], pCode[PC+5], pCode[PC+6], pCode[PC+7]);
-                    Len += 8*2;
-                    PadTheString;
-                }
-
-                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s 0x%I64x", pszInstrName, v);
-                PC += 8;
-                break;
-            }
-
-            case ShortInlineR:
-            {
-                __int32 v = (__int32) pCode[PC] +
-                            (((__int32) pCode[PC+1]) << 8) +
-                            (((__int32) pCode[PC+2]) << 16) +
-                            (((__int32) pCode[PC+3]) << 24);
-
-                float f = (float&)v;
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ", pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                    Len += 9;
-                    PadTheString;
-                }
-
-                char szf[32];
-                if(f==0.0)
-                    strcpy_s(szf,32,((v>>24)==0)? "0.0" : "-0.0");
-                else
-                    _gcvt_s(szf,32,(double)f, 8);
-                float fd = (float)atof(szf);
-                // Must compare as underlying bytes, not floating point otherwise optmizier will
-                // try to enregister and comapre 80-bit precision number with 32-bit precision number!!!!
-                if(((__int32&)fd == v)&&!IsSpecialNumber(szf))
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %s", pszInstrName, szf);
-                else
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s (%2.2X %2.2X %2.2X %2.2X)",
-                        pszInstrName, pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                PC += 4;
-                break;
-            }
-
-            case InlineR:
-            {
-                __int64 v = (__int64) pCode[PC] +
-                            (((__int64) pCode[PC+1]) << 8) +
-                            (((__int64) pCode[PC+2]) << 16) +
-                            (((__int64) pCode[PC+3]) << 24) +
-                            (((__int64) pCode[PC+4]) << 32) +
-                            (((__int64) pCode[PC+5]) << 40) +
-                            (((__int64) pCode[PC+6]) << 48) +
-                            (((__int64) pCode[PC+7]) << 56);
-
-                double d = (double&)v;
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),
-                        "%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X",
-                        pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3],
-                        pCode[PC+4], pCode[PC+5], pCode[PC+6], pCode[PC+7]);
-                    Len += 8*2;
-                    PadTheString;
-                }
-                char szf[32],*pch;
-                if(d==0.0)
-                    strcpy_s(szf,32,((v>>56)==0)? "0.0" : "-0.0");
-                else
-                    _gcvt_s(szf,32,d, 17);
-                double df = strtod(szf, &pch); //atof(szf);
-                // Must compare as underlying bytes, not floating point otherwise optmizier will
-                // try to enregister and comapre 80-bit precision number with 64-bit precision number!!!!
-                if (((__int64&)df == v)&&!IsSpecialNumber(szf))
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %s", pszInstrName, szf);
-                else
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s (%2.2X %2.2X %2.2X %2.2X %2.2X %2.2X %2.2X %2.2X)",
-                        pszInstrName, pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3],
-                        pCode[PC+4], pCode[PC+5], pCode[PC+6], pCode[PC+7]);
-                PC += 8;
-                break;
-            } */
-
             case ShortInlineBrTarget:
 			case InlineBrTarget:
             {
@@ -1273,227 +1176,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				TRACE(Firmata.sendString(F("Branch instr. Next is "), PC));
 				break;
             }
-/*
-            case InlineBrTarget:
-            {
-                long offset = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-                long dest = (PC + 4) + (long) offset;
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ", pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                    Len += 9;
-                    PadTheString;
-                }
-                PC += 4;
-                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s IL_%04x", pszInstrName, dest);
-
-                fNeedNewLine = TRUE;
-                break;
-            }
-
-            case InlineSwitch:
-            {
-                DWORD cases = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ", pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                    Len += 9;
-                    PadTheString;
-                }
-                if(cases) szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s ( ", pszInstrName);
-                else szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s ( )", pszInstrName);
-                printLine(GUICookie, szString);
-                PC += 4;
-                DWORD PC_nextInstr = PC + 4 * cases;
-                for (i = 0; i < cases; i++)
-                {
-                    long offset = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-                    long dest = PC_nextInstr + (long) offset;
-                    szptr = &szString[0];
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),"%s          ",g_szAsmCodeIndent); //indent+label
-                    if(g_fShowBytes)
-                    {
-                        szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),"/*      | %2.2X%2.2X%2.2X%2.2X ",         // comment
-                            pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                        Len = 9;
-                        PadTheString;
-                    }
-
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),"            IL_%04x%s", dest,(i == cases-1)? ")" : ",");
-                    PC += 4;
-                    printLine(GUICookie, szString);
-                }
-                continue;
-            }
-
-            case InlinePhi:
-            {
-                DWORD cases = pCode[PC];
-                unsigned short *pus;
-                DWORD i;
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X", cases);
-                    Len += 2;
-                    for(i=0; i < cases*2; i++)
-                    {
-                        szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X", pCode[PC+1+i]);
-                        Len += 2;
-                    }
-                    PadTheString;
-                }
-
-                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s", pszInstrName);
-                for(i=0, pus=(unsigned short *)(&pCode[PC+1]); i < cases; i++,pus++)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr)," %d",*pus);
-                }
-                PC += 2 * cases + 1;
-                break;
-            }
-
-            case InlineString:
-            case InlineField:
-            case InlineType:
-            case InlineTok:
-            case InlineMethod:
-            {
-                tk = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-                tkType = TypeFromToken(tk);
-
-                // Backwards compatible ldstr instruction.
-                if (instr == CEE_LDSTR && TypeFromToken(tk) != mdtString)
-                {
-                    const WCHAR *v1 = W("");
-
-                    if(g_fShowBytes)
-                    {
-                        szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ",
-                            pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                        Len += 9;
-                        PadTheString;
-                    }
-
-                    if(!g_pPELoader->getVAforRVA(tk, (void**) &v1))
-                    {
-                        char szStr[256];
-                        sprintf_s(szStr,256,RstrUTF(IDS_E_SECTHEADER),tk);
-                        printLine(GUICookie,szStr);
-                    }
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s ", pszInstrName);
-                    ConvToLiteral(szptr, v1, 0xFFFF);
-                    PC += 4;
-                    break;
-                }
-
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "(%2.2X)%2.2X%2.2X%2.2X ",
-                        pCode[PC+3], pCode[PC+2], pCode[PC+1], pCode[PC]);
-                    Len += 11;
-                    PadTheString;
-                }
-                PC += 4;
-
-                szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s ", pszInstrName);
-
-                if ((tk & 0xFF000000) == 0)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%#x ", tk);
-                    break;
-                }
-                if(!pImport->IsValidToken(tk))
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),ERRORMSG(" [ERROR: INVALID TOKEN 0x%8.8X] "),tk);
-                    break;
-                }
-                if(OpcodeInfo[instr].Type== InlineTok)
-                {
-                    switch (tkType)
-                    {
-                        default:
-                            break;
-
-                        case mdtMethodDef:
-                        case mdtMethodSpec:
-                            szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),KEYWORD("method "));
-                            break;
-
-                        case mdtFieldDef:
-                            szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),KEYWORD("field "));
-                            break;
-
-                        case mdtMemberRef:
-                            {
-                                PCCOR_SIGNATURE typePtr;
-                                const char*         pszMemberName;
-                                ULONG       cComSig;
-
-                                if (FAILED(pImport->GetNameAndSigOfMemberRef(
-                                    tk,
-                                    &typePtr,
-                                    &cComSig,
-                                    &pszMemberName)))
-                                {
-                                    szptr += sprintf_s(szptr, SZSTRING_REMAINING_SIZE(szptr), "ERROR ");
-                                    break;
-                                }
-                                unsigned callConv = CorSigUncompressData(typePtr);
-
-                                if (isCallConv(callConv, IMAGE_CEE_CS_CALLCONV_FIELD))
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),KEYWORD("field "));
-                                else
-                                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr),KEYWORD("method "));
-                                break;
-                            }
-                    }
-                }
-                PrettyPrintToken(szString, tk, pImport,GUICookie,FuncToken); //TypeDef,TypeRef,TypeSpec,MethodDef,FieldDef,MemberRef,MethodSpec,String
-                break;
-            }
-
-            case InlineSig:
-            {
-                if(g_fShowBytes)
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%2.2X%2.2X%2.2X%2.2X ",
-                        pCode[PC], pCode[PC+1], pCode[PC+2], pCode[PC+3]);
-                    // output the offset and the raw bytes
-                    Len += 9;
-                    PadTheString;
-                }
-
-                // get the signature token
-                tk = pCode[PC] + (pCode[PC+1] << 8) + (pCode[PC+2] << 16) + (pCode[PC+3] << 24);
-                PC += 4;
-                tkType = TypeFromToken(tk);
-                if (tkType == mdtSignature)
-                {
-                    // get the signature from the token
-                    DWORD           cbSigLen;
-                    PCCOR_SIGNATURE pComSig;
-                    CQuickBytes     qbMemberSig;
-                    if (FAILED(pImport->GetSigFromToken(tk, &cbSigLen, &pComSig)))
-                    {
-                        sprintf_s(szString, SZSTRING_SIZE, COMMENT("// ERROR: Invalid %08X record"), tk);
-                        break;
-                    }
-
-                    qbMemberSig.Shrink(0);
-                    const char* pszTailSig = PrettyPrintSig(pComSig, cbSigLen, "", &qbMemberSig, pImport,NULL);
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), "%-10s %s", pszInstrName, pszTailSig);
-                }
-                else
-                {
-                    szptr+=sprintf_s(szptr,SZSTRING_REMAINING_SIZE(szptr), ERRORMSG(RstrUTF(IDS_E_BADTOKENTYPE)), pszInstrName, tk);
-                }
-                break;
-            }
-			*/
-			
 			case InlineMethod:
             {
 				if (instr != CEE_CALLVIRT && instr != CEE_CALL) 
@@ -1689,8 +1371,6 @@ IlCode* FirmataIlExecutor::GetMethodByToken(uint32_t token)
 	Firmata.sendString(F("Token not found: "), token);
 	return nullptr;
 }
-
-
 
 OPCODE DecodeOpcode(const BYTE *pCode, DWORD *pdwLen)
 {
