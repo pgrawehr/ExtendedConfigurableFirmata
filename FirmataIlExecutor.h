@@ -73,6 +73,7 @@ enum class VariableKind : byte
 	Int32 = 2,
 	Boolean = 3,
 	Object = 4,
+	Method = 5, // Only for class member types
 };
 
 struct Variable
@@ -105,6 +106,18 @@ struct Variable
 		Uint32 = 0;
 		Type = VariableKind::Void;
 	}
+};
+
+class ClassDeclaration
+{
+public:
+	ClassDeclaration()
+	{
+	}
+
+	uint32_t ClassToken;
+
+	vector<Variable> members;
 };
 
 class IlCode
@@ -269,6 +282,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
 	ExecutionError LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 
 	static Variable ExecuteSpecialMethod(byte method, const vector<Variable> &args);
     MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,

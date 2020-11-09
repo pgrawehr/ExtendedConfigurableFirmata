@@ -1559,6 +1559,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	return MethodState::Running;
 }
 
+ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
+{
+	
+	return ExecutionError::None;
+}
+
 IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
 {
 	IlCode* method;
