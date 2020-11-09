@@ -100,7 +100,12 @@ namespace stdSimple
 			_count--;
 		}
 
-		T& at(int index)
+		T& at(size_t index)
+		{
+			return _data[index];
+		}
+
+		T& at(const size_t index) const
 		{
 			return _data[index];
 		}

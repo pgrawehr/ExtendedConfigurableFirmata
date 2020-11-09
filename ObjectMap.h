@@ -19,7 +19,7 @@ namespace stdSimple
 
 		TValue& at(const TKey &key)
 		{
-			for (int i = 0; i < _keys.size(); i++)
+			for (size_t i = 0; i < _keys.size(); i++)
 			{
 				if (_keys[i] == key)
 				{
@@ -35,7 +35,7 @@ namespace stdSimple
 
 		bool contains(const TKey &key)
 		{
-			for (int i = 0; i < _keys.size(); i++)
+			for (size_t i = 0; i < _keys.size(); i++)
 			{
 				if (_keys[i] == key)
 				{
