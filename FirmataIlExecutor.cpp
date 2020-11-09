@@ -15,7 +15,9 @@
 #include "FreeMemory.h"
 #include "FirmataIlExecutor.h"
 #include "openum.h"
-#include <vector>
+#include "ObjectVector.h"
+#include "ObjectStack.h"
+
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
@@ -262,7 +264,8 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte s
 		// Argument types. (This can be called multiple times for very long argument lists)
 		for (byte i = 0; i < argc; i++)
 		{
-			method->argumentTypes.push_back((VariableKind)argv[i]);
+			VariableKind v = (VariableKind)argv[i];
+			method->argumentTypes.push_back(v);
 		}
 	}
 	else if (signatureType == 1)
@@ -270,7 +273,8 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte s
 		// Type of the locals (also possibly called several times)
 		for (byte i = 0; i < argc; i++)
 		{
-			method->localTypes.push_back((VariableKind)argv[i]);
+			VariableKind v = (VariableKind)argv[i];
+			method->localTypes.push_back(v);
 		}
 	}
 	else
@@ -1523,7 +1527,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxLocals, argumentCount, newMethod);
 				currentFrame->_next = newState;
 				
-				std::stack<Variable>* oldStack = stack;
+				stdSimple::stack<Variable>* oldStack = stack;
 				// Start of the called method
 				currentFrame = newState;
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
@@ -1561,6 +1565,31 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
 {
+	bool alreadyExists = _classes.contains(classToken);
+	ClassDeclaration* decl;
+	if (alreadyExists)
+	{
+		decl = &_classes.at(classToken);
+	}
+	else
+	{
+		_classes.insert(classToken, ClassDeclaration(classToken));
+		decl = &_classes.at(classToken);
+	}
+
+	// Reinit
+	if (offset == 0)
+	{
+		decl->members.clear();
+	}
+
+	for (int i = 0; i < argc; i++)
+	{
+		Variable v;
+		v.Int32 = 0;
+		v.Type = (VariableKind)argv[i];
+		decl->members.push_back(v);
+	}
 	
 	return ExecutionError::None;
 }

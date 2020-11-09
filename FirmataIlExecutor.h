@@ -15,15 +15,12 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
-#include <avr_stl.h>
-#include <basic_definitions>
-#include <cstddef>
-#include <new>
-#include <vector>
-#include <stack>
-
+#include "ObjectStack.h"
+#include "ObjectVector.h"
+#include "ObjectMap.h"
 #include "openum.h"
-using namespace std;
+
+using namespace stdSimple;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
 
@@ -111,8 +108,9 @@ struct Variable
 class ClassDeclaration
 {
 public:
-	ClassDeclaration()
+	ClassDeclaration(uint32_t token)
 	{
+		ClassToken = token;
 	}
 
 	uint32_t ClassToken;
@@ -186,9 +184,9 @@ class ExecutionState
 {
 	private:
 	u16 _pc;
-	std::stack<Variable> _executionStack;
-	std::vector<Variable> _locals;
-	std::vector<Variable> _arguments;
+	stack<Variable> _executionStack;
+	vector<Variable> _locals;
+	vector<Variable> _arguments;
 	int _codeReference;
 	
 	public:
@@ -198,7 +196,7 @@ class ExecutionState
 
 	u32 _memoryGuard;
 	ExecutionState(int codeReference, unsigned maxLocals, unsigned argCount, IlCode* executingMethod) :
-	_pc(0), _executionStack(),
+	_pc(0), _executionStack(10),
 	_locals(maxLocals), _arguments(argCount)
 	{
 		_codeReference = codeReference;
@@ -270,12 +268,6 @@ class FirmataIlExecutor: public FirmataFeature
     boolean handleSysex(byte command, byte argc, byte* argv) override;
     void reset() override;
 	void runStep();
-	
-	
-	FlashString* name()
-	{
-		return F("IL");
-	}
  
   private:
     ExecutionError LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
@@ -305,6 +297,8 @@ class FirmataIlExecutor: public FirmataFeature
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
 	ExecutionState* _methodCurrentlyExecuting;
+
+	stdSimple::map<u32, ClassDeclaration> _classes;
 };
 
 
