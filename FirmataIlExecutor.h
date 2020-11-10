@@ -34,6 +34,7 @@ enum class ExecutorCommand : byte
 	ResetExecutor = 5,
 	KillTask = 6,
 	MethodSignature = 7,
+	ClassDeclaration = 8,
 
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -115,7 +116,8 @@ public:
 
 	uint32_t ClassToken;
 
-	vector<Variable> members;
+	// Here, the value is the metadata token
+	vector<Variable> memberTypes;
 };
 
 class IlCode
@@ -281,12 +283,15 @@ class FirmataIlExecutor: public FirmataFeature
                                 OPCODE instr, Variable value1, Variable value2);
 
     void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
+	uint32_t DecodePackedUint32(byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
 	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, u16 opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-	IlCode* ResolveToken(byte codeReference, uint32_t token);
+    void* CreateInstance(u32 ctorToken);
+	size_t SizeOfClass(ClassDeclaration& cls);
+    IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
     void SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(uint32_t token);

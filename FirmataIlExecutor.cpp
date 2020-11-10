@@ -21,8 +21,8 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
-// #define TRACE(x) x;
-#define TRACE(x)
+#define TRACE(x) x
+// #define TRACE(x)
 
 // TODO: Remove opcodes we'll never support (i.e MONO from definition list)
 const byte OpcodeInfo[] PROGMEM =
@@ -134,6 +134,15 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 			SendAckOrNack(subCommand, LoadMetadataTokenMapping(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
 			break;
+		case ExecutorCommand::ClassDeclaration:
+			if (argc < 11)
+			{
+				Firmata.sendString(F("Not enough IL data parameters"));
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+			}
+
+			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2), argv[7] | argv[8] << 7, argv[9] | argv[10] << 7, argc - 11, argv + 11));
+			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
 			{
@@ -162,6 +171,22 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		return true;
 	}
 	return false;
+}
+
+/// <summary>
+/// Decodes an uint 32 from 5 bytes
+/// </summary>
+/// <param name="argv"></param>
+/// <returns></returns>
+uint32_t FirmataIlExecutor::DecodePackedUint32(byte* argv)
+{
+	uint32_t result = 0;
+	result = argv[0];
+	result |= ((uint32_t)argv[1]) << 7;
+	result |= ((uint32_t)argv[2]) << 14;
+	result |= ((uint32_t)argv[3]) << 21;
+	result |= ((uint32_t)argv[4]) << 28;
+	return result;
 }
 
 bool FirmataIlExecutor::IsExecutingCode()
@@ -939,7 +964,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						stack->push(*returnValue);
 
-						TRACE(Firmata.sendString(F("Pushing return value: "), *returnValue));
+						TRACE(Firmata.sendString(F("Pushing return value: "), returnValue->Uint32));
 					}
 					
 					break;
@@ -1178,12 +1203,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineMethod:
             {
-				if (instr != CEE_CALLVIRT && instr != CEE_CALL) 
+				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ)
 				{
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
 				}
 
+				void* newObjInstance = nullptr;
+            	
 				hlpCodePtr = (u32*)(pCode + PC);
 				u32 tk = *hlpCodePtr;
                 PC += 4;
@@ -1193,6 +1220,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
 					return MethodState::Aborted;
+				}
+
+				if (instr == CEE_NEWOBJ)
+				{
+					newObjInstance = CreateInstance(newMethod->methodToken);
+					if (newObjInstance == nullptr)
+					{
+						return MethodState::Aborted;
+					}
 				}
             	
 				u32 method = (u32)newMethod;
@@ -1217,13 +1253,30 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	// Load data pointer for the new method
 				currentMethod = newMethod;
 				pCode = newMethod->methodIl;
-            	
+
 				// Provide arguments to the new method
-				while (argumentCount > 0)
+				if (newObjInstance != nullptr)
+            	{
+            		// We're calling a ctor. The first argument (0) is the newly created object instance and so does not come from the stack
+					while (argumentCount > 1)
+					{
+						argumentCount--;
+						arguments->at(argumentCount) = oldStack->top();
+						oldStack->pop();
+					}
+					Variable v;
+					v.Type = VariableKind::Object;
+					v.Object = newObjInstance;
+					arguments->at(0) = v;
+            	}
+				else
 				{
-					argumentCount--;
-					arguments->at(argumentCount) = oldStack->top();
-					oldStack->pop();
+					while (argumentCount > 0)
+					{
+						argumentCount--;
+						arguments->at(argumentCount) = oldStack->top();
+						oldStack->pop();
+					}
 				}
             		
 				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
@@ -1245,6 +1298,54 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	return MethodState::Running;
 }
 
+void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
+{
+	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
+	for (size_t i = 0; i < _classes.size(); i++)
+	{
+		ClassDeclaration& cls = _classes.at(i);
+		for(size_t j = 0; j < cls.memberTypes.size(); j++)
+		{
+			if (cls.memberTypes.at(j).Uint32 == ctorToken)
+			{
+				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
+				// The constructor that was called belongs to this class
+				// Compute sizeof(class)
+				size_t sizeOfClass = SizeOfClass(cls);
+
+				TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
+				// Todo: Alloc and never free is not really a GC thing.
+				void* ret = malloc(sizeOfClass);
+				if (ret == nullptr)
+				{
+					Firmata.sendString(F("Not enough memory allocating an instance of 0x"), cls.ClassToken);
+					return nullptr;
+				}
+				memset(ret, 0, sizeOfClass); // the standard explicitly requires the memory to be initialized
+				return ret;
+			}
+		}
+	}
+
+	Firmata.sendString(F("No class found with that .ctor"));
+	return nullptr;
+}
+
+size_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
+{
+	size_t sizeOfClass = sizeof(void*); // vtable
+	for (size_t k = 0; k < cls.memberTypes.size(); k++)
+	{
+		if (cls.memberTypes.at(k).Type != VariableKind::Method)
+		{
+			sizeOfClass += min(sizeof(void*), sizeof(uint32_t));
+		}
+	}
+	// TODO: Add size of superclass(es)
+	
+	return sizeOfClass;
+}
+
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
 {
 	bool alreadyExists = _classes.contains(classToken);
@@ -1262,17 +1363,19 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberO
 	// Reinit
 	if (offset == 0)
 	{
-		decl->members.clear();
+		decl->memberTypes.clear();
 	}
 
-	for (int i = 0; i < argc; i++)
+	for (int i = 0; i < argc;)
 	{
 		Variable v;
-		v.Int32 = 0;
 		v.Type = (VariableKind)argv[i];
-		decl->members.push_back(v);
+		v.Uint32 = DecodePackedUint32(argv + i + 1);
+		i += 5;
+		Firmata.sendStringf(F("Received member %lx of class %lx"), 8, v.Uint32, classToken);
+		decl->memberTypes.push_back(v);
 	}
-	
+
 	return ExecutionError::None;
 }
 
@@ -1412,6 +1515,8 @@ void FirmataIlExecutor::reset()
 	}
 
 	_firstMethod = nullptr;
+
+	_classes.clear();
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
 }

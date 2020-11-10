@@ -51,5 +51,16 @@ namespace stdSimple
 			_keys.push_back(key);
 			_values.push_back(value);
 		}
+
+		void clear()
+		{
+			_keys.clear();
+			_values.clear();
+		}
+
+		size_t size()
+		{
+			return _keys.size();
+		}
 	};
 }
