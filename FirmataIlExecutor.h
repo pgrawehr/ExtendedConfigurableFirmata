@@ -109,12 +109,16 @@ struct Variable
 class ClassDeclaration
 {
 public:
-	ClassDeclaration(uint32_t token)
+	ClassDeclaration(int32_t token, int32_t parent, int16_t size)
 	{
 		ClassToken = token;
+		ParentToken = parent;
+		ClassSize = size;
 	}
 
-	uint32_t ClassToken;
+	int32_t ClassToken;
+	int32_t ParentToken;
+	int16_t ClassSize; // Including superclasses and vtable
 
 	// Here, the value is the metadata token
 	vector<Variable> memberTypes;
@@ -276,7 +280,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
 	ExecutionError LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 
 	static Variable ExecuteSpecialMethod(byte method, const vector<Variable> &args);
     MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
@@ -290,9 +294,10 @@ class FirmataIlExecutor: public FirmataFeature
 	void InvalidOpCode(u16 pc, u16 opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(u32 ctorToken);
-	size_t SizeOfClass(ClassDeclaration& cls);
+	int16_t SizeOfClass(ClassDeclaration& cls);
     IlCode* ResolveToken(byte codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
+	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(uint32_t token);
 	IlCode* GetMethodByCodeReference(byte codeReference);

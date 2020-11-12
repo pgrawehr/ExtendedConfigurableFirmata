@@ -141,7 +141,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 			}
 
-			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2), argv[7] | argv[8] << 7, argv[9] | argv[10] << 7, argc - 11, argv + 11));
+			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
+				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5),
+				DecodePackedUint14(argv + 2 + 5 + 5 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), argc - 16, argv + 16));
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
@@ -176,8 +178,6 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 /// <summary>
 /// Decodes an uint 32 from 5 bytes
 /// </summary>
-/// <param name="argv"></param>
-/// <returns></returns>
 uint32_t FirmataIlExecutor::DecodePackedUint32(byte* argv)
 {
 	uint32_t result = 0;
@@ -186,6 +186,17 @@ uint32_t FirmataIlExecutor::DecodePackedUint32(byte* argv)
 	result |= ((uint32_t)argv[2]) << 14;
 	result |= ((uint32_t)argv[3]) << 21;
 	result |= ((uint32_t)argv[4]) << 28;
+	return result;
+}
+
+/// <summary>
+/// Decode a uint14 from 2 x 7 bit
+/// </summary>
+uint16_t FirmataIlExecutor::DecodePackedUint14(byte *argv)
+{
+	uint32_t result = 0;
+	result = argv[0];
+	result |= ((uint32_t)argv[1]) << 7;
 	return result;
 }
 
@@ -1331,22 +1342,12 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 	return nullptr;
 }
 
-size_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
+int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
 {
-	size_t sizeOfClass = sizeof(void*); // vtable
-	for (size_t k = 0; k < cls.memberTypes.size(); k++)
-	{
-		if (cls.memberTypes.at(k).Type != VariableKind::Method)
-		{
-			sizeOfClass += min(sizeof(void*), sizeof(uint32_t));
-		}
-	}
-	// TODO: Add size of superclass(es)
-	
-	return sizeOfClass;
+	return cls.ClassSize;
 }
 
-ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
 {
 	bool alreadyExists = _classes.contains(classToken);
 	ClassDeclaration* decl;
@@ -1356,7 +1357,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u16 numberO
 	}
 	else
 	{
-		_classes.insert(classToken, ClassDeclaration(classToken));
+		_classes.insert(classToken, ClassDeclaration(classToken, parent, size));
 		decl = &_classes.at(classToken);
 	}
 
