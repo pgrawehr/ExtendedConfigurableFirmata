@@ -2,6 +2,7 @@
 
 #include "Arduino.h"
 #include "ObjectVector.h"
+#include "ObjectIterator.h"
 
 namespace stdSimple
 {
@@ -13,6 +14,45 @@ namespace stdSimple
 		vector<TKey> _keys;
 		vector<TValue> _values;
 	public:
+		class iterator
+		{
+		private:
+			int _index;
+			vector<TKey>& _keys;
+			vector<TValue>& _values;
+		public:
+
+			iterator(int startIndex, vector<TKey>& keys, vector<TValue>& values)
+			: _index(index), _keys(keys), _values(values)
+			{
+			}
+			
+			bool operator!=(const iterator& m) const {
+				return m._index != _index;
+			}
+
+			iterator& operator++()
+			{
+				++_index;
+				return *this;
+			}
+
+			const iterator operator->()
+			{
+				return &(*this);
+			}
+
+			TKey& first()
+			{
+				return _keys[_index];
+			}
+
+			TValue& second()
+			{
+				return _values[_index];
+			}
+		};
+		
 		map()
 		{
 		}
@@ -61,6 +101,16 @@ namespace stdSimple
 		size_t size()
 		{
 			return _keys.size();
+		}
+
+		iterator begin()
+		{
+			return iterator(_keys.begin());
+		}
+
+		iterator end()
+		{
+			return iterator(_keys.end());
 		}
 	};
 }

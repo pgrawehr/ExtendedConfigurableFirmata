@@ -147,7 +147,7 @@ namespace stdSimple
 
 		iterator end()
 		{
-			return _data + _count;
+			return _data + _count + 1;
 		}
 	};
 

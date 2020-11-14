@@ -135,7 +135,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			SendAckOrNack(subCommand, LoadMetadataTokenMapping(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
 			break;
 		case ExecutorCommand::ClassDeclaration:
-			if (argc < 11)
+			if (argc < 19)
 			{
 				Firmata.sendString(F("Not enough IL data parameters"));
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
@@ -143,7 +143,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 
 			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
 				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5),
-				DecodePackedUint14(argv + 2 + 5 + 5 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), argc - 16, argv + 16));
+				DecodePackedUint14(argv + 2 + 5 + 5 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), argc - 18, argv + 18));
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
@@ -1312,12 +1312,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
-	for (size_t i = 0; i < _classes.size(); i++)
+	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
 	{
-		ClassDeclaration& cls = _classes.at(i);
+		ClassDeclaration& cls = iterator->second();
+		TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
 		for(size_t j = 0; j < cls.memberTypes.size(); j++)
 		{
-			if (cls.memberTypes.at(j).Uint32 == ctorToken)
+			Variable& member = cls.memberTypes.at(j);
+			TRACE(Firmata.sendString(F("Member "), member.Uint32));
+			if (member.Uint32 == ctorToken)
 			{
 				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 				// The constructor that was called belongs to this class
@@ -1367,16 +1370,40 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 		decl->memberTypes.clear();
 	}
 
-	for (int i = 0; i < argc;)
+	Firmata.sendStringf(F("Class %lx has parent %lx and size %d. (%d of %d members)"), 14, classToken, parent, size, offset, numberOfMembers);
+	
+	for (int i = 0; i + 5 < argc;)
 	{
 		Variable v;
 		v.Type = (VariableKind)argv[i];
-		v.Uint32 = DecodePackedUint32(argv + i + 1);
-		i += 5;
+		v.Uint32 = DecodePackedUint32(argv + i + 1); // uses 5 bytes
+		i += 6;
 		Firmata.sendStringf(F("Received member %lx of class %lx"), 8, v.Uint32, classToken);
 		decl->memberTypes.push_back(v);
 	}
 
+	// This is test code - perform an integrity test on the data structure
+	
+	ClassDeclaration& cls = _classes.at(classToken);
+	if (cls.ClassToken != classToken)
+	{
+		Firmata.sendStringf(F("Current class is not in map: &lx"), 4, cls.ClassToken);
+	}
+
+	if (cls.memberTypes.size() != offset + 1)
+	{
+		Firmata.sendStringf(F("Expected member count doesn't fit: %d"), 2, cls.memberTypes.size());
+	}
+	for (int j = 0; j < cls.memberTypes.size(); j++)
+	{
+		Variable& v = cls.memberTypes.at(j);
+		if ((v.Uint32 & 0xFF000000) == 0)
+		{
+			Firmata.sendStringf(F("Invalid member entry at %d"), 2, j);
+		}
+	}
+	
+	
 	return ExecutionError::None;
 }
 
