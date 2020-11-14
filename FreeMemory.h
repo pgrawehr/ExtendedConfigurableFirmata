@@ -7,6 +7,15 @@ extern "C" char* sbrk(int incr);
 extern char *__brkval;
 #endif  // __arm__
 
+#if SIM
+int freeMemory()
+{
+	// More than we need, anyway
+	return INT32_MAX;
+}
+
+#else
+
 // Check current SRAM occupation 
 int freeMemory() 
 {
@@ -19,3 +28,4 @@ int freeMemory()
   return __brkval ? &top - __brkval : &top - __malloc_heap_start;
 #endif  // __arm__
 }
+#endif

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{a0126339-f9ed-42be-b647-b7463d6dec36}</ProjectGuid>
+    <RootNamespace>ExtendedConfigurableFirmataSim</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\libraries\ConfigurableFirmata\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\DhtFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\DigitalInputFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\DigitalOutputFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Encoder7Bit.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\EthernetClientStream.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataExt.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.cpp" />
+    <ClCompile Include="..\FirmataIlExecutor.cpp" />
+    <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
+    <ClCompile Include="SimulatorImpl.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\ExtendedConfigurableFirmata.ino">
+      <FileType>Document</FileType>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogWrite.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DhtFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DigitalInputFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DigitalOutputFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\Encoder7Bit.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\EthernetClientStream.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataExt.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataFeature.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.h" />
+    <ClInclude Include="..\FirmataIlExecutor.h" />
+    <ClInclude Include="..\FreeMemory.h" />
+    <ClInclude Include="..\ObjectIterator.h" />
+    <ClInclude Include="..\ObjectMap.h" />
+    <ClInclude Include="..\ObjectStack.h" />
+    <ClInclude Include="..\ObjectVector.h" />
+    <ClInclude Include="..\opcode.def.h" />
+    <ClInclude Include="..\openum.h" />
+    <ClInclude Include="HardwareSerial.h" />
+    <ClInclude Include="pgmspace.h" />
+    <ClInclude Include="SimulatorImpl.h" />
+    <ClInclude Include="WProgram.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
