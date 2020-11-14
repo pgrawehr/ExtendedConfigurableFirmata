@@ -165,7 +165,7 @@ int NetworkConnection::read()
 	
 	if (ret > 0)
 	{
-		return buf[0];
+		return buf[0] & 0xFF; // Otherwise, this is sign-extended here
 	}
 
 	return -1;
