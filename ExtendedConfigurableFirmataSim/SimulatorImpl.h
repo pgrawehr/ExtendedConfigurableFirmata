@@ -8,8 +8,16 @@
 class NetworkConnection : public Serial
 {
 private:
-	SOCKET _socket;
+	SOCKET _listen;
+	SOCKET _client;
+	WSADATA _data;
 public:
+	NetworkConnection()
+	{
+		_listen = INVALID_SOCKET;
+		_client = INVALID_SOCKET;
+	}
+	
 	virtual void begin() override
 	{
 		begin(0);
@@ -22,5 +30,10 @@ public:
 	virtual void write(byte b) override;
 
 	virtual void end() override;
+
+	virtual int available() override;
+
+	virtual void flush() override;
 };
 
+extern class NetworkConnection NetworkSerial;

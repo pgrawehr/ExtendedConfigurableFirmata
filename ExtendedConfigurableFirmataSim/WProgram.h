@@ -51,6 +51,10 @@ public:
 	virtual void flush();
 	virtual int read();
 	virtual int available();
+
+	virtual ~Stream()
+	{
+	}
 };
 
 class Serial : public Stream

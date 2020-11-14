@@ -16,14 +16,18 @@
 //#define ENABLE_SERIAL
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
-#define ENABLE_DHT
-#define ENABLE_I2C
+// #define ENABLE_DHT
+// #define ENABLE_I2C
 #define ENABLE_IL_EXECUTOR
-#define ENABLE_SPI
+// #define ENABLE_SPI
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
 
 #include <ConfigurableFirmata.h>
+
+#ifdef SIM
+#include "SimulatorImpl.h"
+#endif
 
 #ifdef ENABLE_DIGITAL
 #include <DigitalInputFirmata.h>
@@ -217,7 +221,10 @@ void initTransport()
 {
   // Uncomment to save a couple of seconds by disabling the startup blink sequence.
   // Firmata.disableBlinkVersion();
-#ifdef DEBUG_STREAM
+#ifdef SIM
+	NetworkSerial.begin();
+	Firmata.begin(NetworkSerial);
+#elif DEBUG_STREAM
     Firmata.begin(debugStream);
 #else
     Firmata.begin(115200);
