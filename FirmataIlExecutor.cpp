@@ -1314,7 +1314,7 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
 	{
-		ClassDeclaration& cls = iterator->second();
+		ClassDeclaration& cls = iterator.second();
 		TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
 		for(size_t j = 0; j < cls.memberTypes.size(); j++)
 		{

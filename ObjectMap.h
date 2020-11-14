@@ -23,7 +23,7 @@ namespace stdSimple
 		public:
 
 			iterator(int startIndex, vector<TKey>& keys, vector<TValue>& values)
-			: _index(index), _keys(keys), _values(values)
+			: _index(startIndex), _keys(keys), _values(values)
 			{
 			}
 			
@@ -35,11 +35,6 @@ namespace stdSimple
 			{
 				++_index;
 				return *this;
-			}
-
-			const iterator operator->()
-			{
-				return &(*this);
 			}
 
 			TKey& first()
@@ -105,12 +100,12 @@ namespace stdSimple
 
 		iterator begin()
 		{
-			return iterator(_keys.begin());
+			return iterator(0, _keys, _values);
 		}
 
 		iterator end()
 		{
-			return iterator(_keys.end());
+			return iterator(0, _keys, _values);
 		}
 	};
 }
