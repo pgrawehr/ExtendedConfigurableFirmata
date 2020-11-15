@@ -158,6 +158,7 @@ void NetworkConnection::begin(int baudRate)
 
 	_client = INVALID_SOCKET;
 
+	wprintf(L"Waiting for client...\n");
 	acceptNew();
 
 }
@@ -165,7 +166,6 @@ void NetworkConnection::begin(int baudRate)
 void NetworkConnection::acceptNew()
 {
 	_client = INVALID_SOCKET;
-	wprintf(L"Waiting for client...\n");
 	// Accept a client socket
 	_client = accept(_listen, NULL, NULL);
 	if (_client == INVALID_SOCKET)
@@ -227,6 +227,7 @@ int NetworkConnection::read()
 	}
 
 	// If ret is 0, this always means the connection has been closed, and not that no data is available
+	wprintf(L"Connection closed - waiting for new client...\n");
 	closesocket(_client);
 	_client = INVALID_SOCKET;
 	return -1;
@@ -256,12 +257,14 @@ int NetworkConnection::available()
 		wprintf(L"Socket error: %d\n", error);
 		if (error == WSAECONNRESET || error == WSANOTINITIALISED)
 		{
+			wprintf(L"Connection closed - waiting for new client...\n");
+
 			closesocket(_client);
 			_client = INVALID_SOCKET;
 			acceptNew();
 		}
 
-		Sleep(50);
+		Sleep(10);
 		return 0;
 	}
 
