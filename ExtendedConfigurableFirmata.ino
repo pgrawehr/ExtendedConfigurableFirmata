@@ -43,6 +43,7 @@ AnalogInputFirmata analogInput;
 
 #include <AnalogOutputFirmata.h>
 AnalogOutputFirmata analogOutput;
+#include <AnalogWrite.h>
 #endif
 
 #ifdef ENABLE_I2C
@@ -74,14 +75,6 @@ SpiFirmata spi;
 #include <ServoFirmata.h>
 ServoFirmata servo;
 #endif
-#include <AnalogWrite.h>
-
-#ifdef ENABLE_BASIC_SCHDULER
-// The scheduler allows to store scripts on the board, however this requires a kind of compiler on the client side.
-// When running dotnet/iot on the client side, prefer using the FirmataIlExecutor module instead
-#include <FirmataScheduler.h>
-FirmataScheduler scheduler;
-#endif
 
 #include <FirmataReporting.h>
 FirmataReporting reporting;
@@ -94,6 +87,13 @@ AccelStepperFirmata accelStepper;
 #ifdef ENABLE_DHT
 #include <DhtFirmata.h>
 DhtFirmata dhtFirmata;
+#endif
+
+#ifdef ENABLE_BASIC_SCHEDULER
+// The scheduler allows to store scripts on the board, however this requires a kind of compiler on the client side.
+// When running dotnet/iot on the client side, prefer using the FirmataIlExecutor module instead
+#include <FirmataScheduler.h>
+FirmataScheduler scheduler;
 #endif
 
 #ifdef ENABLE_IL_EXECUTOR
