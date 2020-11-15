@@ -104,7 +104,7 @@ namespace stdSimple
 
 		iterator end()
 		{
-			return iterator(0, _keys, _values);
+			return iterator(_keys.size(), _keys, _values);
 		}
 	};
 }
