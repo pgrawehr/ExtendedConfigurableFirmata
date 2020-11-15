@@ -95,6 +95,18 @@ void Serial::end()
 {
 }
 
+NetworkConnection::NetworkConnection()
+	: _data()
+{
+	_listen = INVALID_SOCKET;
+	_client = INVALID_SOCKET;
+}
+
+NetworkConnection::~NetworkConnection()
+{
+	WSACleanup();
+}
+
 void NetworkConnection::begin(int baudRate)
 {
 	int iResult = WSAStartup(MAKEWORD(2, 2), &_data);
@@ -132,20 +144,56 @@ void NetworkConnection::begin(int baudRate)
 	// Listen for incoming connection requests 
 	// on the created socket
 	if (listen(_listen, SOMAXCONN) == SOCKET_ERROR)
+	{
 		wprintf(L"listen function failed with error: %d\n", WSAGetLastError());
-
-	wprintf(L"Listening on socket...\n");
+		return;
+	}
+	
+	u_long iMode = 1;
+	if (ioctlsocket(_listen, FIONBIO, &iMode) == SOCKET_ERROR)
+	{
+		wprintf(L"ioctlsocket function failed with error: %d\n", WSAGetLastError());
+		return;
+	}
 
 	_client = INVALID_SOCKET;
 
+	acceptNew();
+
+}
+
+void NetworkConnection::acceptNew()
+{
+	_client = INVALID_SOCKET;
+	wprintf(L"Waiting for client...\n");
 	// Accept a client socket
 	_client = accept(_listen, NULL, NULL);
-	if (_client == INVALID_SOCKET) 
+	if (_client == INVALID_SOCKET)
 	{
-		printf("accept failed: %d\n", WSAGetLastError());
-		closesocket(_listen);
-		WSACleanup();
+		int error = WSAGetLastError();
+		if (error == WSAEWOULDBLOCK)
+		{
+			Sleep(50);
+			return;
+		}
+		
+		printf("accept failed: %d\n", error);
 		return;
+	}
+
+	//-------------------------
+	// Set the socket I/O mode: In this case FIONBIO
+	// enables or disables the blocking mode for the 
+	// socket based on the numerical value of iMode.
+	// If iMode = 0, blocking is enabled; 
+	// If iMode != 0, non-blocking mode is enabled.
+
+	u_long iMode = 1;
+	int ret  = ioctlsocket(_client, FIONBIO, &iMode);
+	if (ret == SOCKET_ERROR)
+	{
+		auto error = WSAGetLastError();
+		wprintf(L"Socket error when setting to non-blocking mode: %d\n", error);
 	}
 }
 
@@ -168,6 +216,19 @@ int NetworkConnection::read()
 		return buf[0] & 0xFF; // Otherwise, this is sign-extended here
 	}
 
+	if (ret < 0)
+	{
+		// There was an error
+		int error = WSAGetLastError();
+		if (error == WSAEWOULDBLOCK)
+		{
+			return -1; // No data available
+		}
+	}
+
+	// If ret is 0, this always means the connection has been closed, and not that no data is available
+	closesocket(_client);
+	_client = INVALID_SOCKET;
 	return -1;
 }
 
@@ -180,15 +241,39 @@ void NetworkConnection::write(byte b)
 
 int NetworkConnection::available()
 {
+	if (_client == INVALID_SOCKET)
+	{
+		acceptNew();
+		return 0;
+	}
+	
 	char buf[1];
 	int ret = recv(_client, buf, 1, MSG_PEEK);
 
-	if (ret > 0)
+	if (ret == SOCKET_ERROR)
 	{
-		return ret;
+		auto error = WSAGetLastError();
+		wprintf(L"Socket error: %d\n", error);
+		if (error == WSAECONNRESET || error == WSANOTINITIALISED)
+		{
+			closesocket(_client);
+			_client = INVALID_SOCKET;
+			acceptNew();
+		}
+
+		Sleep(50);
+		return 0;
 	}
 
-	return 0;
+	if (ret == 0)
+	{
+		// No bytes read. The socket is closed
+		closesocket(_client);
+		_client = INVALID_SOCKET;
+		acceptNew();
+	}
+
+	return 1;
 }
 
 void NetworkConnection::flush()

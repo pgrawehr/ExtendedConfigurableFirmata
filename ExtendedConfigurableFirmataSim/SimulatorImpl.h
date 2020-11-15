@@ -12,17 +12,14 @@ private:
 	SOCKET _client;
 	WSADATA _data;
 public:
-	NetworkConnection()
-	{
-		_listen = INVALID_SOCKET;
-		_client = INVALID_SOCKET;
-	}
+	NetworkConnection();
 	
 	virtual void begin() override
 	{
 		begin(0);
 	}
 
+	~NetworkConnection() override;
 	virtual void begin(int baudRate) override;
 
 	virtual int read() override;
@@ -34,6 +31,9 @@ public:
 	virtual int available() override;
 
 	virtual void flush() override;
+
+private:
+	void acceptNew();
 };
 
 extern class NetworkConnection NetworkSerial;
