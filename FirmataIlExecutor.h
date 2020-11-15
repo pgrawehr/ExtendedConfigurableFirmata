@@ -74,6 +74,22 @@ enum class VariableKind : byte
 	Method = 5, // Only for class member types
 };
 
+enum class NativeMethod
+{
+	None = 0,
+	SetPinMode = 1,
+	WritePin = 2,
+	ReadPin = 3,
+	GetTickCount = 4,
+	SleepMicroseconds = 5,
+	GetMicroseconds = 6,
+	Debug = 7,
+	ObjectEquals = 8,
+	ReferenceEquals = 9,
+	GetType = 10,
+	GetHashCode = 11,
+};
+
 struct Variable
 {
 	// Important: Data must come first (because we sometimes take the address of this)
@@ -139,6 +155,7 @@ public:
 		numArgs = 0;
 		next = nullptr;
 		codeReference = -1;
+		nativeMethod = NativeMethod::None;
 	}
 
 	~IlCode()
@@ -172,7 +189,6 @@ public:
 	byte methodFlags;
 	u16 methodLength;
 	byte codeReference;
-	// For special methods (see methodFlags field), this contains the method number
 	byte maxLocals;
 	vector<VariableKind> localTypes;
 	byte numArgs;
@@ -182,6 +198,8 @@ public:
 	// Typically, these will be mappings from 0x0A (memberRef tokens) to 0x06 (methodDef tokens)
 	// for methods defined in another assembly than this method. 
 	uint32_t* tokenMap;
+	// Native method number
+	NativeMethod nativeMethod;
 	byte tokenMapEntries;
 	IlCode* next;
 };
@@ -277,12 +295,12 @@ class FirmataIlExecutor: public FirmataFeature
  
   private:
     ExecutionError LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv);
+	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, NativeMethod nativeMethod, byte argc, byte* argv);
 	ExecutionError LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 
-	static Variable ExecuteSpecialMethod(byte method, const vector<Variable> &args);
+	static Variable ExecuteSpecialMethod(NativeMethod method, const vector<Variable> &args);
     MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
                                 OPCODE instr, Variable value1, Variable value2);
 

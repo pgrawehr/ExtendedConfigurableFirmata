@@ -114,7 +114,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadIlDeclaration(argv[2], argv[3], argv[4], argc - 5, argv + 5));
+			SendAckOrNack(subCommand, LoadIlDeclaration(argv[2], argv[3], argv[4], (NativeMethod)DecodePackedUint32(argv + 5), argc - 11, argv + 11));
 			break;
 		case ExecutorCommand::MethodSignature:
 			if (argc < 4)
@@ -261,7 +261,8 @@ void FirmataIlExecutor::runStep()
 	_methodCurrentlyExecuting = nullptr;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals,
+	NativeMethod nativeMethod, 	byte argc, byte* argv)
 {
 	Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags);
 	IlCode* method = GetMethodByCodeReference(codeReference);
@@ -279,6 +280,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 
 	method->methodFlags = flags;
 	method->maxLocals = maxLocals;
+	method->nativeMethod = nativeMethod;
 	method->numArgs = argv[0]; // Argument count
 	uint32_t token = DecodeUint32(argv + 1);
 	method->methodToken = token;
@@ -496,15 +498,12 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, u16 opCode)
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
-Variable FirmataIlExecutor::ExecuteSpecialMethod(byte method, const vector<Variable>& args)
+Variable FirmataIlExecutor::ExecuteSpecialMethod(NativeMethod method, const vector<Variable>& args)
 {
 	u32 mil = 0;
 	switch(method)
 	{
-		case 0: // Sleep(int delay)
-			delay(args[1].Int32);
-			break;
-		case 1: // PinMode(int pin, PinMode mode)
+	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
 		{
 			int mode = INPUT;
 			if (args[2].Int32 == 1) // Must match PullMode enum on C# side
@@ -520,26 +519,26 @@ Variable FirmataIlExecutor::ExecuteSpecialMethod(byte method, const vector<Varia
 
 			break;
 		}
-		case 2: // Write(int pin, int value)
+	case NativeMethod::WritePin: // Write(int pin, int value)
 			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
 			digitalWrite(args[1].Int32, args[2].Int32 != 0);
 			break;
-		case 3:
+	case NativeMethod::ReadPin:
 			return { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
-		case 4: // TickCount
+	case NativeMethod::GetTickCount: // TickCount
 			mil = millis();
 			// Firmata.sendString(F("TickCount "), mil);
 			return { (int32_t)mil, VariableKind::Int32 };
-		case 5:
+	case NativeMethod::SleepMicroseconds:
 			delayMicroseconds(args[1].Int32);
 			return {};
-		case 6:
+	case NativeMethod::GetMicroseconds:
 			return { (int32_t)micros(), VariableKind::Int32 };
-		case 7:
+	case NativeMethod::Debug:
 			Firmata.sendString(F("Debug "), args[1].Uint32);
 			return {};
 		default:
-			Firmata.sendString(F("Unknown internal method: "), method);
+			Firmata.sendString(F("Unknown internal method: "), (int)method);
 			break;
 	}
 	return {};
@@ -878,9 +877,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     	
     	if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
 		{
-			int specialMethod = currentMethod->maxLocals;
+			NativeMethod specialMethod = currentMethod->nativeMethod;
 
-			TRACE(Firmata.sendString(F("Executing special method "), specialMethod));
+			TRACE(Firmata.sendString(F("Executing special method "), (int)specialMethod));
 			Variable retVal = ExecuteSpecialMethod(specialMethod, *arguments);
 			
 			// We're called into a "special" (built-in) method. 
