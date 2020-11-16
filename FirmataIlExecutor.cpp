@@ -101,10 +101,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				return true;
 			}
 			// 14-bit values transmitted for length and offset
-			SendAckOrNack(subCommand, LoadIlDataStream(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
+			SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 8));
 			break;
 		case ExecutorCommand::StartTask:
-			DecodeParametersAndExecute(argv[2], argc - 3, argv + 3);
+			DecodeParametersAndExecute(DecodePackedUint14(argv + 2), argc - 4, argv + 4);
 			SendAckOrNack(subCommand, ExecutionError::None);
 			break;
 		case ExecutorCommand::DeclareMethod:
@@ -114,7 +114,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadIlDeclaration(argv[2], argv[3], argv[4], (NativeMethod)DecodePackedUint32(argv + 5), argc - 11, argv + 11));
+			SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], (NativeMethod)DecodePackedUint32(argv + 6), argc - 12, argv + 12));
 			break;
 		case ExecutorCommand::MethodSignature:
 			if (argc < 4)
@@ -123,7 +123,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadMethodSignature(argv[2], argv[3], argc - 4, argv + 4));
+			SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
 			break;
 		case ExecutorCommand::SetMethodTokens:
 			if (argc < 6)
@@ -132,7 +132,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadMetadataTokenMapping(argv[2], argv[3] | argv[4] << 7, argv[5] | argv[6] << 7, argc - 7, argv + 7));
+			SendAckOrNack(subCommand, LoadMetadataTokenMapping(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 9));
 			break;
 		case ExecutorCommand::ClassDeclaration:
 			if (argc < 19)
@@ -261,7 +261,7 @@ void FirmataIlExecutor::runStep()
 	_methodCurrentlyExecuting = nullptr;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flags, byte maxLocals,
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals,
 	NativeMethod nativeMethod, 	byte argc, byte* argv)
 {
 	Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags);
@@ -289,7 +289,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(byte codeReference, int flag
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv)
 {
 	Firmata.sendStringf(F("Loading Declaration."), 0);
 	IlCode* method = GetMethodByCodeReference(codeReference);
@@ -326,7 +326,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(byte codeReference, byte s
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, u16 totalTokens, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(u16 codeReference, u16 totalTokens, u16 offset, byte argc, byte* argv)
 {
 	Firmata.sendStringf(F("Loading %d tokens from offset %d."), 4, (int)totalTokens, (int)offset);
 	IlCode* method = GetMethodByCodeReference(codeReference);
@@ -373,9 +373,9 @@ ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(byte codeReference, u
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
 {
-	TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
+	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
@@ -433,7 +433,7 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
-void FirmataIlExecutor::SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(u16 codeReference, Variable returnValue, MethodState execResult)
 {
 	byte replyData[4];
 	// Reply format:
@@ -451,7 +451,8 @@ void FirmataIlExecutor::SendExecutionResult(byte codeReference, Variable returnV
 
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
-	Firmata.write(codeReference);
+	Firmata.write(codeReference & 0x7F);
+	Firmata.write((codeReference >> 7) & 0x7F);
 	
 	// 0: Code execution completed, called method ended
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
@@ -465,7 +466,7 @@ void FirmataIlExecutor::SendExecutionResult(byte codeReference, Variable returnV
 	Firmata.endSysex();
 }
 
-void FirmataIlExecutor::DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv)
+void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv)
 {
 	Variable result;
 	IlCode* method = GetMethodByCodeReference(codeReference);
@@ -1369,7 +1370,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 		decl->memberTypes.clear();
 	}
 
-	Firmata.sendStringf(F("Class %lx has parent %lx and size %d. (%d of %d members)"), 14, classToken, parent, size, offset, numberOfMembers);
+	// Firmata.sendStringf(F("Class %lx has parent %lx and size %d. (%d of %d members)"), 14, classToken, parent, size, offset, numberOfMembers);
 	
 	for (int i = 0; i + 5 < argc;)
 	{
@@ -1406,7 +1407,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	return ExecutionError::None;
 }
 
-IlCode* FirmataIlExecutor::ResolveToken(byte codeReference, uint32_t token)
+IlCode* FirmataIlExecutor::ResolveToken(u16 codeReference, uint32_t token)
 {
 	IlCode* method;
 	if ((token >> 24) == 0x0)
@@ -1468,7 +1469,7 @@ void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
 	parent->next = newCode;
 }
 
-IlCode* FirmataIlExecutor::GetMethodByCodeReference(byte codeReference)
+IlCode* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 {
 	IlCode* current = _firstMethod;
 	while (current != nullptr)

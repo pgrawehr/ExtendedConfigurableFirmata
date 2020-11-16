@@ -188,7 +188,7 @@ public:
 	u32 methodToken; // Primary method token (a methodDef token)
 	byte methodFlags;
 	u16 methodLength;
-	byte codeReference;
+	u16 codeReference;
 	byte maxLocals;
 	vector<VariableKind> localTypes;
 	byte numArgs;
@@ -211,7 +211,7 @@ class ExecutionState
 	stack<Variable> _executionStack;
 	vector<Variable> _locals;
 	vector<Variable> _arguments;
-	int _codeReference;
+	u16 _codeReference;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
@@ -294,17 +294,17 @@ class FirmataIlExecutor: public FirmataFeature
 	void runStep();
  
   private:
-    ExecutionError LoadIlDataStream(byte codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadIlDeclaration(byte codeReference, int flags, byte maxLocals, NativeMethod nativeMethod, byte argc, byte* argv);
-	ExecutionError LoadMethodSignature(byte codeReference, byte signatureType, byte argc, byte* argv);
-	ExecutionError LoadMetadataTokenMapping(byte codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
+    ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, NativeMethod nativeMethod, byte argc, byte* argv);
+	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
+	ExecutionError LoadMetadataTokenMapping(u16 codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 
 	static Variable ExecuteSpecialMethod(NativeMethod method, const vector<Variable> &args);
     MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
                                 OPCODE instr, Variable value1, Variable value2);
 
-    void DecodeParametersAndExecute(byte codeReference, byte argc, byte* argv);
+    void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
@@ -313,12 +313,12 @@ class FirmataIlExecutor: public FirmataFeature
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(u32 ctorToken);
 	int16_t SizeOfClass(ClassDeclaration& cls);
-    IlCode* ResolveToken(byte codeReference, uint32_t token);
+    IlCode* ResolveToken(u16 codeReference, uint32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	uint16_t DecodePackedUint14(byte* argv);
-    void SendExecutionResult(byte codeReference, Variable returnValue, MethodState execResult);
+    void SendExecutionResult(u16 codeReference, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(uint32_t token);
-	IlCode* GetMethodByCodeReference(byte codeReference);
+	IlCode* GetMethodByCodeReference(u16 codeReference);
 	void AttachToMethodList(IlCode* newCode);
 	IlCode* _firstMethod;
 
