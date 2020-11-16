@@ -114,7 +114,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], (NativeMethod)DecodePackedUint32(argv + 6), argc - 12, argv + 12));
+			SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], argv[6],
+				(NativeMethod)DecodePackedUint32(argv + 7), DecodePackedUint32(argv + 7 + 5)));
 			break;
 		case ExecutorCommand::MethodSignature:
 			if (argc < 4)
@@ -261,8 +262,8 @@ void FirmataIlExecutor::runStep()
 	_methodCurrentlyExecuting = nullptr;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals,
-	NativeMethod nativeMethod, 	byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount,
+	NativeMethod nativeMethod, int token)
 {
 	Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags);
 	IlCode* method = GetMethodByCodeReference(codeReference);
@@ -281,8 +282,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	method->methodFlags = flags;
 	method->maxLocals = maxLocals;
 	method->nativeMethod = nativeMethod;
-	method->numArgs = argv[0]; // Argument count
-	uint32_t token = DecodeUint32(argv + 1);
+	method->numArgs = argCount; // Argument count
 	method->methodToken = token;
 
 	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
