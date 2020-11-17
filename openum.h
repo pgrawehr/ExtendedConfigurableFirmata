@@ -47,5 +47,3 @@ typedef enum opcode_format_t
 } OPCODE_FORMAT;
 
 #endif /* __openum_h__ */
-
-
