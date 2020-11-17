@@ -133,7 +133,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				return true;
 			}
-			SendAckOrNack(subCommand, LoadMetadataTokenMapping(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 9));
+			SendAckOrNack(subCommand, LoadMetadataTokenMapping(DecodePackedUint14(argv + 2), DecodePackedUint14(argv + 4), 
+				DecodePackedUint14(argv + 6), argc - 8, argv + 8));
 			break;
 		case ExecutorCommand::ClassDeclaration:
 			if (argc < 19)
