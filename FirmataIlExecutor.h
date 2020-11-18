@@ -45,7 +45,7 @@ enum class MethodFlags
 	Static = 1,
 	Virtual = 2,
 	Special = 4,
-	Void = 8
+	VoidOrCtor = 8
 };
 
 enum class MethodState
@@ -119,6 +119,11 @@ struct Variable
 	{
 		Uint32 = 0;
 		Type = VariableKind::Void;
+	}
+
+	static size_t datasize()
+	{
+		return (sizeof(Variable) - sizeof(Type));
 	}
 };
 
@@ -221,7 +226,7 @@ class ExecutionState
 	u32 _memoryGuard;
 	ExecutionState(int codeReference, unsigned maxLocals, unsigned argCount, IlCode* executingMethod) :
 	_pc(0), _executionStack(10),
-	_locals(maxLocals), _arguments(argCount)
+	_locals(maxLocals, maxLocals), _arguments(argCount, argCount)
 	{
 		_codeReference = codeReference;
 		_next = nullptr;

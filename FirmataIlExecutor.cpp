@@ -546,6 +546,72 @@ Variable FirmataIlExecutor::ExecuteSpecialMethod(NativeMethod method, const vect
 	return {};
 }
 
+
+Variable Ldfld(Variable& obj, int token)
+{
+	byte* o = (byte*)obj.Object;
+	ClassDeclaration* vtable = (ClassDeclaration*)(*(int*)o);
+
+	// Assuming sizeof(void*) == sizeof(any pointer type)
+	// and sizeof(void*) >= sizeof(int)
+	// Our members start here
+	int offset = sizeof(void*);
+	// Todo: Check base classes
+	for (auto handle = vtable->memberTypes.begin(); handle != vtable->memberTypes.end(); ++handle)
+	{
+		if (handle->Int32 == token)
+		{
+			// Found the member
+			Variable v;
+			memcpy(&v.Object, (o + offset), sizeof(void*));
+			v.Type = handle->Type;
+			return v;
+		}
+
+		offset += Variable::datasize();
+		if (offset >= vtable->ClassSize)
+		{
+			// Something is wrong.
+			Firmata.sendString(F("Member offset exceeds class size"));
+		}
+	}
+
+	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
+	return Variable();
+}
+
+
+void Stfld(Variable& obj, int token, Variable& var)
+{
+	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
+	byte* o = (byte*)obj.Object;
+	// Get the first data element of where the object points to
+	ClassDeclaration* cls = ((ClassDeclaration*)(*(int*)o));
+
+	// Assuming sizeof(void*) == sizeof(any pointer type)
+	// Our members start here
+	int offset = sizeof(void*);
+	// Todo: Check base classes
+	for (auto handle = cls->memberTypes.begin(); handle != cls->memberTypes.end(); ++handle)
+	{
+		if (handle->Int32 == token)
+		{
+			// Found the member
+			memcpy(o + offset, &var.Object, sizeof(void*));
+			return;
+		}
+
+		offset += Variable::datasize();
+		if (offset >= cls->ClassSize)
+		{
+			// Something is wrong.
+			Firmata.sendString(F("Member offset exceeds class size"));
+		}
+	}
+
+	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
+}
+
 MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
 	OPCODE instr, Variable value1, Variable value2)
 {
@@ -600,6 +666,9 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		break;
 	case CEE_LDLOC_3:
 		stack->push(locals->at(3));
+		break;
+	case CEE_LDNULL:
+		stack->push(Variable(0, VariableKind::Object));
 		break;
 	case CEE_CEQ:
 		stack->push({ (uint32_t)(value1.Uint32 == value2.Uint32), VariableKind::Boolean });
@@ -871,7 +940,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		DWORD   len;
         OPCODE  instr;
 		
-		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d"), 4, PC, currentMethod->codeReference));
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token %lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
     	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
@@ -899,7 +968,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-			if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
+			if ((currentMethod->methodFlags & (byte)MethodFlags::VoidOrCtor) == 0)
 			{
 				stack->push(retVal);
 			}
@@ -946,7 +1015,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						*returnValue = Variable();
 					}
 
-					bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::Void;
+					bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::VoidOrCtor;
 					// Remove current method from execution stack
 					ExecutionState* frame = rootState;
 					if (frame == currentFrame)
@@ -1213,6 +1282,38 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				TRACE(Firmata.sendString(F("Branch instr. Next is "), PC));
 				break;
             }
+			case InlineField:
+	            {
+				int32_t token = 0;
+				Variable obj, var;
+		            switch(instr)
+		            {
+		            	// The ldfld instruction loads a field value of an object to the stack
+					case CEE_LDFLD:
+						{
+						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+						PC += 4;
+						obj = stack->top();
+						stack->pop();
+						stack->push(Ldfld(obj, token));
+						break;
+						}
+		            	// Store a value to a field
+					case CEE_STFLD:
+						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+						PC += 4;
+						var = stack->top();
+						stack->pop();
+						obj = stack->top();
+						stack->pop();
+						Stfld(obj, token, var);
+						break;
+					default:
+						InvalidOpCode(PC, instr);
+						return MethodState::Aborted;
+		            }
+	            }
+				break;
 			case InlineMethod:
             {
 				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ)
@@ -1276,10 +1377,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						arguments->at(argumentCount) = oldStack->top();
 						oldStack->pop();
 					}
+
+					// The last argument to push is the new object
 					Variable v;
 					v.Type = VariableKind::Object;
 					v.Object = newObjInstance;
 					arguments->at(0) = v;
+
+					// Also push it to the stack of the calling method - this will be the implicit return value of
+					// the newobj call.
+					oldStack->push(v);
             	}
 				else
 				{
@@ -1316,11 +1423,11 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
 	{
 		ClassDeclaration& cls = iterator.second();
-		TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
+		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
 		for(size_t j = 0; j < cls.memberTypes.size(); j++)
 		{
 			Variable& member = cls.memberTypes.at(j);
-			TRACE(Firmata.sendString(F("Member "), member.Uint32));
+			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
 			if (member.Uint32 == ctorToken)
 			{
 				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
@@ -1337,6 +1444,10 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 					return nullptr;
 				}
 				memset(ret, 0, sizeOfClass); // the standard explicitly requires the memory to be initialized
+				// Save a reference to the class declaration in the first entry of the newly created instance.
+				// this will serve as vtable.
+				ClassDeclaration** vtable = (ClassDeclaration**)ret;
+				*vtable = &cls;
 				return ret;
 			}
 		}
@@ -1348,7 +1459,8 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 
 int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
 {
-	return cls.ClassSize;
+	// + (platform specific) vtable* size
+	return cls.ClassSize + sizeof(void*);
 }
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
