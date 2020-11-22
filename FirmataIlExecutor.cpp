@@ -144,8 +144,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 
 			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
-				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5),
-				DecodePackedUint14(argv + 2 + 5 + 5 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), argc - 18, argv + 18));
+				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5) << 2, DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
+				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
@@ -271,6 +271,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	if (method != nullptr)
 	{
 		method->Clear();
+		method->codeReference = codeReference;
 	}
 	else
 	{
@@ -338,7 +339,7 @@ ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(u16 codeReference, u1
 		return ExecutionError::InvalidArguments;
 	}
 
-	u32* tokens = nullptr;
+	int32_t* tokens = nullptr;
 	if (offset == 0)
 	{
 		if (method->tokenMap != nullptr)
@@ -346,7 +347,7 @@ ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(u16 codeReference, u1
 			free(method->tokenMap);
 		}
 
-		tokens = (u32*)malloc(totalTokens * 4);
+		tokens = (int32_t*)malloc(totalTokens * 4);
 		
 		memset(tokens, 0, totalTokens * 4);
 		method->tokenMapEntries = totalTokens;
@@ -494,7 +495,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	SendExecutionResult(codeReference, result, execResult);
 }
 
-void FirmataIlExecutor::InvalidOpCode(u16 pc, u16 opCode)
+void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 {
 	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
 }
@@ -547,29 +548,58 @@ Variable FirmataIlExecutor::ExecuteSpecialMethod(NativeMethod method, const vect
 }
 
 
-Variable Ldfld(Variable& obj, int token)
+int ResolveMember(IlCode* method, int32_t token)
+{
+	int mapEntry = 0;
+	int32_t* entries = method->tokenMap;
+	while (mapEntry < method->tokenMapEntries * 2)
+	{
+		int32_t memberRef = entries[mapEntry + 1];
+		if (memberRef == token)
+		{
+			token = entries[mapEntry];
+			break;
+		}
+		mapEntry += 2;
+	}
+
+	return token;
+}
+
+Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 {
 	byte* o = (byte*)obj.Object;
-	ClassDeclaration* vtable = (ClassDeclaration*)(*(int*)o);
+	ClassDeclaration* vtable = (ClassDeclaration*)(*(int32_t*)o);
 
+	if ((token >> 24) == 0x0A)
+	{
+		// Token needs resolving first
+		token = ResolveMember(currentMethod, token);
+	}
+	
 	// Assuming sizeof(void*) == sizeof(any pointer type)
 	// and sizeof(void*) >= sizeof(int)
 	// Our members start here
 	int offset = sizeof(void*);
 	// Todo: Check base classes
-	for (auto handle = vtable->memberTypes.begin(); handle != vtable->memberTypes.end(); ++handle)
+	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
 	{
+		// Ignore static member here
+		if ((int)handle->Type & 0x80)
+		{
+			continue;
+		}
 		if (handle->Int32 == token)
 		{
 			// Found the member
 			Variable v;
-			memcpy(&v.Object, (o + offset), sizeof(void*));
+			memcpy(&v.Object, (o + offset), Variable::datasize());
 			v.Type = handle->Type;
 			return v;
 		}
 
 		offset += Variable::datasize();
-		if (offset >= vtable->ClassSize)
+		if (offset >= vtable->ClassDynamicSize)
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
@@ -581,32 +611,82 @@ Variable Ldfld(Variable& obj, int token)
 }
 
 
-void Stfld(Variable& obj, int token, Variable& var)
+Variable FirmataIlExecutor::Ldsfld(int token)
+{
+	// Find the class that has this member token
+	/* ClassDeclaration* cls = nullptr;
+	int offset;
+	auto entry = _classes.begin();
+	for (; entry != _classes.end(); ++entry)
+	{
+		cls = &entry.second();
+		offset = 0;
+		for (auto member = cls->memberTypes.begin(); member != cls->memberTypes.end(); ++member)
+		{
+			if (member->Int32 == token)
+			{
+				Variable v;
+				memcpy(&v.Object, (byte*)cls->statics + offset, Variable::datasize());
+				v.Type = member->Type;
+				return v;
+			}
+			offset += Variable::datasize();
+		}
+	}
+
+	Firmata.sendStringf(F("No such static member anywhere: %lx"), 4, token); */
+
+	if (_statics.contains(token))
+	{
+		return _statics.at(token);
+	}
+
+	// TODO: We do not currently execute the static cctors, otherwise uninitialized statics would not be valid
+	_statics.insert(token, Variable());
+
+	return Variable();
+}
+
+void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
 	byte* o = (byte*)obj.Object;
 	// Get the first data element of where the object points to
-	ClassDeclaration* cls = ((ClassDeclaration*)(*(int*)o));
+	ClassDeclaration* cls = ((ClassDeclaration*)(*(int32_t*)o));
+
+	if ((token >> 24) == 0x0A)
+	{
+		// Token needs resolving first
+		token = ResolveMember(currentMethod, token);
+	}
 
 	// Assuming sizeof(void*) == sizeof(any pointer type)
 	// Our members start here
 	int offset = sizeof(void*);
 	// Todo: Check base classes
-	for (auto handle = cls->memberTypes.begin(); handle != cls->memberTypes.end(); ++handle)
+	for (auto handle = cls->fieldTypes.begin(); handle != cls->fieldTypes.end(); ++handle)
 	{
+		// Ignore static member here
+		if ((int)handle->Type & 0x80)
+		{
+			continue;
+		}
+		
 		if (handle->Int32 == token)
 		{
 			// Found the member
-			memcpy(o + offset, &var.Object, sizeof(void*));
+			memcpy(o + offset, &var.Object, Variable::datasize());
 			return;
 		}
 
-		offset += Variable::datasize();
-		if (offset >= cls->ClassSize)
+		if (offset >= cls->ClassDynamicSize)
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
+			break;
 		}
+		
+		offset += Variable::datasize();
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
@@ -668,10 +748,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 		stack->push(locals->at(3));
 		break;
 	case CEE_LDNULL:
-		stack->push(Variable(0, VariableKind::Object));
+		stack->push(Variable(VariableKind::Object));
 		break;
 	case CEE_CEQ:
-		stack->push({ (uint32_t)(value1.Uint32 == value2.Uint32), VariableKind::Boolean });
+		intermediate.Type = VariableKind::Boolean;
+		intermediate.Boolean = (value1.Uint32 == value2.Uint32);
+		stack->push(intermediate);
 		break;
 		
 	case CEE_ADD:
@@ -1295,7 +1377,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC += 4;
 						obj = stack->top();
 						stack->pop();
-						stack->push(Ldfld(obj, token));
+						stack->push(Ldfld(currentMethod, obj, token));
 						break;
 						}
 		            	// Store a value to a field
@@ -1306,7 +1388,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->pop();
 						obj = stack->top();
 						stack->pop();
-						Stfld(obj, token, var);
+						Stfld(currentMethod, obj, token, var);
+						break;
+		            	// Store a static field value on the stack
+					case CEE_LDSFLD:
+						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+						PC += 4;
+						stack->push(Ldsfld(token));
 						break;
 					default:
 						InvalidOpCode(PC, instr);
@@ -1328,10 +1416,67 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				u32 tk = *hlpCodePtr;
                 PC += 4;
 
-                IlCode* newMethod = ResolveToken(currentMethod->codeReference, tk);
+				IlCode* newMethod = ResolveToken(currentMethod, tk);
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
+					return MethodState::Aborted;
+				}
+
+				ClassDeclaration* cls = nullptr;
+				if (instr == CEE_CALLVIRT)
+				{
+					// For a virtual call, we need to grab the instance we operate on from the stack.
+					// The this pointer for the new method is the object that is last on the stack, so we need to use
+					// the argument count. Fortunately, this also works if so far we only have the abstract base.
+					Variable instance = stack->nth(newMethod->numArgs - 1); // numArgs includes the this pointer
+					
+					if (instance.Type != VariableKind::Object)
+					{
+						Firmata.sendString(F("Virtual function call on something that is not an object"));
+						return MethodState::Aborted;
+					}
+					if (instance.Object == nullptr)
+					{
+						Firmata.sendString(F("NullReferenceException calling virtual method"));
+						return MethodState::Aborted;
+					}
+					
+					// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
+					byte* o = (byte*)instance.Object;
+					// Get the first data element of where the object points to
+					cls = ((ClassDeclaration*)(*(int*)o));
+					for (Method* met = cls->methodTypes.begin(); met != cls->methodTypes.end(); ++met)
+					{
+						// The method is being called using the static type of the target
+						if (met->token == newMethod->methodToken)
+						{
+							break;
+						}
+
+						for (auto alt = met->declarationTokens.begin(); alt != met->declarationTokens.end(); ++alt)
+						{
+							if (*alt == newMethod->methodToken)
+							{
+								newMethod = ResolveToken(currentMethod, met->token);
+								if (newMethod == nullptr)
+								{
+									Firmata.sendString(F("Implementation not found for 0x"), met->token);
+									return MethodState::Aborted;
+								}
+								goto outer;
+							}
+						}
+					}
+					// We didn't find another method to call - we'd better already point to the right one
+				}
+				outer:
+
+				// Call to an abstract base class or an interface method - if this happens,
+				// we've probably not done the virtual function resolution correctly
+				if ((int)newMethod->methodFlags & (int)MethodFlags::Abstract)
+				{
+					Firmata.sendString(F("Call to abstract method 0x"), tk);
 					return MethodState::Aborted;
 				}
 
@@ -1417,18 +1562,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	return MethodState::Running;
 }
 
-void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
+void* FirmataIlExecutor::CreateInstance(int32_t ctorToken)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
 	{
 		ClassDeclaration& cls = iterator.second();
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
-		for(size_t j = 0; j < cls.memberTypes.size(); j++)
+		for(size_t j = 0; j < cls.methodTypes.size(); j++)
 		{
-			Variable& member = cls.memberTypes.at(j);
+			Method& member = cls.methodTypes.at(j);
 			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
-			if (member.Uint32 == ctorToken)
+			if (member.token == ctorToken)
 			{
 				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 				// The constructor that was called belongs to this class
@@ -1440,7 +1585,7 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 				void* ret = malloc(sizeOfClass);
 				if (ret == nullptr)
 				{
-					Firmata.sendString(F("Not enough memory allocating an instance of 0x"), cls.ClassToken);
+					Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
 					return nullptr;
 				}
 				memset(ret, 0, sizeOfClass); // the standard explicitly requires the memory to be initialized
@@ -1460,10 +1605,10 @@ void* FirmataIlExecutor::CreateInstance(u32 ctorToken)
 int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
 {
 	// + (platform specific) vtable* size
-	return cls.ClassSize + sizeof(void*);
+	return cls.ClassDynamicSize + sizeof(void*);
 }
 
-ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
 {
 	bool alreadyExists = _classes.contains(classToken);
 	ClassDeclaration* decl;
@@ -1473,54 +1618,48 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	}
 	else
 	{
-		_classes.insert(classToken, ClassDeclaration(classToken, parent, size));
+		_classes.insert(classToken, ClassDeclaration(classToken, parent, dynamicSize, staticSize));
 		decl = &_classes.at(classToken);
 	}
 
 	// Reinit
 	if (offset == 0)
 	{
-		decl->memberTypes.clear();
+		decl->fieldTypes.clear();
+		decl->methodTypes.clear();
 	}
 
 	// Firmata.sendStringf(F("Class %lx has parent %lx and size %d. (%d of %d members)"), 14, classToken, parent, size, offset, numberOfMembers);
-	
-	for (int i = 0; i + 5 < argc;)
+
+	// A member
+	int i = 0;
+	Variable v;
+	v.Type = (VariableKind)argv[i];
+	v.Int32 = DecodePackedUint32(argv + i + 1); // uses 5 bytes
+	i += 6;
+	if (v.Type != VariableKind::Method)
 	{
-		Variable v;
-		v.Type = (VariableKind)argv[i];
-		v.Uint32 = DecodePackedUint32(argv + i + 1); // uses 5 bytes
-		i += 6;
-		Firmata.sendStringf(F("Received member %lx of class %lx"), 8, v.Uint32, classToken);
-		decl->memberTypes.push_back(v);
+		decl->fieldTypes.push_back(v);
+		return ExecutionError::None;
 	}
 
-	// This is test code - perform an integrity test on the data structure
-	
-	ClassDeclaration& cls = _classes.at(classToken);
-	if (cls.ClassToken != classToken)
+	// if there are more arguments, these are the method tokens that point back to this implementation
+	Method me;
+	me.token = v.Int32;
+	decl->methodTypes.push_back(me);
+	// Weird reference handling, but since we have no working copy-ctor for vector<T>, we need to copy it before we start filling
+	Method& me2 = decl->methodTypes.back();
+	for (;i < argc - 4; i += 5)
 	{
-		Firmata.sendStringf(F("Current class is not in map: &lx"), 4, cls.ClassToken);
+		// Unless the method is a ctor, this list is not normally empty, because otherwise
+		// we wouldn't need the method declaration at all.
+		me2.declarationTokens.push_back(DecodePackedUint32(argv + i));
 	}
 
-	if (cls.memberTypes.size() != offset + 1)
-	{
-		Firmata.sendStringf(F("Expected member count doesn't fit: %d"), 2, cls.memberTypes.size());
-	}
-	for (int j = 0; j < cls.memberTypes.size(); j++)
-	{
-		Variable& v = cls.memberTypes.at(j);
-		if ((v.Uint32 & 0xFF000000) == 0)
-		{
-			Firmata.sendStringf(F("Invalid member entry at %d"), 2, j);
-		}
-	}
-	
-	
 	return ExecutionError::None;
 }
 
-IlCode* FirmataIlExecutor::ResolveToken(u16 codeReference, uint32_t token)
+IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
 {
 	IlCode* method;
 	if ((token >> 24) == 0x0)
@@ -1535,11 +1674,11 @@ IlCode* FirmataIlExecutor::ResolveToken(u16 codeReference, uint32_t token)
 		// Use the token map first
 		int mapEntry = 0;
 
-		method = GetMethodByCodeReference(codeReference);
-		uint32_t* entries = method -> tokenMap;
+		method = GetMethodByCodeReference(code->codeReference);
+		int32_t* entries = method -> tokenMap;
 		while (mapEntry < method->tokenMapEntries * 2)
 		{
-			uint32_t memberRef = entries[mapEntry + 1];
+			int32_t memberRef = entries[mapEntry + 1];
 			TRACE(Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]));
 			TRACE(Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]));
 			if (memberRef == token)
@@ -1551,7 +1690,7 @@ IlCode* FirmataIlExecutor::ResolveToken(u16 codeReference, uint32_t token)
 		}
 	}
 
-	return GetMethodByToken(token);
+	return GetMethodByToken(code, token);
 }
 
 void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode)
@@ -1599,8 +1738,17 @@ IlCode* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 	return nullptr;
 }
 
-IlCode* FirmataIlExecutor::GetMethodByToken(uint32_t token)
+IlCode* FirmataIlExecutor::GetMethodByToken(IlCode* code, int32_t token)
 {
+	// Methods in the method list have their top nibble patched with the module ID.
+	// if the token to be searched has module 0, we need to add the current module Id (from the
+	// token of the currently executing method)
+	int module = (token >> 28);
+	if (module == 0)
+	{
+		token = token | (code->methodToken & 0xF0000000);
+	}
+	
 	IlCode* current = _firstMethod;
 	while (current != nullptr)
 	{

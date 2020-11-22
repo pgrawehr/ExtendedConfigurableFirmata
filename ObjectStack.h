@@ -28,5 +28,11 @@ namespace stdSimple
 			return vector<T>::back();
 		}
 
+		// Returns the nth-last element from the stack (0 being the top)
+		T& nth(int index)
+		{
+			return vector<T>::at(vector<T>::size() - 1 - index);
+		}
+
 	};
 }

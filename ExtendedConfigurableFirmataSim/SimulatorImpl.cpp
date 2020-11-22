@@ -254,8 +254,7 @@ int NetworkConnection::available()
 	if (ret == SOCKET_ERROR)
 	{
 		auto error = WSAGetLastError();
-		wprintf(L"Socket error: %d\n", error);
-		if (error == WSAECONNRESET || error == WSANOTINITIALISED)
+		if (error == WSAECONNRESET || error == WSANOTINITIALISED || error == WSAECONNABORTED)
 		{
 			wprintf(L"Connection closed - waiting for new client...\n");
 

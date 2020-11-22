@@ -45,7 +45,8 @@ enum class MethodFlags
 	Static = 1,
 	Virtual = 2,
 	Special = 4,
-	VoidOrCtor = 8
+	VoidOrCtor = 8,
+	Abstract = 16
 };
 
 enum class MethodState
@@ -71,7 +72,9 @@ enum class VariableKind : byte
 	Int32 = 2,
 	Boolean = 3,
 	Object = 4,
-	Method = 5, // Only for class member types
+	// The following are only used in class member lists
+	Method = 5,
+	Static = 0x80,
 };
 
 enum class NativeMethod
@@ -90,6 +93,7 @@ enum class NativeMethod
 	GetHashCode = 11,
 };
 
+#pragma pack(push, 1)
 struct Variable
 {
 	// Important: Data must come first (because we sometimes take the address of this)
@@ -115,6 +119,13 @@ struct Variable
 		Type = type;
 	}
 
+	Variable(VariableKind type)
+	{
+		Int32 = 0;
+		Type = type;
+		Object = nullptr;
+	}
+
 	Variable()
 	{
 		Uint32 = 0;
@@ -127,22 +138,39 @@ struct Variable
 	}
 };
 
+struct Method
+{
+	// Our own token
+	int32_t token;
+	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
+	vector<int> declarationTokens;
+};
+
 class ClassDeclaration
 {
 public:
-	ClassDeclaration(int32_t token, int32_t parent, int16_t size)
+	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize)
 	{
 		ClassToken = token;
 		ParentToken = parent;
-		ClassSize = size;
+		ClassDynamicSize = dynamicSize;
+		ClassStaticSize = staticSize;
+	}
+
+	~ClassDeclaration()
+	{
+		fieldTypes.clear();
+		methodTypes.clear();
 	}
 
 	int32_t ClassToken;
 	int32_t ParentToken;
-	int16_t ClassSize; // Including superclasses and vtable
+	int16_t ClassDynamicSize; // Including superclasses, but without vtable
+	int16_t ClassStaticSize; // Size of static members 
 
 	// Here, the value is the metadata token
-	vector<Variable> memberTypes;
+	vector<Variable> fieldTypes;
+	vector<Method> methodTypes;
 };
 
 class IlCode
@@ -190,7 +218,7 @@ public:
 		codeReference = -1;
 	}
 
-	u32 methodToken; // Primary method token (a methodDef token)
+	int32_t methodToken; // Primary method token (a methodDef token)
 	byte methodFlags;
 	u16 methodLength;
 	u16 codeReference;
@@ -202,7 +230,7 @@ public:
 	// this contains alternate tokens for the methods called from this method.
 	// Typically, these will be mappings from 0x0A (memberRef tokens) to 0x06 (methodDef tokens)
 	// for methods defined in another assembly than this method. 
-	uint32_t* tokenMap;
+	int32_t* tokenMap;
 	// Native method number
 	NativeMethod nativeMethod;
 	byte tokenMapEntries;
@@ -286,7 +314,7 @@ class ExecutionState
 		return _codeReference;
 	}
 };
-
+#pragma pack(pop)
 
 class FirmataIlExecutor: public FirmataFeature
 {
@@ -303,26 +331,27 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(u16 codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 size, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 
 	static Variable ExecuteSpecialMethod(NativeMethod method, const vector<Variable> &args);
+    Variable Ldsfld(int token);
     MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
-                                OPCODE instr, Variable value1, Variable value2);
+                                       OPCODE instr, Variable value1, Variable value2);
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
 	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
-	void InvalidOpCode(u16 pc, u16 opCode);
+	void InvalidOpCode(u16 pc, OPCODE opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(u32 ctorToken);
+    void* CreateInstance(int32_t ctorToken);
 	int16_t SizeOfClass(ClassDeclaration& cls);
-    IlCode* ResolveToken(u16 codeReference, uint32_t token);
+    IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(u16 codeReference, Variable returnValue, MethodState execResult);
-	IlCode* GetMethodByToken(uint32_t token);
+	IlCode* GetMethodByToken(IlCode* code, int32_t token);
 	IlCode* GetMethodByCodeReference(u16 codeReference);
 	void AttachToMethodList(IlCode* newCode);
 	IlCode* _firstMethod;
@@ -332,6 +361,9 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionState* _methodCurrentlyExecuting;
 
 	stdSimple::map<u32, ClassDeclaration> _classes;
+
+	// The list of static variable (global)
+	stdSimple::map<u32, Variable> _statics;
 };
 
 

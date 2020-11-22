@@ -126,6 +126,13 @@ namespace stdSimple
 
 		void clear()
 		{
+			if (_data != nullptr)
+			{
+				for (size_t i = 0; i < _count; i++)
+				{
+					_data[i].~T();
+				}
+			}
 			_count = 0;
 		}
 
@@ -146,7 +153,7 @@ namespace stdSimple
 
 		iterator end()
 		{
-			return _data + _count + 1;
+			return _data + _count;
 		}
 	};
 

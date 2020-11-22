@@ -30,6 +30,10 @@ namespace stdSimple
 				return m._index != _index;
 			}
 
+			bool operator==(const iterator& m) const {
+				return m._index == _index;
+			}
+
 			iterator& operator++()
 			{
 				++_index;
