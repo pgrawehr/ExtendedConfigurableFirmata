@@ -1488,13 +1488,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						return MethodState::Aborted;
 					}
 				}
-            	
-				u32 method = (u32)newMethod;
-				method &= ~0xFF000000;
-            	            	
-				// Patch the code to use the method pointer, that's faster for next time we see this piece of code.
-            	// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
-				*hlpCodePtr = method;
+
+				if (instr != CEE_CALLVIRT)
+				{
+					u32 method = (u32)newMethod;
+					method &= ~0xFF000000;
+
+					// Patch the code to use the method pointer, that's faster for next time we see this piece of code.
+					// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
+					*hlpCodePtr = method;
+				}
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
@@ -1662,14 +1665,14 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
 {
 	IlCode* method;
-	if ((token >> 24) == 0x0)
+	if (((token >> 24) & 0xFF) == 0x0)
 	{
 		// We've previously patched the code directly with the lower 3 bytes of the method pointer
 		// Now we extend that again with the RAM base address (0x20000000 on a Due, 0x0 on an Uno)
 		token = token | ((u32)_firstMethod & 0xFF000000);
 		return (IlCode*)token;
 	}
-	if ((token >> 24) == 0x0A)
+	if (((token >> 24) & 0xFF) == 0x0A)
 	{
 		// Use the token map first
 		int mapEntry = 0;
@@ -1743,7 +1746,7 @@ IlCode* FirmataIlExecutor::GetMethodByToken(IlCode* code, int32_t token)
 	// Methods in the method list have their top nibble patched with the module ID.
 	// if the token to be searched has module 0, we need to add the current module Id (from the
 	// token of the currently executing method)
-	int module = (token >> 28);
+	int module = (token >> 28) & 0x0F;
 	if (module == 0)
 	{
 		token = token | (code->methodToken & 0xF0000000);
