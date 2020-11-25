@@ -93,6 +93,14 @@ enum class NativeMethod
 	GetHashCode = 11,
 };
 
+enum class SystemException
+{
+	None = 0,
+	StackOverflow = 1,
+	NullReference = 2,
+	MissingMethod = 3
+};
+
 #pragma pack(push, 1)
 struct Variable
 {
@@ -144,6 +152,22 @@ struct Method
 	int32_t token;
 	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
 	vector<int> declarationTokens;
+};
+
+class RuntimeException
+{
+public:
+	RuntimeException(SystemException type, Variable arg0)
+		: ExceptionArgs(1, 1)
+	{
+		TokenOfException = 0;
+		ExceptionType = type;
+		ExceptionArgs.at(0) = arg0;
+	}
+	
+	int TokenOfException;
+	SystemException ExceptionType;
+	vector<Variable> ExceptionArgs;
 };
 
 class ClassDeclaration
@@ -250,11 +274,13 @@ class ExecutionState
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
 	IlCode* _executingMethod;
+	RuntimeException* _runtimeException;
 
 	u32 _memoryGuard;
 	ExecutionState(int codeReference, unsigned maxLocals, unsigned argCount, IlCode* executingMethod) :
 	_pc(0), _executionStack(10),
-	_locals(maxLocals, maxLocals), _arguments(argCount, argCount)
+	_locals(maxLocals, maxLocals), _arguments(argCount, argCount),
+	_runtimeException(nullptr)
 	{
 		_codeReference = codeReference;
 		_next = nullptr;
@@ -278,6 +304,11 @@ class ExecutionState
 	~ExecutionState()
 	{
 		_next = nullptr;
+		if (_runtimeException != nullptr)
+		{
+			delete _runtimeException;
+			_runtimeException = nullptr;
+		}
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
@@ -350,10 +381,11 @@ class FirmataIlExecutor: public FirmataFeature
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	uint16_t DecodePackedUint14(byte* argv);
-    void SendExecutionResult(u16 codeReference, Variable returnValue, MethodState execResult);
+    void SendExecutionResult(u16 codeReference, ExecutionState* lastState, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(IlCode* code, int32_t token);
 	IlCode* GetMethodByCodeReference(u16 codeReference);
 	void AttachToMethodList(IlCode* newCode);
+	void SendPackedInt32(int32_t value);
 	IlCode* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running

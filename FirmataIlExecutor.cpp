@@ -235,7 +235,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	}
 
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult(topLevelMethod, Variable(), MethodState::Killed);
+	SendExecutionResult(topLevelMethod, nullptr, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 }
 
@@ -256,7 +256,7 @@ void FirmataIlExecutor::runStep()
 		return;
 	}
 	
-	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), retVal, execResult);
+	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), _methodCurrentlyExecuting, retVal, execResult);
 
 	// The method ended
 	delete _methodCurrentlyExecuting;
@@ -435,7 +435,7 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
-void FirmataIlExecutor::SendExecutionResult(u16 codeReference, Variable returnValue, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(u16 codeReference, ExecutionState* lastState, Variable returnValue, MethodState execResult)
 {
 	byte replyData[4];
 	// Reply format:
@@ -444,12 +444,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, Variable returnVa
 	// bytes 2+: Integer return values
 
 	// Todo: Fix
-	u32 result = returnValue.Uint32;
-	
-	replyData[0] = result & 0xFF;
-	replyData[1] = (result >> 8) & 0xFF;
-	replyData[2] = (result >> 16) & 0xFF;
-	replyData[3] = (result >> 24) & 0xFF;
+	auto result = returnValue.Int32;
 
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
@@ -460,13 +455,41 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, Variable returnVa
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
 	// 2: Intermediate data from method (not used here)
 	Firmata.write((byte)execResult);
-	Firmata.write(1); // Number of arguments that follow
-	for (int i = 0; i < 4; i++)
+	if (lastState->_runtimeException != nullptr && execResult == MethodState::Aborted)
 	{
-		Firmata.sendValueAsTwo7bitBytes(replyData[i]);
+		Firmata.write(2); // Number of arguments that follow
+		RuntimeException* ex = lastState->_runtimeException;
+		if (ex->ExceptionType == SystemException::None)
+		{
+			SendPackedInt32(ex->TokenOfException);
+		}
+		else
+		{
+			SendPackedInt32((int32_t)ex->ExceptionType);
+		}
+
+		if (ex->ExceptionArgs.size() > 0)
+		{
+			SendPackedInt32(ex->ExceptionArgs.at(0).Int32);
+		}
+	}
+	else
+	{
+		Firmata.write(1); // Number of arguments that follow
+		SendPackedInt32(result);
 	}
 	Firmata.endSysex();
 }
+
+void FirmataIlExecutor::SendPackedInt32(int32_t value)
+{
+	Firmata.write((byte)(value & 0x7F));
+	Firmata.write((byte)((value >> 7) & 0x7F));
+	Firmata.write((byte)((value >> 14) & 0x7F));
+	Firmata.write((byte)((value >> 21) & 0x7F));
+	Firmata.write((byte)((value >> 28) & 0x0F)); // only 4 bits left, and we don't care about the sign here
+}
+
 
 void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv)
 {
@@ -488,11 +511,12 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 		return;
 	}
 
+
+	SendExecutionResult(codeReference, rootState, result, execResult);
+	
 	// The method ended very quickly
 	_methodCurrentlyExecuting = nullptr;
 	delete rootState;
-	
-	SendExecutionResult(codeReference, result, execResult);
 }
 
 void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
@@ -690,6 +714,17 @@ void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
+}
+
+void ExceptionOccurred(ExecutionState* state, SystemException error)
+{
+	state->_runtimeException = new RuntimeException(error,
+		Variable(state->_executingMethod->methodToken, VariableKind::Int32));
+}
+
+void ExceptionOccurred(ExecutionState* state, SystemException error, int errorLocationToken)
+{
+	state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
 }
 
 MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
@@ -1420,6 +1455,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
+            		
+					ExceptionOccurred(_methodCurrentlyExecuting, SystemException::MissingMethod, tk);
 					return MethodState::Aborted;
 				}
 
@@ -1438,7 +1475,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					if (instance.Object == nullptr)
 					{
+						if (newMethod->nativeMethod != NativeMethod::None)
+						{
+							// For native methods, the this pointer may be null, that is ok (we're calling on an dummy interface)
+							goto outer;
+						}
 						Firmata.sendString(F("NullReferenceException calling virtual method"));
+						ExceptionOccurred(_methodCurrentlyExecuting, SystemException::NullReference);
 						return MethodState::Aborted;
 					}
 					
@@ -1462,6 +1505,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								if (newMethod == nullptr)
 								{
 									Firmata.sendString(F("Implementation not found for 0x"), met->token);
+									ExceptionOccurred(_methodCurrentlyExecuting, SystemException::NullReference, met->token);
 									return MethodState::Aborted;
 								}
 								goto outer;
@@ -1477,6 +1521,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				if ((int)newMethod->methodFlags & (int)MethodFlags::Abstract)
 				{
 					Firmata.sendString(F("Call to abstract method 0x"), tk);
+					ExceptionOccurred(_methodCurrentlyExecuting, SystemException::MissingMethod, tk);
 					return MethodState::Aborted;
 				}
 
@@ -1682,8 +1727,8 @@ IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
 		while (mapEntry < method->tokenMapEntries * 2)
 		{
 			int32_t memberRef = entries[mapEntry + 1];
-			TRACE(Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]));
-			TRACE(Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]));
+			// TRACE(Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]));
+			// TRACE(Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]));
 			if (memberRef == token)
 			{
 				token = entries[mapEntry];
