@@ -207,6 +207,14 @@ bool FirmataIlExecutor::IsExecutingCode()
 	return _methodCurrentlyExecuting != nullptr;
 }
 
+// TODO: Keep track, implemetn GC, etc...
+byte* AllocGcInstance(size_t bytes)
+{
+	byte* ret = (byte*)malloc(bytes);
+	memset(ret, 0, bytes);
+	return ret;
+}
+
 void FirmataIlExecutor::KillCurrentTask()
 {
 	if (_methodCurrentlyExecuting == nullptr)
@@ -216,6 +224,24 @@ void FirmataIlExecutor::KillCurrentTask()
 
 	byte topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
 
+	// Ignore result - any exceptions that just occurred will be dropped by the abort request
+	UnrollExecutionStack();
+
+	// Send a status report, to end any process waiting for this method to return.
+	SendExecutionResult(topLevelMethod, nullptr, Variable(), MethodState::Killed);
+	Firmata.sendString(F("Code execution aborted"));
+	_methodCurrentlyExecuting = nullptr;
+}
+
+RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
+{
+	if (_methodCurrentlyExecuting == nullptr)
+	{
+		return nullptr;
+	}
+
+	RuntimeException* exceptionReturn = nullptr;
+	
 	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
 	ExecutionState* currentFrame = _methodCurrentlyExecuting;
 	while (currentFrame != nullptr)
@@ -227,16 +253,21 @@ void FirmataIlExecutor::KillCurrentTask()
 			currentFrame = currentFrame->_next;
 		}
 
+		// The first exception we find (hopefully there's only one) is moved out of its container (so it doesn't get deleted here)
+		if (currentFrame->_runtimeException != nullptr && exceptionReturn == nullptr)
+		{
+			exceptionReturn = currentFrame->_runtimeException;
+			currentFrame->_runtimeException = nullptr;
+		}
+
 		delete currentFrame;
 		*currentFrameVar = nullptr; // sets the parent's _next pointer to null
-		
+
 		currentFrame = _methodCurrentlyExecuting;
 		currentFrameVar = &_methodCurrentlyExecuting;
 	}
 
-	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult(topLevelMethod, nullptr, Variable(), MethodState::Killed);
-	Firmata.sendString(F("Code execution aborted"));
+	return exceptionReturn;
 }
 
 void FirmataIlExecutor::runStep()
@@ -255,8 +286,10 @@ void FirmataIlExecutor::runStep()
 		// The method is still running
 		return;
 	}
-	
-	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), _methodCurrentlyExecuting, retVal, execResult);
+
+	int methodindex = _methodCurrentlyExecuting->MethodIndex();
+	RuntimeException* ex = UnrollExecutionStack();
+	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), ex, retVal, execResult);
 
 	// The method ended
 	delete _methodCurrentlyExecuting;
@@ -435,7 +468,7 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
-void FirmataIlExecutor::SendExecutionResult(u16 codeReference, ExecutionState* lastState, Variable returnValue, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException* ex, Variable returnValue, MethodState execResult)
 {
 	byte replyData[4];
 	// Reply format:
@@ -455,10 +488,9 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, ExecutionState* l
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
 	// 2: Intermediate data from method (not used here)
 	Firmata.write((byte)execResult);
-	if (lastState->_runtimeException != nullptr && execResult == MethodState::Aborted)
+	if (ex != nullptr && execResult == MethodState::Aborted)
 	{
 		Firmata.write(2); // Number of arguments that follow
-		RuntimeException* ex = lastState->_runtimeException;
 		if (ex->ExceptionType == SystemException::None)
 		{
 			SendPackedInt32(ex->TokenOfException);
@@ -512,16 +544,18 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	}
 
 
-	SendExecutionResult(codeReference, rootState, result, execResult);
+	auto ex = UnrollExecutionStack();
+	SendExecutionResult(codeReference, ex, result, execResult);
 	
 	// The method ended very quickly
 	_methodCurrentlyExecuting = nullptr;
-	delete rootState;
 }
 
 void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 {
 	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
+	
+	ExceptionOccurred(_methodCurrentlyExecuting, SystemException::InvalidOpCode, opCode);
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer
@@ -671,6 +705,18 @@ Variable FirmataIlExecutor::Ldsfld(int token)
 	return Variable();
 }
 
+
+void FirmataIlExecutor::Stsfld(int token, Variable value)
+{
+	if (_statics.contains(token))
+	{
+		_statics.at(token) = value;
+		return;
+	}
+
+	_statics.insert(token, value);
+}
+
 void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
@@ -716,14 +762,13 @@ void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
 }
 
-void ExceptionOccurred(ExecutionState* state, SystemException error)
+void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken)
 {
-	state->_runtimeException = new RuntimeException(error,
-		Variable(state->_executingMethod->methodToken, VariableKind::Int32));
-}
-
-void ExceptionOccurred(ExecutionState* state, SystemException error, int errorLocationToken)
-{
+	if (((errorLocationToken >> 24) & 0xFF) == 0x0A)
+	{
+		// If it is a remote token, we attach our own domain to it, so the host can do a lookup
+		errorLocationToken = (state->_executingMethod->methodToken & 0xF0000000) | errorLocationToken;
+	}
 	state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
 }
 
@@ -1426,6 +1471,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						Stfld(currentMethod, obj, token, var);
 						break;
 		            	// Store a static field value on the stack
+					case CEE_STSFLD:
+						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+						PC += 4;
+						Stsfld(token, stack->top());
+						stack->pop();
+						break;
 					case CEE_LDSFLD:
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
@@ -1455,8 +1506,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
-            		
-					ExceptionOccurred(_methodCurrentlyExecuting, SystemException::MissingMethod, tk);
+            		ExceptionOccurred(currentFrame, SystemException::MissingMethod, tk);
 					return MethodState::Aborted;
 				}
 
@@ -1481,7 +1531,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							goto outer;
 						}
 						Firmata.sendString(F("NullReferenceException calling virtual method"));
-						ExceptionOccurred(_methodCurrentlyExecuting, SystemException::NullReference);
+						ExceptionOccurred(currentFrame, SystemException::NullReference, 0);
 						return MethodState::Aborted;
 					}
 					
@@ -1505,7 +1555,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								if (newMethod == nullptr)
 								{
 									Firmata.sendString(F("Implementation not found for 0x"), met->token);
-									ExceptionOccurred(_methodCurrentlyExecuting, SystemException::NullReference, met->token);
+									ExceptionOccurred(currentFrame, SystemException::NullReference, met->token);
 									return MethodState::Aborted;
 								}
 								goto outer;
@@ -1521,7 +1571,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				if ((int)newMethod->methodFlags & (int)MethodFlags::Abstract)
 				{
 					Firmata.sendString(F("Call to abstract method 0x"), tk);
-					ExceptionOccurred(_methodCurrentlyExecuting, SystemException::MissingMethod, tk);
+					ExceptionOccurred(currentFrame, SystemException::MissingMethod, tk);
 					return MethodState::Aborted;
 				}
 
@@ -1594,6 +1644,50 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
 				break;
             }
+			case InlineType:
+			{
+				int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+				PC += 4;
+				int size;
+				switch(instr)
+				{
+				case CEE_NEWARR:
+					size = stack->top().Int32;
+					stack->pop();
+					if (_classes.contains(token))
+					{
+						ClassDeclaration& ty = _classes.at(token);
+						int* data;
+						Variable v1;
+						if (ty.ValueType)
+						{
+							// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length
+							data = (int*)AllocGcInstance(ty.ClassDynamicSize * size + 4);
+							v1.Type = VariableKind::ValueArray;
+						}
+						else
+						{
+							// Otherwise we just store pointers
+							data = (int*)AllocGcInstance(size * sizeof(void*) + 4);
+							v1.Type = VariableKind::ReferenceArray;
+						}
+						
+						*data = size;
+						v1.Object = data;
+						stack->push(v1);
+					}
+					else
+					{
+						Firmata.sendStringf(F("Unknown class token in NEWARR instruction: %lx"), 4, token);
+						return MethodState::Aborted;
+					}
+					break;
+				default:
+					InvalidOpCode(PC, instr);
+					return MethodState::Aborted;
+				}
+				break;
+			}
 			default:
 				InvalidOpCode(PC, instr);
 				return MethodState::Aborted;
@@ -1629,8 +1723,7 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken)
 				size_t sizeOfClass = SizeOfClass(cls);
 
 				TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
-				// Todo: Alloc and never free is not really a GC thing.
-				void* ret = malloc(sizeOfClass);
+				void* ret = AllocGcInstance(sizeOfClass);
 				if (ret == nullptr)
 				{
 					Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
@@ -1656,7 +1749,7 @@ int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
 	return cls.ClassDynamicSize + sizeof(void*);
 }
 
-ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
 	bool alreadyExists = _classes.contains(classToken);
 	ClassDeclaration* decl;
@@ -1666,7 +1759,8 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	}
 	else
 	{
-		_classes.insert(classToken, ClassDeclaration(classToken, parent, dynamicSize, staticSize));
+		// The only flag is currently "isvaluetype"
+		_classes.insert(classToken, ClassDeclaration(classToken, parent, dynamicSize, staticSize, flags != 0));
 		decl = &_classes.at(classToken);
 	}
 
