@@ -289,7 +289,7 @@ void FirmataIlExecutor::runStep()
 
 	int methodindex = _methodCurrentlyExecuting->MethodIndex();
 	RuntimeException* ex = UnrollExecutionStack();
-	SendExecutionResult(_methodCurrentlyExecuting->MethodIndex(), ex, retVal, execResult);
+	SendExecutionResult(methodindex, ex, retVal, execResult);
 
 	// The method ended
 	delete _methodCurrentlyExecuting;
@@ -629,12 +629,6 @@ Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 	byte* o = (byte*)obj.Object;
 	ClassDeclaration* vtable = (ClassDeclaration*)(*(int32_t*)o);
 
-	if ((token >> 24) == 0x0A)
-	{
-		// Token needs resolving first
-		token = ResolveMember(currentMethod, token);
-	}
-	
 	// Assuming sizeof(void*) == sizeof(any pointer type)
 	// and sizeof(void*) >= sizeof(int)
 	// Our members start here
@@ -724,12 +718,6 @@ void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 	// Get the first data element of where the object points to
 	ClassDeclaration* cls = ((ClassDeclaration*)(*(int32_t*)o));
 
-	if ((token >> 24) == 0x0A)
-	{
-		// Token needs resolving first
-		token = ResolveMember(currentMethod, token);
-	}
-
 	// Assuming sizeof(void*) == sizeof(any pointer type)
 	// Our members start here
 	int offset = sizeof(void*);
@@ -764,11 +752,6 @@ void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 
 void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken)
 {
-	if (((errorLocationToken >> 24) & 0xFF) == 0x0A)
-	{
-		// If it is a remote token, we attach our own domain to it, so the host can do a lookup
-		errorLocationToken = (state->_executingMethod->methodToken & 0xF0000000) | errorLocationToken;
-	}
 	state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
 }
 
@@ -1584,6 +1567,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 				}
 
+					/* See the ResolveToken method why this is currently disabled
 				if (instr != CEE_CALLVIRT)
 				{
 					u32 method = (u32)newMethod;
@@ -1593,6 +1577,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// But remove the top byte, this is the memory bank address, which is not 0 for some of the ARM boards
 					*hlpCodePtr = method;
 				}
+				*/
 
             	// Save return PC
                 currentFrame->UpdatePc(PC);
@@ -1803,6 +1788,10 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 
 IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
 {
+	// All tokens are resolved and combined into a single namespace by the host already.
+	// However, if we want to still use the address patching (which is a good idea), we need to
+	// figure out how we determine the two cases (i.e. find illegal memory addresses, or also patch the opcode)
+	/*
 	IlCode* method;
 	if (((token >> 24) & 0xFF) == 0x0)
 	{
@@ -1832,6 +1821,7 @@ IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
 		}
 	}
 
+*/
 	return GetMethodByToken(code, token);
 }
 
@@ -1885,12 +1875,7 @@ IlCode* FirmataIlExecutor::GetMethodByToken(IlCode* code, int32_t token)
 	// Methods in the method list have their top nibble patched with the module ID.
 	// if the token to be searched has module 0, we need to add the current module Id (from the
 	// token of the currently executing method)
-	int module = (token >> 28) & 0x0F;
-	if (module == 0)
-	{
-		token = token | (code->methodToken & 0xF0000000);
-	}
-	
+
 	IlCode* current = _firstMethod;
 	while (current != nullptr)
 	{
