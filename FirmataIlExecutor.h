@@ -105,6 +105,7 @@ enum class SystemException
 	DivideByZero = 5,
 	IndexOutOfRange = 6,
 	OutOfMemory = 7,
+	ArrayTypeMismatch,
 };
 
 #pragma pack(push, 1)

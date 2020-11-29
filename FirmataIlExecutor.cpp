@@ -652,11 +652,6 @@ Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 	// Todo: Check base classes
 	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
 	{
-		// Ignore static member here
-		if ((int)handle->Type & 0x80)
-		{
-			continue;
-		}
 		if (handle->Int32 == token)
 		{
 			// Found the member
@@ -1184,7 +1179,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		DWORD   len;
         OPCODE  instr;
 		
-		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token %lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
     	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
@@ -1350,22 +1345,22 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						locals->at(data) = stack->top();
 						stack->pop();
 						break;
-					case CEE_LDLOCA_S:
+					/* case CEE_LDLOCA_S:
 						// Warn: Pointer to data conversion!
 						intermediate.Object = &locals->at(data);
 						intermediate.Type = VariableKind::Object;
 						stack->push(intermediate);
-						break;
+						break; */
 					case CEE_LDARG_S:
 						stack->push(arguments->at(data));
 						break;
-					case CEE_LDARGA_S:
+					/* case CEE_LDARGA_S:
 						// Get address of argument x. 
 						// TODO: Byref parameter handling is not supported at the moment by the call implementation. 
 						intermediate.Object = &arguments->at(data);
 						intermediate.Type = VariableKind::Object;
 						stack->push(intermediate);
-						break;
+						break; */
 					case CEE_STARG_S:
 						arguments->at(data) = stack->top();
 						stack->pop();
@@ -1780,6 +1775,92 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						return MethodState::Aborted;
 					}
 					break;
+				case CEE_STELEM:
+					{
+						Variable value3 = stack->top();
+						stack->pop();
+						Variable value2 = stack->top();
+						stack->pop();
+						Variable value1 = stack->top();
+						stack->pop();
+						if (value1.Object == nullptr)
+						{
+							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+							return MethodState::Aborted;
+						}
+						// The instruction suffix (here .i4) indicates the element size
+						uint32_t* data = (uint32_t*)value1.Object;
+						int32_t arraysize = *(data);
+						int32_t targetType = *(data + 1);
+						if (token != targetType)
+						{
+							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+							return MethodState::Aborted;
+						}
+						int32_t index = value2.Int32;
+						if (index < 0 || index >= arraysize)
+						{
+							ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+							return MethodState::Aborted;
+						}
+
+						if (value1.Type == VariableKind::ValueArray)
+						{
+							*(data + 2 + index) = value3.Int32;
+						}
+						else
+						{
+							// can only be an object now
+							*(data + 2 + index) = (uint32_t)value3.Object;
+						}
+					}
+					break;
+				case CEE_LDELEM:
+				{
+					Variable value2 = stack->top();
+					stack->pop();
+					Variable value1 = stack->top();
+					stack->pop();
+					if (value1.Object == nullptr)
+					{
+						ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+					// The instruction suffix (here .i4) indicates the element size
+					uint32_t* data = (uint32_t*)value1.Object;
+					int32_t arraysize = *(data);
+					int32_t targetType = *(data + 1);
+					if (token != targetType)
+					{
+						ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+					int32_t index = value2.Int32;
+					if (index < 0 || index >= arraysize)
+					{
+						ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+
+					Variable v1;
+					if (value1.Type == VariableKind::ValueArray)
+					{
+						// This should always exist
+						ClassDeclaration& ty = _classes.at(token);
+						v1.Int32 = *(data + 2 + index);
+						// Value arrays are expected to have just one type for now
+						// TODO: This needs a bitwise copy of the whole instance, but how do we handle it if sizeof(ValueType) > 4 (so that it doesn't fit in a stack slot)?
+						v1.Type = ty.fieldTypes[0].Type;
+					}
+					else
+					{
+						// can only be an object now
+						v1.Object = (void*)*(data + 2 + index);
+						v1.Type = VariableKind::Object;
+					}
+					stack->push(v1);
+					break;
+				}
 				default:
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
