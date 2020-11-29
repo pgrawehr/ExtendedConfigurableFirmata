@@ -35,7 +35,8 @@ enum class ExecutorCommand : byte
 	KillTask = 6,
 	MethodSignature = 7,
 	ClassDeclaration = 8,
-
+	SendObject = 9,
+	
 	Nack = 0x7e,
 	Ack = 0x7f,
 };
@@ -72,11 +73,10 @@ enum class VariableKind : byte
 	Int32 = 2,
 	Boolean = 3,
 	Object = 4,
+	Method = 5,
 	ValueArray = 6,
 	ReferenceArray = 7,
-	// The following are only used in class member lists
-	Method = 5,
-	Static = 0x80,
+	StaticMember = 8 // type is defined by the first value it gets
 };
 
 enum class NativeMethod
@@ -102,6 +102,9 @@ enum class SystemException
 	NullReference = 2,
 	MissingMethod = 3,
 	InvalidOpCode = 4,
+	DivideByZero = 5,
+	IndexOutOfRange = 6,
+	OutOfMemory = 7,
 };
 
 #pragma pack(push, 1)
@@ -368,14 +371,15 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadMetadataTokenMapping(u16 codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
+	ExecutionError ReceiveObjectData(byte argc, byte* argv);
 
 	static Variable ExecuteSpecialMethod(NativeMethod method, const vector<Variable> &args);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
     Variable Ldsfld(int token);
     void Stsfld(int token, Variable value);
-    MethodState BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
-                                       OPCODE instr, Variable value1, Variable value2);
+    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
+                                       OPCODE instr, Variable value1, Variable value2, Variable value3);
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
@@ -385,7 +389,7 @@ class FirmataIlExecutor: public FirmataFeature
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(int32_t ctorToken);
+    void* CreateInstance(int32_t ctorToken, SystemException* exception);
 	int16_t SizeOfClass(ClassDeclaration& cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);

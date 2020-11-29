@@ -147,6 +147,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5) << 2, DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
 				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			break;
+		case ExecutorCommand::SendObject:
+			ReceiveObjectData(argc, argv);
+			SendAckOrNack(subCommand, ExecutionError::None);
+			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
 			{
@@ -175,6 +179,18 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		return true;
 	}
 	return false;
+}
+
+ExecutionError FirmataIlExecutor::ReceiveObjectData(byte argc, byte* argv)
+{
+	// Parameters are (all of type int32)
+	// 1 - Class type of target
+	// 2 - Member of target
+	// 3 - Instance or null for static members
+	// 4 - Operation flags (i.e. newobj
+	// 5 - Index if target is an array
+	// 6 - value
+	return ExecutionError::None;
 }
 
 /// <summary>
@@ -755,8 +771,8 @@ void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException
 	state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
 }
 
-MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
-	OPCODE instr, Variable value1, Variable value2)
+MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
+	OPCODE instr, Variable value1, Variable value2, Variable value3)
 {
 	Variable intermediate;
 	switch (instr)
@@ -844,6 +860,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 	case CEE_DIV:
 		if (value2.Uint32 == 0)
 		{
+			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		
@@ -861,6 +878,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 	case CEE_REM:
 		if (value2.Uint32 == 0)
 		{
+			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		if (value1.Type == VariableKind::Int32)
@@ -877,6 +895,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 	case CEE_DIV_UN:
 		if (value2.Uint32 == 0)
 		{
+			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		intermediate = { value1.Uint32 / value2.Uint32, VariableKind::Uint32 };
@@ -885,6 +904,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 	case CEE_REM_UN:
 		if (value2.Uint32 == 0)
 		{
+			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		intermediate = { value1.Uint32 % value2.Uint32, VariableKind::Uint32 };
@@ -1002,6 +1022,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 	case CEE_POP:
 		// Nothing to do, already popped
 		break;
+		/* Commented out because untested - enable when use case known and test case defined
 	case CEE_LDIND_I1:
 		// TODO: Fix type of stack (must support dynamic typing)
 		{
@@ -1039,6 +1060,84 @@ MethodState FirmataIlExecutor::BasicStackInstructions(u16 PC, stack<Variable>* s
 			uint32_t i = *((uint32_t*)value1.Object);
 			stack->push({ (int32_t)i, VariableKind::Int32 });
 		}
+		break; */
+	case CEE_LDLEN:
+		{
+			// Get the address of the array and push the array size (at index 0)
+			if (value1.Object == nullptr)
+			{
+				ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
+			uint32_t i = *((uint32_t*)value1.Object);
+			stack->push({ i, VariableKind::Uint32 });
+		}
+		break;
+	case CEE_LDELEM_I4:
+		{
+			if (value1.Object == nullptr)
+			{
+				ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
+			// The instruction suffix (here .i4) indicates the element size
+			uint32_t* data = (uint32_t*)value1.Object;
+			int32_t size = *(data);
+			int32_t index = value2.Int32;
+			if (index < 0 || index >= size)
+			{
+				ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
+
+			// Note: Here, size is equal, but this doesn't hold for the other LDELEM variants
+			if (value1.Type == VariableKind::ValueArray)
+			{
+				Variable r(*(data + 2 + index), VariableKind::Int32);
+				stack->push(r);
+			}
+			else
+			{
+				Variable r(*(data + 2 + index), VariableKind::Object);
+				stack->push(r);
+			}
+		}
+		break;
+	case CEE_STELEM_I4:
+	{
+		if (value1.Object == nullptr)
+		{
+			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+
+		if (value1.Type == VariableKind::ValueArray)
+		{
+			*(data + 2 + index) = value3.Int32;
+		}
+		else
+		{
+			// can only be an object now
+			*(data + 2 + index) = (uint32_t)value3.Object;
+		}
+	}
+	break;
+	case CEE_CONV_I:
+	case CEE_CONV_I4:
+		stack->push({ value1.Int32, VariableKind::Int32 });
+		break;
+	case CEE_CONV_U:
+	case CEE_CONV_U4:
+		stack->push({ value1.Uint32, VariableKind::Uint32 });
 		break;
 	default:
 		InvalidOpCode(PC, instr);
@@ -1199,6 +1298,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
 				Variable value1;
 				Variable value2;
+				Variable value3;
 				if (numArgumensToPop == 1)
 				{
 					value1 = stack->top();
@@ -1211,8 +1311,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					value1 = stack->top();
 					stack->pop();
 				}
+				if (numArgumensToPop == 3)
+				{
+					value3 = stack->top();
+					stack->pop();
+					value2 = stack->top();
+					stack->pop();
+					value1 = stack->top();
+					stack->pop();
+				}
 
-				MethodState errorState = BasicStackInstructions(PC, stack, locals, arguments, instr, value1, value2);
+				MethodState errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, value1, value2, value3);
 				if (errorState != MethodState::Running)
 				{
 					return errorState;
@@ -1560,9 +1669,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				if (instr == CEE_NEWOBJ)
 				{
-					newObjInstance = CreateInstance(newMethod->methodToken);
+					SystemException ex = SystemException::None;
+					newObjInstance = CreateInstance(newMethod->methodToken, &ex);
 					if (newObjInstance == nullptr)
 					{
+						ExceptionOccurred(currentFrame, ex, newMethod->methodToken);
 						return MethodState::Aborted;
 					}
 				}
@@ -1642,22 +1753,24 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (_classes.contains(token))
 					{
 						ClassDeclaration& ty = _classes.at(token);
-						int* data;
+						uint32_t* data;
 						Variable v1;
 						if (ty.ValueType)
 						{
-							// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length
-							data = (int*)AllocGcInstance(ty.ClassDynamicSize * size + 4);
+							// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length, Element 1 is the array type token
+							// TODO: Special handling might be required for value types with size < 4, because we don't want to store char[] with 32 bits per element
+							data = (uint32_t*)AllocGcInstance(ty.ClassDynamicSize * size + 8);
 							v1.Type = VariableKind::ValueArray;
 						}
 						else
 						{
 							// Otherwise we just store pointers
-							data = (int*)AllocGcInstance(size * sizeof(void*) + 4);
+							data = (uint32_t*)AllocGcInstance(size * sizeof(void*) + 8);
 							v1.Type = VariableKind::ReferenceArray;
 						}
 						
 						*data = size;
+						*(data + 1) = token;
 						v1.Object = data;
 						stack->push(v1);
 					}
@@ -1689,7 +1802,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	return MethodState::Running;
 }
 
-void* FirmataIlExecutor::CreateInstance(int32_t ctorToken)
+void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exception)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
@@ -1711,6 +1824,7 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken)
 				void* ret = AllocGcInstance(sizeOfClass);
 				if (ret == nullptr)
 				{
+					*exception = SystemException::OutOfMemory;
 					Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
 					return nullptr;
 				}
@@ -1724,6 +1838,7 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken)
 		}
 	}
 
+	*exception = SystemException::MissingMethod;
 	Firmata.sendString(F("No class found with that .ctor"));
 	return nullptr;
 }
@@ -1778,8 +1893,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	Method& me2 = decl->methodTypes.back();
 	for (;i < argc - 4; i += 5)
 	{
-		// Unless the method is a ctor, this list is not normally empty, because otherwise
-		// we wouldn't need the method declaration at all.
+		// These are tokens of possible base implementations of this method - that means methods whose dynamic invocation target will be this method.
 		me2.declarationTokens.push_back(DecodePackedUint32(argv + i));
 	}
 
