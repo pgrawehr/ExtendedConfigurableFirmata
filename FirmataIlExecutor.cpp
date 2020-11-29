@@ -486,11 +486,11 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 
 void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException* ex, Variable returnValue, MethodState execResult)
 {
-	byte replyData[4];
 	// Reply format:
-	// byte 0: 1 on success, 0 on (technical) failure, such as unsupported opcode
-	// byte 1: Number of integer values returned
-	// bytes 2+: Integer return values
+	// bytes 0-1: Reference of method that exited
+	// byte 2: Status. See below
+	// byte 3: Number of integer values returned
+	// bytes 4+: Integer return values
 
 	// Todo: Fix
 	auto result = returnValue.Int32;
@@ -662,7 +662,7 @@ Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 		}
 
 		offset += Variable::datasize();
-		if (offset >= vtable->ClassDynamicSize)
+		if ((uint32_t)offset >= (vtable->ClassDynamicSize + sizeof(void*)))
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
