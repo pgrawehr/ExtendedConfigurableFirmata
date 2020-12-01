@@ -114,12 +114,12 @@ namespace stdSimple
 			return _data[_count - 1];
 		}
 
-		bool empty()
+		bool empty() const
 		{
 			return _count == 0;
 		}
 
-		size_t size()
+		size_t size() const
 		{
 			return _count;
 		}

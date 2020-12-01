@@ -93,6 +93,24 @@ enum class NativeMethod
 	ReferenceEquals = 9,
 	GetType = 10,
 	GetHashCode = 11,
+	ArrayCopy5 = 12,
+	StringCtor0 = 13,
+	StringLength = 14,
+	MonitorEnter1 = 15,
+	MonitorEnter2 = 16,
+	MonitorExit = 17,
+	StringIndexer = 18,
+	StringFormat2 = 19,
+	StringFormat2b = 20,
+	BaseTypeEquals = 21,
+	EmptyStaticCtor = 22,
+	DefaultEqualityComparer = 23,
+	ArrayCopy3 = 24,
+	StringFormat3 = 25,
+	ArrayClone = 26,
+	GetPinMode = 27,
+	IsPinModeSupported = 28,
+	GetPinCount = 29
 };
 
 enum class SystemException
@@ -175,6 +193,7 @@ public:
 	int TokenOfException;
 	SystemException ExceptionType;
 	vector<Variable> ExceptionArgs;
+	vector<int> StackTokens;
 };
 
 class ClassDeclaration
@@ -374,7 +393,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 	ExecutionError ReceiveObjectData(byte argc, byte* argv);
 
-	static Variable ExecuteSpecialMethod(NativeMethod method, const vector<Variable> &args);
+	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable> &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
     Variable Ldsfld(int token);

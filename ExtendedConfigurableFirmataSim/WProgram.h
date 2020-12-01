@@ -28,6 +28,10 @@ void delay(int timeMs);
 void delayMicroseconds(int micros);
 int millis();
 int micros();
+byte digitalPinToBitMask(int pin);
+byte digitalPinToPort(int pin);
+byte* portModeRegister(int port);
+byte* portOutputRegister(int port);
 
 #define INPUT 0
 #define OUTPUT 1

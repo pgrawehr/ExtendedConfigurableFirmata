@@ -48,7 +48,27 @@ const byte OpcodePops[] PROGMEM =
 #undef OPDEF
 };
 
+#define ASSERT(x) if (!(x)) {\
+	ExceptionOccurred(state, SystemException::MissingMethod, state->_executingMethod->methodToken); \
+	return MethodState::Aborted; \
+	}
+
 OPCODE DecodeOpcode(const BYTE *pCode, DWORD *pdwLen);
+
+// Retrieve the current digital pin input/output and pull mode directly
+// https://arduino.stackexchange.com/questions/13165/how-to-read-pinmode-for-digital-pin
+static int pinMode(byte pin)
+{
+	if (!IS_PIN_DIGITAL(pin)) return (-1);
+
+	byte bit = digitalPinToBitMask(pin);
+	byte port = digitalPinToPort(pin);
+	volatile byte* reg = portModeRegister(port);
+	if (*reg & bit) return (OUTPUT);
+
+	volatile byte* out = portOutputRegister(port);
+	return ((*out & bit) ? INPUT_PULLUP : INPUT);
+}
 
 boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 {
@@ -260,15 +280,20 @@ RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
 	
 	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
 	ExecutionState* currentFrame = _methodCurrentlyExecuting;
+	vector<int> stackTokens;
 	while (currentFrame != nullptr)
 	{
 		// destruct the stack top to bottom (to ensure we regain the complete memory chain)
 		while (currentFrame->_next != nullptr)
 		{
+			
 			currentFrameVar = &currentFrame->_next;
 			currentFrame = currentFrame->_next;
 		}
 
+		// Push all methods we saw to the list, this will hopefully get us something like a stack trace
+		stackTokens.push_back(currentFrame->_executingMethod->methodToken);
+		
 		// The first exception we find (hopefully there's only one) is moved out of its container (so it doesn't get deleted here)
 		if (currentFrame->_runtimeException != nullptr && exceptionReturn == nullptr)
 		{
@@ -283,6 +308,13 @@ RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
 		currentFrameVar = &_methodCurrentlyExecuting;
 	}
 
+	if (exceptionReturn != nullptr)
+	{
+		for (size_t i = 0; i < stackTokens.size(); i++)
+		{
+			exceptionReturn->StackTokens.push_back(stackTokens.at(i));
+		}
+	}
 	return exceptionReturn;
 }
 
@@ -506,7 +538,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException*
 	Firmata.write((byte)execResult);
 	if (ex != nullptr && execResult == MethodState::Aborted)
 	{
-		Firmata.write(2); // Number of arguments that follow
+		Firmata.write(1 + ex->ExceptionArgs.size() + ex->StackTokens.size() + (ex->StackTokens.size() > 0 ? 1 : 0)); // Number of arguments that follow
 		if (ex->ExceptionType == SystemException::None)
 		{
 			SendPackedInt32(ex->TokenOfException);
@@ -516,9 +548,18 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException*
 			SendPackedInt32((int32_t)ex->ExceptionType);
 		}
 
-		if (ex->ExceptionArgs.size() > 0)
+		for (u32 i = 0; i < ex->ExceptionArgs.size(); i++)
 		{
-			SendPackedInt32(ex->ExceptionArgs.at(0).Int32);
+			SendPackedInt32(ex->ExceptionArgs.at(i).Int32);
+		}
+
+		if (ex->StackTokens.size() > 0)
+		{
+			SendPackedInt32(0); // A dummy marker
+			for (u32 i = 0; i < ex->StackTokens.size(); i++)
+			{
+				SendPackedInt32(ex->StackTokens.at(i));
+			}
 		}
 	}
 	else
@@ -559,7 +600,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 		return;
 	}
 
-
+	Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference);
 	auto ex = UnrollExecutionStack();
 	SendExecutionResult(codeReference, ex, result, execResult);
 	
@@ -574,51 +615,91 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 	ExceptionOccurred(_methodCurrentlyExecuting, SystemException::InvalidOpCode, opCode);
 }
 
-// Executes the given OS function. Note that args[0] is the this pointer
-Variable FirmataIlExecutor::ExecuteSpecialMethod(NativeMethod method, const vector<Variable>& args)
+// Executes the given OS function. Note that args[0] is the this pointer for instance methods
+MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable>& args, Variable& result)
 {
 	u32 mil = 0;
-	switch(method)
+	int mode;
+	switch (method)
 	{
 	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
+	{
+		mode = INPUT;
+		if (args[2].Int32 == 1) // Must match PullMode enum on C# side
 		{
-			int mode = INPUT;
-			if (args[2].Int32 == 1) // Must match PullMode enum on C# side
-			{
-				mode = OUTPUT;
-			}
-			if (args[2].Int32 == 3)
-			{
-				mode = INPUT_PULLUP;
-			}
-			pinMode(args[1].Int32, mode);
-			// Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
-
-			break;
+			mode = OUTPUT;
 		}
+		if (args[2].Int32 == 3)
+		{
+			mode = INPUT_PULLUP;
+		}
+		pinMode(args[1].Int32, mode);
+		// Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
+
+		return MethodState::Running;
+	}
 	case NativeMethod::WritePin: // Write(int pin, int value)
 			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
-			digitalWrite(args[1].Int32, args[2].Int32 != 0);
-			break;
+		digitalWrite(args[1].Int32, args[2].Int32 != 0);
+		return MethodState::Running;
 	case NativeMethod::ReadPin:
-			return { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
+		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
+		return MethodState::Running;
 	case NativeMethod::GetTickCount: // TickCount
-			mil = millis();
-			// Firmata.sendString(F("TickCount "), mil);
-			return { (int32_t)mil, VariableKind::Int32 };
+		mil = millis();
+		// Firmata.sendString(F("TickCount "), mil);
+		result = { (int32_t)mil, VariableKind::Int32 };
+		return MethodState::Running;
 	case NativeMethod::SleepMicroseconds:
-			delayMicroseconds(args[1].Int32);
-			return {};
+		delayMicroseconds(args[1].Int32);
+		return MethodState::Running;
 	case NativeMethod::GetMicroseconds:
-			return { (int32_t)micros(), VariableKind::Int32 };
+		result = { (int32_t)micros(), VariableKind::Int32 };
+		return MethodState::Running;
 	case NativeMethod::Debug:
-			Firmata.sendString(F("Debug "), args[1].Uint32);
-			return {};
-		default:
-			Firmata.sendString(F("Unknown internal method: "), (int)method);
-			break;
+		Firmata.sendString(F("Debug "), args[1].Uint32);
+		return MethodState::Running;;
+	case NativeMethod::BaseTypeEquals:
+		ASSERT(args.size() == 3);
+		// This also works for value field equality
+		result.Boolean = args[1].Object == args[2].Object;
+		result.Type = VariableKind::Boolean;
+		return MethodState::Running;
+	case NativeMethod::GetPinCount:
+		ASSERT(args.size() == 1) // unused this pointer
+		result.Int32 = TOTAL_PINS;
+		result.Type = VariableKind::Int32;
+		return MethodState::Running;
+	case NativeMethod::IsPinModeSupported:
+		ASSERT(args.size() == 3)
+			// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
+			// We support Output, Input and PullUp
+			result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
+			result.Type = VariableKind::Boolean;
+		return MethodState::Running;
+	case NativeMethod::GetPinMode:
+		ASSERT(args.size() == 2)
+			mode = pinMode(args[1].Int32);
+			if (mode == INPUT)
+			{
+				result.Int32 = 0;
+			}
+			if (mode == OUTPUT)
+			{
+				result.Int32 = 1;
+			}
+			if (mode == INPUT_PULLUP)
+			{
+				result.Int32 = 3;
+			}
+			result.Type = VariableKind::Int32;
+		return MethodState::Running;
+		
+	default:
+		Firmata.sendString(F("Unknown internal method: "), (int)method);
+		ExceptionOccurred(state, SystemException::MissingMethod, state->_executingMethod->methodToken);
+		return MethodState::Aborted;
 	}
-	return {};
 }
 
 
@@ -1190,7 +1271,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			NativeMethod specialMethod = currentMethod->nativeMethod;
 
 			TRACE(Firmata.sendString(F("Executing special method "), (int)specialMethod));
-			Variable retVal = ExecuteSpecialMethod(specialMethod, *arguments);
+			Variable retVal;
+			MethodState internalResult = ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
+    		if (internalResult != MethodState::Running)
+    		{
+				return internalResult;
+    		}
 			
 			// We're called into a "special" (built-in) method. 
 			// Perform a method return

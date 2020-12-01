@@ -13,6 +13,11 @@ class Serial Serial2;
 class Serial Serial3;
 class NetworkConnection NetworkSerial;
 
+// The status of each pin
+static byte pinModes[TOTAL_PINS];
+// Used for temporary return values
+static byte temp;
+
 int digitalRead(int pin)
 {
 	return 0;
@@ -41,7 +46,39 @@ void analogWrite(int pin, int value)
 }
 void pinMode(int pin, int mode)
 {
+	if (pin < TOTAL_PINS)
+	{
+		pinModes[pin] = (byte)mode;
+		wprintf(L"Port %d set to mode %d\r\n", pin, mode);
+	}
 }
+
+byte digitalPinToBitMask(int pin)
+{
+	// Each port uses 1 byte
+	return 1;
+}
+
+byte digitalPinToPort(int pin)
+{
+	// One byte per pin
+	return pin;
+}
+
+byte* portModeRegister(int port)
+{
+	return &pinModes[port];
+}
+
+byte* portOutputRegister(int port)
+{
+	// The output register corresponds to the PULLUP mode and is bit 1.
+	// register writes are ignored right now, but we don't need that
+	temp = pinModes[port] >> 1;
+	return &temp;
+}
+
+
 void delay(int timeMs)
 {
 	Sleep(timeMs);
