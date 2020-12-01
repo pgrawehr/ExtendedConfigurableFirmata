@@ -76,7 +76,8 @@ enum class VariableKind : byte
 	Method = 5,
 	ValueArray = 6,
 	ReferenceArray = 7,
-	StaticMember = 8 // type is defined by the first value it gets
+	StaticMember = 8, // type is defined by the first value it gets
+	Reference = 9, // Address of a variable
 };
 
 enum class NativeMethod

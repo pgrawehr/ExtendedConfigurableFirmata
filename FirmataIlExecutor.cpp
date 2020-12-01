@@ -1440,20 +1440,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_LDARG_S:
 						stack->push(arguments->at(data));
 						break;
-					/* case CEE_LDARGA_S:
+					case CEE_LDARGA_S:
 						// Get address of argument x. 
 						// TODO: Byref parameter handling is not supported at the moment by the call implementation. 
 						intermediate.Object = &arguments->at(data);
-						intermediate.Type = VariableKind::Object;
+						intermediate.Type = VariableKind::Reference;
 						stack->push(intermediate);
-						break; */
+						break;
 					case CEE_STARG_S:
 						arguments->at(data) = stack->top();
 						stack->pop();
 						break;
 					default:
 						InvalidOpCode(PC, instr);
-						break;
+						return MethodState::Aborted;
 		            }
 	            }
                 break;
@@ -1813,7 +1813,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					while (argumentCount > 0)
 					{
 						argumentCount--;
-						arguments->at(argumentCount) = oldStack->top();
+						Variable v = oldStack->top();
+						if (argumentCount == 0 && v.Type == VariableKind::Reference)
+						{
+							// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
+							// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
+							// There are a few more special cases to consider it seems, especially when the called method is virtual, see §8.6.1.5
+							v.Object = (void*)(*((uint32_t*)v.Object));
+							v.Type = VariableKind::Object;
+							arguments->at(0) = v;
+						}
+						else
+						{
+							arguments->at(argumentCount) = v;
+						}
 						oldStack->pop();
 					}
 				}
