@@ -1,7 +1,7 @@
-/Debug
-/Release
 /.vs
 /__vm
 /*.user
 /ExtendedConfigurableFirmataSim/Debug
 /ExtendedConfigurableFirmataSim/*.user
+Release
+Debug

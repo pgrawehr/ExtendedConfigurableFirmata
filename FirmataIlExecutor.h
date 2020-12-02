@@ -86,7 +86,7 @@ enum class NativeMethod
 	SetPinMode = 1,
 	WritePin = 2,
 	ReadPin = 3,
-	GetTickCount = 4,
+	EnvironmentTickCount = 4,
 	SleepMicroseconds = 5,
 	GetMicroseconds = 6,
 	Debug = 7,

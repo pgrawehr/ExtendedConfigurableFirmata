@@ -645,16 +645,16 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 	case NativeMethod::ReadPin:
 		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
 		return MethodState::Running;
-	case NativeMethod::GetTickCount: // TickCount
+	case NativeMethod::EnvironmentTickCount: // TickCount
 		mil = millis();
-		// Firmata.sendString(F("TickCount "), mil);
+		// this one returns signed, because it replaces a standard library function
 		result = { (int32_t)mil, VariableKind::Int32 };
 		return MethodState::Running;
 	case NativeMethod::SleepMicroseconds:
-		delayMicroseconds(args[1].Int32);
+		delayMicroseconds(args[0].Uint32);
 		return MethodState::Running;
 	case NativeMethod::GetMicroseconds:
-		result = { (int32_t)micros(), VariableKind::Int32 };
+		result = { (uint32_t)micros(), VariableKind::Uint32 };
 		return MethodState::Running;
 	case NativeMethod::Debug:
 		Firmata.sendString(F("Debug "), args[1].Uint32);
