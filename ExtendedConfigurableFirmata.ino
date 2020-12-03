@@ -3,6 +3,8 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
+#include <ConfigurableFirmata.h>
+
 // Use these defines to easily enable or disable certain modules
 
 /* Note: Currently no client support by dotnet/iot for these, so they're disabled by default */
@@ -16,14 +18,14 @@
 //#define ENABLE_SERIAL
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
-// #define ENABLE_DHT
+#ifndef SIM
+#define ENABLE_DHT
+#endif
 #define ENABLE_I2C
 #define ENABLE_IL_EXECUTOR
 #define ENABLE_SPI
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
-
-#include <ConfigurableFirmata.h>
 
 #ifdef SIM
 #include "SimulatorImpl.h"
