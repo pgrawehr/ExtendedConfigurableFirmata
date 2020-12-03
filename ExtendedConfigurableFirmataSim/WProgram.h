@@ -51,7 +51,7 @@ class Stream
 public:
 	virtual void begin();
 	virtual void begin(int baudRate);
-	virtual void write(byte b);
+	virtual size_t write(byte b);
 	virtual void flush();
 	virtual int read();
 	virtual int available();

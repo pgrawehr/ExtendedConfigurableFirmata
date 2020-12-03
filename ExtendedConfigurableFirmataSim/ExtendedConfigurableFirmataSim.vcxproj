@@ -161,6 +161,8 @@
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
     <ClCompile Include="SimulatorImpl.cpp" />
+    <ClCompile Include="SPI.cpp" />
+    <ClCompile Include="Wire.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\ExtendedConfigurableFirmata.ino">
@@ -197,6 +199,8 @@
     <ClInclude Include="HardwareSerial.h" />
     <ClInclude Include="pgmspace.h" />
     <ClInclude Include="SimulatorImpl.h" />
+    <ClInclude Include="SPI.h" />
+    <ClInclude Include="Wire.h" />
     <ClInclude Include="WProgram.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

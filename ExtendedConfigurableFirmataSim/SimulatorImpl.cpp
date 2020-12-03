@@ -108,9 +108,9 @@ void Stream::begin(int baudRate)
 {
 }
 
-void Stream::write(byte b)
+size_t Stream::write(byte b)
 {
-	
+	return 1;
 }
 
 void Stream::flush()
@@ -270,11 +270,12 @@ int NetworkConnection::read()
 	return -1;
 }
 
-void NetworkConnection::write(byte b)
+size_t NetworkConnection::write(byte b)
 {
 	char buf[1];
 	buf[0] = (char)b;
 	send(_client, buf, 1, 0);
+	return 1;
 }
 
 int NetworkConnection::available()

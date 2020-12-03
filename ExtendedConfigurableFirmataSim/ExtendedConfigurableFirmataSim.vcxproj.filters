@@ -73,6 +73,12 @@
     <ClCompile Include="SimulatorImpl.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Wire.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="SPI.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -163,6 +169,12 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="SimulatorImpl.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="Wire.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="SPI.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

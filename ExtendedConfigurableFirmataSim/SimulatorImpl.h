@@ -24,7 +24,7 @@ public:
 
 	virtual int read() override;
 
-	virtual void write(byte b) override;
+	virtual size_t write(byte b) override;
 
 	virtual void end() override;
 
