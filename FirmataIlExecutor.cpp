@@ -572,16 +572,13 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
-	Firmata.sendString(F("I"));
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
 	{
 		rootState->SetArgumentValue(i, DecodeUint32(argv + (8 * i)));
 	}
 
-	Firmata.sendString(F("G"));
 	MethodState execResult = ExecuteIlCode(rootState, &result);
-	Firmata.sendString(F("H"));
 	if (execResult == MethodState::Running)
 	{
 		// The method is still running

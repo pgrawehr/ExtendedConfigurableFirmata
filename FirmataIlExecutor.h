@@ -128,7 +128,6 @@ enum class SystemException
 	InvalidOperation = 9,
 };
 
-#pragma pack(push, 1)
 struct Variable
 {
 	// Important: Data must come first (because we sometimes take the address of this)
@@ -169,7 +168,7 @@ struct Variable
 
 	static size_t datasize()
 	{
-		return (sizeof(Variable) - sizeof(Type));
+		return (max(sizeof(void*), sizeof(uint32_t)));
 	}
 };
 
@@ -312,7 +311,6 @@ class ExecutionState
 	_locals(maxLocals, maxLocals), _arguments(argCount, argCount),
 	_runtimeException(nullptr)
 	{
-		Firmata.sendString(F("G1"));
 		_codeReference = codeReference;
 		_next = nullptr;
 		_runtimeException = nullptr;
@@ -377,7 +375,7 @@ class ExecutionState
 		return _codeReference;
 	}
 };
-#pragma pack(pop)
+
 
 class FirmataIlExecutor: public FirmataFeature
 {
