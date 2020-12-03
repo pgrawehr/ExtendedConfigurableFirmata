@@ -124,7 +124,8 @@ enum class SystemException
 	DivideByZero = 5,
 	IndexOutOfRange = 6,
 	OutOfMemory = 7,
-	ArrayTypeMismatch,
+	ArrayTypeMismatch = 8,
+	InvalidOperation = 9,
 };
 
 #pragma pack(push, 1)
@@ -207,12 +208,13 @@ public:
 		ClassDynamicSize = dynamicSize;
 		ClassStaticSize = staticSize;
 		ValueType = valueType;
+		Firmata.sendString(F("CX1"));
 	}
 
 	~ClassDeclaration()
 	{
-		fieldTypes.clear();
-		methodTypes.clear();
+		//fieldTypes.clear();
+		//methodTypes.clear();
 	}
 
 	bool ValueType;
@@ -222,8 +224,8 @@ public:
 	int16_t ClassStaticSize; // Size of static members 
 
 	// Here, the value is the metadata token
-	vector<Variable> fieldTypes;
-	vector<Method> methodTypes;
+	//vector<Variable> fieldTypes;
+	//vector<Method> methodTypes;
 };
 
 class IlCode

@@ -89,6 +89,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		}
 		subCommand = (ExecutorCommand)argv[1];
 
+		Firmata.sendString(F("Handling client command"), (int)subCommand);
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
@@ -664,18 +665,24 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 		return MethodState::Running;
 	case NativeMethod::GetPinMode:
 		ASSERT(args.size() == 2)
-			mode = pinMode(args[1].Int32);
+			mode = Firmata.getPinMode(args[1].Int32);
 			if (mode == INPUT)
 			{
 				result.Int32 = 0;
+				if (Firmata.getPinState(args[1].Int32) == 1)
+				{
+					result.Int32 = 3; // INPUT_PULLUP instead of input
 				}
-			if (mode == OUTPUT)
+			}
+			else if (mode == OUTPUT)
 			{
 				result.Int32 = 1;
 			}
-			if (mode == INPUT_PULLUP)
+			else
 			{
-				result.Int32 = 3;
+				// This is invalid for this method. GpioDriver.GetPinMode is only valid if the pin is in one of the GPIO modes
+				ExceptionOccurred(state, SystemException::InvalidOperation, state->_executingMethod->methodToken);
+				return MethodState::Aborted;
 			}
 			result.Type = VariableKind::Int32;
 		return MethodState::Running;
@@ -2016,28 +2023,34 @@ int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
+	Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize);
 	bool alreadyExists = _classes.contains(classToken);
+	Firmata.sendString(F("A"));
+
 	ClassDeclaration* decl;
 	if (alreadyExists)
 	{
+		Firmata.sendString(F("B"));
 		decl = &_classes.at(classToken);
 	}
 	else
 	{
 		// The only flag is currently "isvaluetype"
-		_classes.insert(classToken, ClassDeclaration(classToken, parent, dynamicSize, staticSize, flags != 0));
+		Firmata.sendString(F("C"));
+		ClassDeclaration* newC = new ClassDeclaration(classToken, parent, dynamicSize, staticSize, flags != 0);
+		Firmata.sendString(F("C2"));
+		_classes.insert(classToken, *newC);
+		Firmata.sendString(F("D"));
 		decl = &_classes.at(classToken);
 	}
-
+	Firmata.sendString(F("E"));
 	// Reinit
 	if (offset == 0)
 	{
 		decl->fieldTypes.clear();
 		decl->methodTypes.clear();
 	}
-
-	// Firmata.sendStringf(F("Class %lx has parent %lx and size %d. (%d of %d members)"), 14, classToken, parent, size, offset, numberOfMembers);
-
+	Firmata.sendString(F("F"));
 	// A member
 	int i = 0;
 	Variable v;
