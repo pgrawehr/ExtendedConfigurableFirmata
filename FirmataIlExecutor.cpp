@@ -55,21 +55,6 @@ const byte OpcodePops[] PROGMEM =
 
 OPCODE DecodeOpcode(const BYTE *pCode, DWORD *pdwLen);
 
-// Retrieve the current digital pin input/output and pull mode directly
-// https://arduino.stackexchange.com/questions/13165/how-to-read-pinmode-for-digital-pin
-static int pinMode(byte pin)
-{
-	if (!IS_PIN_DIGITAL(pin)) return (-1);
-
-	byte bit = digitalPinToBitMask(pin);
-	byte port = digitalPinToPort(pin);
-	volatile byte* reg = portModeRegister(port);
-	if (*reg & bit) return (OUTPUT);
-
-	volatile byte* out = portOutputRegister(port);
-	return ((*out & bit) ? INPUT_PULLUP : INPUT);
-}
-
 boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 {
   // This class does not handle individual pin modes
@@ -683,7 +668,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 			if (mode == INPUT)
 			{
 				result.Int32 = 0;
-			}
+				}
 			if (mode == OUTPUT)
 			{
 				result.Int32 = 1;

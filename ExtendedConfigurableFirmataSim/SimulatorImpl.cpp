@@ -53,31 +53,6 @@ void pinMode(int pin, int mode)
 	}
 }
 
-byte digitalPinToBitMask(int pin)
-{
-	// Each port uses 1 byte
-	return 1;
-}
-
-byte digitalPinToPort(int pin)
-{
-	// One byte per pin
-	return pin;
-}
-
-byte* portModeRegister(int port)
-{
-	return &pinModes[port];
-}
-
-byte* portOutputRegister(int port)
-{
-	// The output register corresponds to the PULLUP mode and is bit 1.
-	// register writes are ignored right now, but we don't need that
-	temp = pinModes[port] >> 1;
-	return &temp;
-}
-
 
 void delay(int timeMs)
 {
