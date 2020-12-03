@@ -208,13 +208,12 @@ public:
 		ClassDynamicSize = dynamicSize;
 		ClassStaticSize = staticSize;
 		ValueType = valueType;
-		Firmata.sendString(F("CX1"));
 	}
 
 	~ClassDeclaration()
 	{
-		//fieldTypes.clear();
-		//methodTypes.clear();
+		fieldTypes.clear();
+		methodTypes.clear();
 	}
 
 	bool ValueType;
@@ -224,8 +223,8 @@ public:
 	int16_t ClassStaticSize; // Size of static members 
 
 	// Here, the value is the metadata token
-	//vector<Variable> fieldTypes;
-	//vector<Method> methodTypes;
+	vector<Variable> fieldTypes;
+	vector<Method> methodTypes;
 };
 
 class IlCode
@@ -313,8 +312,10 @@ class ExecutionState
 	_locals(maxLocals, maxLocals), _arguments(argCount, argCount),
 	_runtimeException(nullptr)
 	{
+		Firmata.sendString(F("G1"));
 		_codeReference = codeReference;
 		_next = nullptr;
+		_runtimeException = nullptr;
 		_executingMethod = executingMethod;
 		for(unsigned i = 0; i < maxLocals && i < executingMethod->localTypes.size(); i++)
 		{

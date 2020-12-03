@@ -572,14 +572,16 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
+	Firmata.sendString(F("I"));
 	_methodCurrentlyExecuting = rootState;
 	for (int i = 0; i < method->numArgs; i++)
 	{
 		rootState->SetArgumentValue(i, DecodeUint32(argv + (8 * i)));
 	}
-	
-	MethodState execResult = ExecuteIlCode(rootState, &result);
 
+	Firmata.sendString(F("G"));
+	MethodState execResult = ExecuteIlCode(rootState, &result);
+	Firmata.sendString(F("H"));
 	if (execResult == MethodState::Running)
 	{
 		// The method is still running
@@ -2036,10 +2038,10 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	else
 	{
 		// The only flag is currently "isvaluetype"
-		Firmata.sendString(F("C"));
-		ClassDeclaration* newC = new ClassDeclaration(classToken, parent, dynamicSize, staticSize, flags != 0);
+		Firmata.sendString(F("C "), dynamicSize);
+		ClassDeclaration newC(classToken, parent, dynamicSize, staticSize, flags != 0);
 		Firmata.sendString(F("C2"));
-		_classes.insert(classToken, *newC);
+		_classes.insert(classToken, newC);
 		Firmata.sendString(F("D"));
 		decl = &_classes.at(classToken);
 	}

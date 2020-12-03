@@ -26,29 +26,54 @@ namespace stdSimple
 		T* _data;
 	public:
 		typedef T* iterator;
-		vector(int initialSize = 0, int initialCount = 0)
+
+		vector()
 		{
+			_data = nullptr;
+			_size = 0;
+			_count = 0;
+		}
+		
+		vector(int initialSize, int initialCount)
+		{
+			Firmata.sendString(F("ABC "), initialSize * sizeof(T));
 			if (initialSize < initialCount)
 			{
 				initialSize = initialCount;
 			}
+			Firmata.sendStringf(F("ABC 2 %ld"), 4, (int32_t)initialSize * sizeof(T));
 			if (initialSize > 0)
 			{
+				Firmata.sendString(F("ABC 3a "), initialSize * sizeof(T));
 				_data = (T*)malloc(initialSize * sizeof(T));
+				Firmata.sendString(F("ABC 3b "), initialSize * sizeof(T));
 			}
 			else
 			{
-				_data = NULL;
+				Firmata.sendString(F("ABC 3c "), initialSize * sizeof(T));
+				_data = nullptr;
 			}
-
+			Firmata.sendString(F("ABC 4a "));
+			Firmata.sendString(F("ABC 4a "));
+			Firmata.sendString(F("ABC 4a "));
+			Firmata.sendString(F("ABC 4a "));
+			Firmata.sendString(F("ABC 4a "));
 			_size = initialSize;
+			Firmata.sendString(F("ABC 4ac "));
 			_count = initialCount;
+			Firmata.sendString(F("ABC 4 "));
+			Firmata.sendString(F("ABC 4b "));
+			Firmata.sendString(F("ABC 4 c"));
+			Firmata.sendString(F("ABC 4 d"));
 		}
 
 		~vector()
 		{
-			free(_data);
-			_data = NULL;
+			if (_data != nullptr)
+			{
+				free(_data);
+			}
+			_data = nullptr;
 			_count = 0;
 		}
 
@@ -63,12 +88,14 @@ namespace stdSimple
 				if (_size == 0)
 				{
 					_size = 10;
+					_data = (T*)malloc(_size * sizeof(T));
 				}
 				else
 				{
 					_size *= 2;
+					_data = (T*)realloc(_data, _size * sizeof(T));
 				}
-				_data = (T*)realloc(_data, _size * sizeof(T));
+				
 				_data[_count++] = object;
 			}
 		}
@@ -84,12 +111,14 @@ namespace stdSimple
 				if (_size == 0)
 				{
 					_size = 10;
+					_data = (T*)malloc(_size * sizeof(T));
 				}
 				else
 				{
 					_size *= 2;
+					_data = (T*)realloc(_data, _size * sizeof(T));
 				}
-				_data = (T*)realloc(_data, _size * sizeof(T));
+				
 				_data[_count++] = object;
 			}
 		}
