@@ -21,8 +21,8 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
-#define TRACE(x) x
-// #define TRACE(x)
+// #define TRACE(x) x
+#define TRACE(x)
 
 // TODO: Remove opcodes we'll never support (i.e MONO from definition list)
 const byte OpcodeInfo[] PROGMEM =
@@ -89,7 +89,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		}
 		subCommand = (ExecutorCommand)argv[1];
 
-		Firmata.sendString(F("Handling client command"), (int)subCommand);
+		TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
@@ -333,7 +333,7 @@ void FirmataIlExecutor::runStep()
 ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount,
 	NativeMethod nativeMethod, int token)
 {
-	Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags);
+	TRACE(Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags));
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
 	{
@@ -360,7 +360,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 
 ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv)
 {
-	Firmata.sendStringf(F("Loading Declaration."), 0);
+	TRACE(Firmata.sendStringf(F("Loading Declaration."), 0));
 	IlCode* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
@@ -484,7 +484,7 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLe
 		}
 	}
 
-	Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset);
+	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset));
 	return ExecutionError::None;
 }
 
@@ -2024,32 +2024,27 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 {
 	Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize);
 	bool alreadyExists = _classes.contains(classToken);
-	Firmata.sendString(F("A"));
 
 	ClassDeclaration* decl;
 	if (alreadyExists)
 	{
-		Firmata.sendString(F("B"));
 		decl = &_classes.at(classToken);
 	}
 	else
 	{
 		// The only flag is currently "isvaluetype"
-		Firmata.sendString(F("C "), dynamicSize);
 		ClassDeclaration newC(classToken, parent, dynamicSize, staticSize, flags != 0);
-		Firmata.sendString(F("C2"));
 		_classes.insert(classToken, newC);
-		Firmata.sendString(F("D"));
 		decl = &_classes.at(classToken);
 	}
-	Firmata.sendString(F("E"));
+	
 	// Reinit
 	if (offset == 0)
 	{
 		decl->fieldTypes.clear();
 		decl->methodTypes.clear();
 	}
-	Firmata.sendString(F("F"));
+
 	// A member
 	int i = 0;
 	Variable v;
@@ -2157,7 +2152,7 @@ IlCode* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 		current = current->next;
 	}
 
-	Firmata.sendString(F("Reference not found: "), codeReference);
+	TRACE(Firmata.sendString(F("Reference not found: "), codeReference));
 	return nullptr;
 }
 
