@@ -159,6 +159,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.cpp" />
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
+    <ClCompile Include="..\FirmataStatusLed.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
     <ClCompile Include="SimulatorImpl.cpp" />
     <ClCompile Include="SPI.cpp" />
@@ -189,6 +190,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.h" />
     <ClInclude Include="..\FirmataIlExecutor.h" />
+    <ClInclude Include="..\FirmataStatusLed.h" />
     <ClInclude Include="..\FreeMemory.h" />
     <ClInclude Include="..\ObjectIterator.h" />
     <ClInclude Include="..\ObjectMap.h" />

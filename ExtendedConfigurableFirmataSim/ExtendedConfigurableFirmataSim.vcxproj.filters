@@ -79,6 +79,9 @@
     <ClCompile Include="SPI.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\FirmataStatusLed.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -175,6 +178,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="SPI.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\FirmataStatusLed.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

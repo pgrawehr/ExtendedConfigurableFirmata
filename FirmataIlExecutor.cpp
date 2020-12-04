@@ -304,7 +304,7 @@ RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
 	return exceptionReturn;
 }
 
-void FirmataIlExecutor::runStep()
+void FirmataIlExecutor::report(bool elapsed)
 {
 	// Check that we have an existing execution context, and if so continue there.
 	if (!IsExecutingCode())
@@ -604,23 +604,30 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable>& args, Variable& result)
 {
 	u32 mil = 0;
+	int pin;
 	int mode;
 	switch (method)
 	{
 	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
 	{
-		mode = INPUT;
+		pin = args[1].Int32;
+		
+		if (args[2].Int32 == 0)
+		{
+			// Input
+			Firmata.setPinMode(pin, INPUT);
+			Firmata.setPinState(pin, 0);
+		}
 		if (args[2].Int32 == 1) // Must match PullMode enum on C# side
 		{
-			mode = OUTPUT;
+			Firmata.setPinMode(pin, OUTPUT);
 		}
 		if (args[2].Int32 == 3)
 		{
-			mode = INPUT_PULLUP;
+			Firmata.setPinMode(pin, INPUT);
+			Firmata.setPinState(pin, 1);
 		}
-		pinMode(args[1].Int32, mode);
-		// Firmata.sendStringf(F("Setting pin %ld to mode %ld"), 8, args->Get(1), mode);
-
+		
 		return MethodState::Running;
 	}
 	case NativeMethod::WritePin: // Write(int pin, int value)

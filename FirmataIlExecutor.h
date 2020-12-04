@@ -386,7 +386,7 @@ class FirmataIlExecutor: public FirmataFeature
     void handleCapability(byte pin) override;
     boolean handleSysex(byte command, byte argc, byte* argv) override;
     void reset() override;
-	void runStep();
+	void report(bool elapsed);
  
   private:
     ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);

@@ -30,9 +30,15 @@
     <ClInclude Include="openum.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="FirmataStatusLed.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FirmataStatusLed.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -11,11 +11,12 @@
 /* Enabling all modules on the smaller Arduino boards (such as the UNO or the Nano) won't work anyway, as there is both
  * not enough flash as well as not enough RAM. 
  */
-//#define ENABLE_ONE_WIRE
-//#define ENABLE_SERVO 
-//#define ENABLE_ACCELSTEPPER
-//#define ENABLE_BASIC_SCHEDULER
-//#define ENABLE_SERIAL
+
+// #define ENABLE_ONE_WIRE
+// #define ENABLE_SERVO 
+// #define ENABLE_ACCELSTEPPER
+#define ENABLE_BASIC_SCHEDULER
+#define ENABLE_SERIAL
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
 #ifndef SIM
@@ -101,6 +102,8 @@ FirmataScheduler scheduler;
 #ifdef ENABLE_IL_EXECUTOR
 #include "FirmataIlExecutor.h"
 FirmataIlExecutor ilExecutor;
+#include "FirmataStatusLed.h"
+FirmataStatusLed statusLed;
 #endif
 #ifdef DEBUG_STREAM
 const byte SimulatedInput[] PROGMEM =
@@ -285,6 +288,7 @@ void initFirmata()
 	
 #ifdef ENABLE_IL_EXECUTOR
   firmataExt.addFeature(ilExecutor);
+  firmataExt.addFeature(statusLed);
 #endif
 
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
