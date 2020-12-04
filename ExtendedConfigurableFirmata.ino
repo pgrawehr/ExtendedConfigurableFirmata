@@ -304,39 +304,9 @@ void loop()
   while(Firmata.available()) {
     Firmata.processInput();
     if (!Firmata.isParsingMessage()) {
-      goto runtasks;
+      break;
     }
   }
-  if (!Firmata.isParsingMessage()) 
-  {
-runtasks:
-#ifdef ENABLE_BASIC_SCHEDULER
-  	scheduler.runTasks();
-#endif
-#ifdef ENABLE_IL_EXECUTOR
-    ilExecutor.runStep();
-#else
-    0 == 0; // Do something useless
-#endif
-  }
-  
-  if (reporting.elapsed()) {
-#ifdef ENABLE_ANALOG
-    analogInput.report();
-#endif
-#ifdef ENABLE_I2C
-    i2c.report();
-#endif
-  }
 
-#ifdef ENABLE_DIGITAL 
-  digitalInput.report();
-#endif
-
-#ifdef ENABLE_ACCELSTEPPER
-  accelStepper.update();
-#endif
-#ifdef ENABLE_SERIAL
-  serial.update();
-#endif
+  firmataExt.report(reporting.elapsed());
 }

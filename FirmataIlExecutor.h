@@ -23,6 +23,7 @@
 using namespace stdSimple;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 enum class ExecutorCommand : byte
 {
@@ -168,7 +169,7 @@ struct Variable
 
 	static size_t datasize()
 	{
-		return (max(sizeof(void*), sizeof(uint32_t)));
+		return MAX(sizeof(void*), sizeof(uint32_t));
 	}
 };
 
