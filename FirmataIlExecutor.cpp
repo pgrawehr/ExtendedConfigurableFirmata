@@ -1176,6 +1176,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			stack->push({ (int32_t)i, VariableKind::Int32 });
 		}
 		break; */
+
 	case CEE_LDLEN:
 		{
 			// Get the address of the array and push the array size (at index 0)
@@ -1302,6 +1303,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		*(bytePtr + 8 + index) = (byte)value3.Int32;
 	}
 	break;
+	case CEE_LDELEM_REF:
 	case CEE_LDELEM_U4:
 	case CEE_LDELEM_I4:
 		{
@@ -1343,6 +1345,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			}
 		}
 		break;
+	case CEE_STELEM_REF:
 	case CEE_STELEM_I4:
 	{
 		if (value1.Object == nullptr)
@@ -1366,6 +1369,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		}
 		else
 		{
+			if (instr == CEE_STELEM_REF && value3.Type != VariableKind::Object)
+			{
+				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
+				// at least it should be a reference
+				ExceptionOccurred(state, SystemException::ArrayTypeMismatch, state->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
 			// can only be an object now
 			*(data + 2 + index) = (uint32_t)value3.Object;
 		}
