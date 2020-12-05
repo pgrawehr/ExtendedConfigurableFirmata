@@ -37,6 +37,7 @@ enum class ExecutorCommand : byte
 	MethodSignature = 7,
 	ClassDeclaration = 8,
 	SendObject = 9,
+	ConstantData = 10,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -79,6 +80,7 @@ enum class VariableKind : byte
 	ReferenceArray = 7,
 	StaticMember = 8, // type is defined by the first value it gets
 	Reference = 9, // Address of a variable
+	RuntimeFieldType = 10, // A pointer to a constant initializer
 };
 
 enum class NativeMethod
@@ -112,7 +114,8 @@ enum class NativeMethod
 	ArrayClone = 26,
 	GetPinMode = 27,
 	IsPinModeSupported = 28,
-	GetPinCount = 29
+	GetPinCount = 29,
+	RuntimeHelpersInitializeArray = 30,
 };
 
 enum class SystemException
@@ -395,6 +398,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadMetadataTokenMapping(u16 codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
 	ExecutionError ReceiveObjectData(byte argc, byte* argv);
+	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 
 	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable> &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
@@ -416,7 +420,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
-	int16_t SizeOfClass(ClassDeclaration* cls);
+	uint16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	uint16_t DecodePackedUint14(byte* argv);
@@ -433,8 +437,11 @@ class FirmataIlExecutor: public FirmataFeature
 
 	stdSimple::map<u32, ClassDeclaration> _classes;
 
-	// The list of static variable (global)
+	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;
+
+	// Constant data fields (such as array initializers or strings)
+	stdSimple::map<u32, byte*> _constants;
 };
 
 

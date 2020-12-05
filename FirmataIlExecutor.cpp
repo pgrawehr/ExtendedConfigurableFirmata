@@ -17,6 +17,7 @@
 #include "openum.h"
 #include "ObjectVector.h"
 #include "ObjectStack.h"
+#include "Encoder7Bit.h"
 
 typedef byte BYTE;
 typedef uint32_t DWORD;
@@ -154,8 +155,13 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			break;
 		case ExecutorCommand::SendObject:
+			// Not implemented
 			ReceiveObjectData(argc, argv);
 			SendAckOrNack(subCommand, ExecutionError::None);
+			break;
+		case ExecutorCommand::ConstantData:
+			SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), 
+				DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 			break;
 		case ExecutorCommand::ResetExecutor:
 			if (argv[2] == 1)
@@ -185,6 +191,25 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		return true;
 	}
 	return false;
+}
+
+ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv)
+{
+	byte* data;
+	if (offset == 0)
+	{
+		int numToDecode = num7BitOutbytes(argc);
+		data = (byte*)malloc(totalLength);
+		Encoder7Bit.readBinary(numToDecode, argv, data);
+		_constants.insert(constantToken, data);
+		return ExecutionError::None;
+	}
+
+	int numToDecode = num7BitOutbytes(argc);
+	data = _constants.at(constantToken);
+	Encoder7Bit.readBinary(numToDecode, argv, data + offset);
+	
+	return ExecutionError::None;
 }
 
 ExecutionError FirmataIlExecutor::ReceiveObjectData(byte argc, byte* argv)
@@ -524,7 +549,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException*
 	Firmata.write((byte)execResult);
 	if (ex != nullptr && execResult == MethodState::Aborted)
 	{
-		Firmata.write(1 + ex->ExceptionArgs.size() + ex->StackTokens.size() + (ex->StackTokens.size() > 0 ? 1 : 0)); // Number of arguments that follow
+		Firmata.write((byte)(1 + ex->ExceptionArgs.size() + ex->StackTokens.size() + (ex->StackTokens.size() > 0 ? 1 : 0))); // Number of arguments that follow
 		if (ex->ExceptionType == SystemException::None)
 		{
 			SendPackedInt32(ex->TokenOfException);
@@ -628,15 +653,15 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 			Firmata.setPinState(pin, 1);
 		}
 		
-		return MethodState::Running;
+		break;
 	}
 	case NativeMethod::WritePin: // Write(int pin, int value)
 			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
 		digitalWrite(args[1].Int32, args[2].Int32 != 0);
-		return MethodState::Running;
+		break;
 	case NativeMethod::ReadPin:
 		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
-		return MethodState::Running;
+		break;
 	case NativeMethod::EnvironmentTickCount: // TickCount
 		mil = millis();
 		// this one returns signed, because it replaces a standard library function
@@ -644,31 +669,31 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 		return MethodState::Running;
 	case NativeMethod::SleepMicroseconds:
 		delayMicroseconds(args[0].Uint32);
-		return MethodState::Running;
+		break;
 	case NativeMethod::GetMicroseconds:
 		result = { (uint32_t)micros(), VariableKind::Uint32 };
-		return MethodState::Running;
+		break;
 	case NativeMethod::Debug:
 		Firmata.sendString(F("Debug "), args[1].Uint32);
-		return MethodState::Running;;
+		break;
 	case NativeMethod::BaseTypeEquals:
 		ASSERT(args.size() == 3);
 		// This also works for value field equality
 		result.Boolean = args[1].Object == args[2].Object;
 		result.Type = VariableKind::Boolean;
-		return MethodState::Running;
+		break;
 	case NativeMethod::GetPinCount:
 		ASSERT(args.size() == 1) // unused this pointer
 		result.Int32 = TOTAL_PINS;
 		result.Type = VariableKind::Int32;
-		return MethodState::Running;
+		break;
 	case NativeMethod::IsPinModeSupported:
 		ASSERT(args.size() == 3)
 			// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
 			// We support Output, Input and PullUp
 			result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
 			result.Type = VariableKind::Boolean;
-		return MethodState::Running;
+			break;
 	case NativeMethod::GetPinMode:
 		ASSERT(args.size() == 2)
 			mode = Firmata.getPinMode(args[1].Int32);
@@ -691,13 +716,29 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 				return MethodState::Aborted;
 			}
 			result.Type = VariableKind::Int32;
-		return MethodState::Running;
-		
+			break;
+	case NativeMethod::RuntimeHelpersInitializeArray:
+		ASSERT(args.size() == 2);
+		{
+			Variable array = args[0]; // Target array
+			ASSERT(array.Type == VariableKind::ValueArray);
+			Variable field = args[1]; // Runtime field type instance
+			ASSERT(field.Type == VariableKind::RuntimeFieldType);
+			uint32_t* data = (uint32_t*)array.Object;
+			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
+			ClassDeclaration& ty = _classes.at(*(data + 1));
+			int32_t size = *(data);
+			byte* targetPtr = (byte*)(data + 2);
+			memcpy(targetPtr, field.Object, size * ty.ClassDynamicSize);
+		}
+		break;
 	default:
 		Firmata.sendString(F("Unknown internal method: "), (int)method);
 		ExceptionOccurred(state, SystemException::MissingMethod, state->_executingMethod->methodToken);
 		return MethodState::Aborted;
 	}
+
+	return MethodState::Running;
 }
 
 
@@ -1148,6 +1189,63 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		}
 		break;
 
+	case CEE_LDELEM_U2:
+	case CEE_LDELEM_I2:
+	{
+		if (value1.Object == nullptr)
+		{
+			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+		// The instruction suffix (here .i2) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+
+		// This can only be a value type (of type short or ushort)
+		u16* sPtr = (u16*)data;
+		if (instr == CEE_LDELEM_I1)
+		{
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = *(sPtr + 4 + index);
+		}
+		else
+		{
+			intermediate.Type = VariableKind::Uint32;
+			intermediate.Uint32 = *(sPtr + 4 + index);
+		}
+
+		stack->push(intermediate);
+	}
+	break;
+	case CEE_STELEM_I2:
+	{
+		if (value1.Object == nullptr)
+		{
+			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+		// The instruction suffix (here .i2) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+
+		// This can only be a value type (of type short or ushort)
+		u16* sPtr = (u16*)data;
+		*(sPtr + 4 + index) = (short)value3.Int32;
+	}
+	break;
+
 	case CEE_LDELEM_U1:
 	case CEE_LDELEM_I1:
 	{
@@ -1168,8 +1266,18 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 
 		// This can only be a value type (of type byte or sbyte)
 		byte* bytePtr = (byte*)data;
-		Variable r(*(bytePtr + 8 + index), (instr == CEE_LDELEM_I1) ? VariableKind::Int32 : VariableKind::Uint32);
-		stack->push(r);
+		if (instr == CEE_LDELEM_I1)
+		{
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = *(bytePtr + 8 + index);
+		}
+		else
+		{
+			intermediate.Type = VariableKind::Uint32;
+			intermediate.Uint32 = *(bytePtr + 8 + index);
+		}
+			
+		stack->push(intermediate);
 	}
 	break;
 	case CEE_STELEM_I1:
@@ -1212,11 +1320,21 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 				return MethodState::Aborted;
 			}
 
-			// Note: Here, size is equal, but this doesn't hold for the other LDELEM variants
+			// Note: Here, size of Variable is equal size of pointer, but this doesn't hold for the other LDELEM variants
 			if (value1.Type == VariableKind::ValueArray)
 			{
-				Variable r(*(data + 2 + index), (instr == CEE_LDIND_I4) ? VariableKind::Int32 : VariableKind::Uint32);
-				stack->push(r);
+				if (instr == CEE_LDELEM_I4)
+				{
+					intermediate.Type = VariableKind::Int32;
+					intermediate.Int32 = *(data + 2 + index);
+				}
+				else
+				{
+					intermediate.Type = VariableKind::Uint32;
+					intermediate.Uint32 = *(data + 2 + index);
+				}
+
+				stack->push(intermediate);
 			}
 			else
 			{
@@ -2012,6 +2130,35 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				break;
 			}
+			case InlineTok:
+				{
+					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					PC += 4;
+					switch(instr)
+					{
+					case CEE_LDTOKEN:
+						{
+							if (_constants.contains(token))
+							{
+								byte* data = _constants.at(token);
+								intermediate.Object = data;
+								intermediate.Type = VariableKind::RuntimeFieldType;
+								stack->push(intermediate);
+							}
+							else
+							{
+								// Unsupported case (probably a type: needs a matching test case)
+								InvalidOpCode(PC, instr);
+								return MethodState::Aborted;
+							}
+						}
+						break;
+					default:
+						InvalidOpCode(PC, instr);
+						return MethodState::Aborted;
+					}
+				}
+				break;
 			default:
 				InvalidOpCode(PC, instr);
 				return MethodState::Aborted;
@@ -2073,14 +2220,14 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exce
 /// Returns the size of the memory that needs to be allocated for a dynamic class instance.
 /// For value types, this returns the boxed size (which is at least the size of a variable slot + vtable)
 /// </summary>
-int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
+uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 {
 	// + (platform specific) vtable* size
 	if (cls->ValueType)
 	{
 		if  (cls->ClassDynamicSize > 0 && cls->ClassDynamicSize <= Variable::datasize())
 		{
-			return Variable::datasize() + sizeof(void*);
+			return (uint16_t)(Variable::datasize() + sizeof(void*));
 		}
 	}
 	return cls->ClassDynamicSize + sizeof(void*);
@@ -2292,6 +2439,13 @@ void FirmataIlExecutor::reset()
 	_firstMethod = nullptr;
 
 	_classes.clear();
+
+	for (auto c = _constants.begin(); c != _constants.end(); ++c)
+	{
+		free(c.second());
+	}
+	
+	_constants.clear();
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
 }
