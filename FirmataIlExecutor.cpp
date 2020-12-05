@@ -150,7 +150,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 
 			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
-				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5) << 2, DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
+				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
 				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			break;
 		case ExecutorCommand::SendObject:
@@ -719,7 +719,7 @@ int ResolveMember(IlCode* method, int32_t token)
 	return token;
 }
 
-Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
+Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 {
 	byte* o = (byte*)obj.Object;
 	ClassDeclaration* vtable = (ClassDeclaration*)(*(int32_t*)o);
@@ -741,7 +741,7 @@ Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 		}
 
 		offset += Variable::datasize();
-		if ((uint32_t)offset >= (vtable->ClassDynamicSize + sizeof(void*)))
+		if ((uint32_t)offset >= (SizeOfClass(vtable)))
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
@@ -801,7 +801,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable value)
 	_statics.insert(token, value);
 }
 
-void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
+void FirmataIlExecutor::Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
 	byte* o = (byte*)obj.Object;
@@ -827,7 +827,7 @@ void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
 			return;
 		}
 
-		if (offset >= cls->ClassDynamicSize)
+		if (offset >= SizeOfClass(cls))
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
@@ -1147,6 +1147,54 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			stack->push({ i, VariableKind::Uint32 });
 		}
 		break;
+
+	case CEE_LDELEM_U1:
+	case CEE_LDELEM_I1:
+	{
+		if (value1.Object == nullptr)
+		{
+			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+		// The instruction suffix (here .i1) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+
+		// This can only be a value type (of type byte or sbyte)
+		byte* bytePtr = (byte*)data;
+		Variable r(*(bytePtr + 8 + index), (instr == CEE_LDELEM_I1) ? VariableKind::Int32 : VariableKind::Uint32);
+		stack->push(r);
+	}
+	break;
+	case CEE_STELEM_I1:
+	{
+		if (value1.Object == nullptr)
+		{
+			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			return MethodState::Aborted;
+		}
+
+		// This can only be a value type (of type byte or sbyte)
+		byte* bytePtr = (byte*)data;
+		*(bytePtr + 8 + index) = (byte)value3.Int32;
+	}
+	break;
+	case CEE_LDELEM_U4:
 	case CEE_LDELEM_I4:
 		{
 			if (value1.Object == nullptr)
@@ -1167,7 +1215,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			// Note: Here, size is equal, but this doesn't hold for the other LDELEM variants
 			if (value1.Type == VariableKind::ValueArray)
 			{
-				Variable r(*(data + 2 + index), VariableKind::Int32);
+				Variable r(*(data + 2 + index), (instr == CEE_LDIND_I4) ? VariableKind::Int32 : VariableKind::Uint32);
 				stack->push(r);
 			}
 			else
@@ -1850,7 +1898,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						if (ty.ValueType)
 						{
 							// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length, Element 1 is the array type token
-							// TODO: Special handling might be required for value types with size < 4, because we don't want to store char[] with 32 bits per element
+							// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 32 bits per element
 							data = (uint32_t*)AllocGcInstance(ty.ClassDynamicSize * size + 8);
 							v1.Type = VariableKind::ValueArray;
 						}
@@ -1996,7 +2044,7 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exce
 				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 				// The constructor that was called belongs to this class
 				// Compute sizeof(class)
-				size_t sizeOfClass = SizeOfClass(cls);
+				size_t sizeOfClass = SizeOfClass(&cls);
 
 				TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
 				void* ret = AllocGcInstance(sizeOfClass);
@@ -2021,10 +2069,21 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exce
 	return nullptr;
 }
 
-int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration &cls)
+/// <summary>
+/// Returns the size of the memory that needs to be allocated for a dynamic class instance.
+/// For value types, this returns the boxed size (which is at least the size of a variable slot + vtable)
+/// </summary>
+int16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 {
 	// + (platform specific) vtable* size
-	return cls.ClassDynamicSize + sizeof(void*);
+	if (cls->ValueType)
+	{
+		if  (cls->ClassDynamicSize > 0 && cls->ClassDynamicSize <= Variable::datasize())
+		{
+			return Variable::datasize() + sizeof(void*);
+		}
+	}
+	return cls->ClassDynamicSize + sizeof(void*);
 }
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
@@ -2040,7 +2099,14 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	else
 	{
 		// The only flag is currently "isvaluetype"
-		ClassDeclaration newC(classToken, parent, dynamicSize, staticSize, flags != 0);
+		bool isValueType = flags != 0;
+		if (!isValueType)
+		{
+			// For reference types, the class size given is shifted by two (because it's always a multiple of 4).
+			// Value types are not expected to exceed more than a few words
+			dynamicSize = dynamicSize << 2;
+		}
+		ClassDeclaration newC(classToken, parent, dynamicSize, staticSize, isValueType);
 		_classes.insert(classToken, newC);
 		decl = &_classes.at(classToken);
 	}

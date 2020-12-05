@@ -219,8 +219,8 @@ public:
 	bool ValueType;
 	int32_t ClassToken;
 	int32_t ParentToken;
-	int16_t ClassDynamicSize; // Including superclasses, but without vtable
-	int16_t ClassStaticSize; // Size of static members 
+	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
+	uint16_t ClassStaticSize; // Size of static members 
 
 	// Here, the value is the metadata token
 	vector<Variable> fieldTypes;
@@ -401,6 +401,9 @@ class FirmataIlExecutor: public FirmataFeature
 	
     Variable Ldsfld(int token);
     void Stsfld(int token, Variable value);
+	Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token);
+	void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var);
+	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
                                        OPCODE instr, Variable value1, Variable value2, Variable value3);
 
@@ -413,7 +416,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
-	int16_t SizeOfClass(ClassDeclaration& cls);
+	int16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	uint16_t DecodePackedUint14(byte* argv);
