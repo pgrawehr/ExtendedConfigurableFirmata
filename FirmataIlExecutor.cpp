@@ -133,16 +133,6 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 			SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
 			break;
-		case ExecutorCommand::SetMethodTokens:
-			if (argc < 6)
-			{
-				Firmata.sendString(F("Not enough IL data parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-				return true;
-			}
-			SendAckOrNack(subCommand, LoadMetadataTokenMapping(DecodePackedUint14(argv + 2), DecodePackedUint14(argv + 4), 
-				DecodePackedUint14(argv + 6), argc - 8, argv + 8));
-			break;
 		case ExecutorCommand::ClassDeclaration:
 			if (argc < 19)
 			{
@@ -420,53 +410,6 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadMetadataTokenMapping(u16 codeReference, u16 totalTokens, u16 offset, byte argc, byte* argv)
-{
-	Firmata.sendStringf(F("Loading %d tokens from offset %d."), 4, (int)totalTokens, (int)offset);
-	IlCode* method = GetMethodByCodeReference(codeReference);
-	if (method == nullptr)
-	{
-		// This operation is illegal if the method is unknown
-		Firmata.sendString(F("LoadMetadataTokenMapping for unknown codeReference"));
-		return ExecutionError::InvalidArguments;
-	}
-
-	int32_t* tokens = nullptr;
-	if (offset == 0)
-	{
-		if (method->tokenMap != nullptr)
-		{
-			free(method->tokenMap);
-		}
-
-		tokens = (int32_t*)malloc(totalTokens * 4);
-		
-		memset(tokens, 0, totalTokens * 4);
-		method->tokenMapEntries = totalTokens;
-		method->tokenMap = tokens;
-	}
-	else
-	{
-		if (method->tokenMap == nullptr || method->tokenMapEntries != totalTokens)
-		{
-			return ExecutionError::InvalidArguments;
-		}
-		
-		tokens = method->tokenMap;
-	}
-	
-	// No need to care about signed/unsigned here, because the top bit of metadata tokens is never used
-	byte numTokens = argc / 16;
-	for (int i = 0; i < numTokens * 2; i++)
-	{
-		tokens[i + offset] = DecodeUint32(argv + (8 * i));
-	}
-
-	Firmata.sendStringf(F("%d metadata tokens loaded for method %d"), 4, (int)numTokens, (int)codeReference);
-	
-	return ExecutionError::None;
-}
-
 ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
 {
 	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
@@ -739,25 +682,6 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 	}
 
 	return MethodState::Running;
-}
-
-
-int ResolveMember(IlCode* method, int32_t token)
-{
-	int mapEntry = 0;
-	int32_t* entries = method->tokenMap;
-	while (mapEntry < method->tokenMapEntries * 2)
-	{
-		int32_t memberRef = entries[mapEntry + 1];
-		if (memberRef == token)
-		{
-			token = entries[mapEntry];
-			break;
-		}
-		mapEntry += 2;
-	}
-
-	return token;
 }
 
 Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo)

@@ -242,8 +242,6 @@ public:
 		methodFlags = 0;
 		methodLength = 0;
 		methodIl = nullptr;
-		tokenMap = nullptr;
-		tokenMapEntries = 0;
 		maxLocals = 0;
 		numArgs = 0;
 		next = nullptr;
@@ -262,12 +260,6 @@ public:
 	void Clear()
 	{
 		methodToken = 0;
-		if (tokenMap != nullptr)
-		{
-			free(tokenMap);
-			tokenMap = nullptr;
-			tokenMapEntries = 0;
-		}
 		if (methodIl != nullptr)
 		{
 			free(methodIl);
@@ -287,13 +279,8 @@ public:
 	byte numArgs;
 	vector<VariableKind> argumentTypes;
 	byte* methodIl;
-	// this contains alternate tokens for the methods called from this method.
-	// Typically, these will be mappings from 0x0A (memberRef tokens) to 0x06 (methodDef tokens)
-	// for methods defined in another assembly than this method. 
-	int32_t* tokenMap;
 	// Native method number
 	NativeMethod nativeMethod;
-	byte tokenMapEntries;
 	IlCode* next;
 };
 
@@ -398,8 +385,7 @@ class FirmataIlExecutor: public FirmataFeature
     ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
-	ExecutionError LoadMetadataTokenMapping(u16 codeReference, u16 tokens, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 numberOfMembers, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
 	ExecutionError ReceiveObjectData(byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 
