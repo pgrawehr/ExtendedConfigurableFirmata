@@ -760,6 +760,45 @@ int ResolveMember(IlCode* method, int32_t token)
 	return token;
 }
 
+Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo)
+{
+	int idx = 0;
+	uint32_t offset = sizeof(void*);
+	// We could be faster by doing
+	// offset += Variable::datasize() * fieldNo;
+	// but we still need the field handle for the type
+	byte* o = (byte*)instancePtr.Object;
+	for (auto handle = type.fieldTypes.begin(); handle != type.fieldTypes.end(); ++handle)
+	{
+		if (idx == fieldNo)
+		{
+			// Found the member
+			Variable v;
+			memcpy(&v.Object, (o + offset), Variable::datasize());
+			v.Type = handle->Type;
+			return v;
+		}
+
+		offset += Variable::datasize();
+		idx++;
+		if ((uint32_t)offset >= (SizeOfClass(&type)))
+		{
+			// Something is wrong.
+			Firmata.sendString(F("Member offset exceeds class size"));
+		}
+	}
+	
+	return Variable();
+}
+
+
+void FirmataIlExecutor::SetField(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo)
+{
+	uint32_t offset = sizeof(void*);
+	offset += Variable::datasize() * fieldNo;
+	memcpy(((byte*)instance.Object + offset), &data, Variable::datasize());
+}
+
 Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
 {
 	byte* o = (byte*)obj.Object;
@@ -2134,6 +2173,91 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					stack->push(v1);
 					break;
 				}
+				case CEE_BOX:
+				{
+					Variable value1 = stack->top();
+					stack->pop();
+					if (_classes.contains(token))
+					{
+						ClassDeclaration& ty = _classes.at(token);
+						Variable r;
+						if (ty.ValueType)
+						{
+							// TODO: This requires special handling for types derived from Nullable<T>
+
+							// Here, the boxed size is expected
+							size_t sizeOfClass = SizeOfClass(&ty);
+							TRACE(Firmata.sendString(F("Boxed class size is 0x"), sizeOfClass));
+							void* ret = AllocGcInstance(sizeOfClass);
+							if (ret == nullptr)
+							{
+								ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
+								return MethodState::Aborted;
+							}
+
+							// Save a reference to the class declaration in the first entry of the newly created instance.
+							// this will serve as vtable.
+							ClassDeclaration** vtable = (ClassDeclaration**)ret;
+							*vtable = &ty;
+							
+							r.Object = ret;
+							r.Type = VariableKind::Object;
+							// Copy the value to the newly allocated boxed instance (just the first member for now)
+							SetField(ty, value1, r, 0);
+						}
+						else
+						{
+							// If ty is a reference type, box does nothing
+							r.Object = value1.Object;
+							r.Type = value1.Type;
+						}
+						stack->push(r);
+					}
+					else
+					{
+						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
+						ExceptionOccurred(currentFrame, SystemException::MissingMethod, token);
+						return MethodState::Aborted;
+					}
+					break;
+				}
+				case CEE_UNBOX_ANY:
+				{
+					// Note: UNBOX and UNBOX.any are quite different
+					Variable value1 = stack->top();
+					stack->pop();
+					if (_classes.contains(token))
+					{
+						ClassDeclaration& ty = _classes.at(token);
+						Variable r;
+						if (ty.ValueType)
+						{
+							// TODO: This requires special handling for types derived from Nullable<T>
+
+							// Note: Still not sure how large value types need to be handled (with size > 4 or multiple fields)
+							r = GetField(ty, value1, 0);
+						}
+						else
+						{
+							// If ty is a reference type, unbox.any does nothing fancy, except a type test
+							MethodState result = IsAssignableFrom(ty, value1);
+							if (result != MethodState::Running)
+							{
+								return result;
+							}
+							r.Object = value1.Object;
+							r.Type = value1.Type;
+						}
+						stack->push(r);
+					}
+					else
+					{
+						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
+						ExceptionOccurred(currentFrame, SystemException::MissingMethod, token);
+						return MethodState::Aborted;
+					}
+					break;
+				}
 				default:
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
@@ -2185,6 +2309,44 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	return MethodState::Running;
 }
 
+/// <summary>
+/// Returns MethodState::Running if true, MethodState::Aborted otherwise. The caller must decide on context whether
+/// that should throw an exception
+/// </summary>
+/// <param name="typeToAssignTo">The type that should be the assignment target</param>
+/// <param name="object">The value that should be assigned</param>
+/// <returns>See above</returns>
+MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object)
+{
+	byte* o = (byte*)object.Object;
+	ClassDeclaration* sourceType = (ClassDeclaration*)(*(int32_t*)o);
+	// If the types are the same, they're assignable
+	if (sourceType->ClassToken == typeToAssignTo.ClassToken)
+	{
+		return MethodState::Running;
+	}
+
+	// If sourceType derives from typeToAssign, that works as well
+	ClassDeclaration* parent = &_classes.at(sourceType->ParentToken);
+	while (parent != nullptr)
+	{
+		if (parent->ClassToken == typeToAssignTo.ClassToken)
+		{
+			return MethodState::Running;
+		}
+		
+		parent = &_classes.at(parent->ParentToken);
+	}
+
+	// Note: List is not filled yet.
+	if (typeToAssignTo.interfaceTokens.contains(sourceType->ClassToken))
+	{
+		return MethodState::Running;
+	}
+
+	return MethodState::Stopped;
+}
+
 void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exception)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
@@ -2211,7 +2373,7 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exce
 					Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
 					return nullptr;
 				}
-				memset(ret, 0, sizeOfClass); // the standard explicitly requires the memory to be initialized
+
 				// Save a reference to the class declaration in the first entry of the newly created instance.
 				// this will serve as vtable.
 				ClassDeclaration** vtable = (ClassDeclaration**)ret;

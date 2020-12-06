@@ -169,6 +169,19 @@ namespace stdSimple
 		{
 			return _data + _count;
 		}
+
+		bool contains(const T& value)
+		{
+			for (iterator it = begin(); it != end(); ++it)
+			{
+				if (*it == value)
+				{
+					return true;
+				}
+			}
+			
+			return false;
+		}
 	};
 
 }

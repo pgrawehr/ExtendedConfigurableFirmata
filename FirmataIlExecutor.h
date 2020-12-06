@@ -227,7 +227,10 @@ public:
 
 	// Here, the value is the metadata token
 	vector<Variable> fieldTypes;
+	// List of indirectly callable methods of this class (ctors, virtual methods and interface implementations)
 	vector<Method> methodTypes;
+	// List of interfaces implemented by this class
+	vector<int> interfaceTokens;
 };
 
 class IlCode
@@ -418,7 +421,10 @@ class FirmataIlExecutor: public FirmataFeature
     RuntimeException* UnrollExecutionStack();
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
-	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+    MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
+    Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
+    void SetField(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
+    MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
 	uint16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
