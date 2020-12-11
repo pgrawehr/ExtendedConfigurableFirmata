@@ -70,52 +70,71 @@ enum class ExecutionError : byte
 
 enum class VariableKind : byte
 {
-	Void = 0,
-	Uint32 = 1,
-	Int32 = 2,
-	Boolean = 3,
-	Object = 4,
+	Void = 0, // The slot contains no data
+	Uint32 = 1, // The slot contains unsigned integer data
+	Int32 = 2, // The slot contains signed integer data
+	Boolean = 3, // The slot contains true or false
+	Object = 4, // The slot contains an object reference
 	Method = 5,
-	ValueArray = 6,
-	ReferenceArray = 7,
+	ValueArray = 6, // The slot contains a reference to an array of value types (inline)
+	ReferenceArray = 7, // The slot contains a reference to an array of reference types
 	StaticMember = 8, // type is defined by the first value it gets
 	Reference = 9, // Address of a variable
-	RuntimeFieldType = 10, // A pointer to a constant initializer
+	RuntimeFieldHandle = 10, // So far this is a pointer to a constant initializer
+	RuntimeTypeHandle = 11, // A type handle. The value is a type token
 };
 
 enum class NativeMethod
 {
 	None = 0,
-	SetPinMode = 1,
-	WritePin = 2,
-	ReadPin = 3,
-	EnvironmentTickCount = 4,
-	SleepMicroseconds = 5,
-	GetMicroseconds = 6,
-	Debug = 7,
-	ObjectEquals = 8,
-	ReferenceEquals = 9,
-	GetType = 10,
-	GetHashCode = 11,
-	ArrayCopy5 = 12,
-	StringCtor0 = 13,
-	StringLength = 14,
-	MonitorEnter1 = 15,
-	MonitorEnter2 = 16,
-	MonitorExit = 17,
-	StringIndexer = 18,
-	StringFormat2 = 19,
-	StringFormat2b = 20,
-	BaseTypeEquals = 21,
-	EmptyStaticCtor = 22,
-	DefaultEqualityComparer = 23,
-	ArrayCopy3 = 24,
-	StringFormat3 = 25,
-	ArrayClone = 26,
-	GetPinMode = 27,
-	IsPinModeSupported = 28,
-	GetPinCount = 29,
-	RuntimeHelpersInitializeArray = 30,
+	SetPinMode,
+	WritePin,
+	ReadPin,
+	EnvironmentTickCount,
+	SleepMicroseconds,
+	GetMicroseconds,
+	Debug,
+	ObjectEquals,
+	ReferenceEquals,
+	GetType,
+	GetHashCode,
+	ArrayCopy5,
+	StringCtor0,
+	StringLength,
+	MonitorEnter1,
+	MonitorEnter2,
+	MonitorExit,
+	StringIndexer,
+	StringFormat2,
+	StringFormat2b,
+	BaseTypeEquals,
+	EmptyStaticCtor,
+	DefaultEqualityComparer,
+	ArrayCopy3,
+	StringFormat3,
+	ArrayClone,
+	GetPinMode,
+	IsPinModeSupported,
+	GetPinCount,
+	RuntimeHelpersInitializeArray,
+	RuntimeHelpersRunClassConstructor,
+	TypeGetTypeFromHandle,
+	BaseGetHashCode,
+	FailFast1,
+	FailFast2,
+
+	TypeOp_Equality,
+	TypeOp_Inequality,
+	TypeEquals,
+	TypeIsAssignableTo,
+	TypeIsEnum,
+	TypeTypeHandle,
+	TypeIsValueType,
+	TypeIsSubclassOf,
+	TypeIsAssignableFrom,
+	TypeCtor,
+	ObjectReferenceEquals,
+	TypeMakeGenericType
 };
 
 enum class SystemException
@@ -130,6 +149,9 @@ enum class SystemException
 	OutOfMemory = 7,
 	ArrayTypeMismatch = 8,
 	InvalidOperation = 9,
+	ClassNotFound = 10,
+	InvalidCast = 11,
+	NotSupported = 12,
 };
 
 struct Variable
@@ -407,11 +429,14 @@ class FirmataIlExecutor: public FirmataFeature
     RuntimeException* UnrollExecutionStack();
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
+	MethodState GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
     Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
     void SetField(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
+    ClassDeclaration* GetClassDeclaration(Variable& obj);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
+	void* CreateInstanceOfClass(int32_t typeToken, SystemException* exception);
 	uint16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);

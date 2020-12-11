@@ -50,7 +50,7 @@ const byte OpcodePops[] PROGMEM =
 };
 
 #define ASSERT(x) if (!(x)) {\
-	ExceptionOccurred(state, SystemException::MissingMethod, state->_executingMethod->methodToken); \
+	ExceptionOccurred(currentFrame, SystemException::MissingMethod, currentFrame->_executingMethod->methodToken); \
 	return MethodState::Aborted; \
 	}
 
@@ -568,8 +568,29 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 	ExceptionOccurred(_methodCurrentlyExecuting, SystemException::InvalidOpCode, opCode);
 }
 
+MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type)
+{
+	SystemException ex = SystemException::None;
+	// Create an instance of "System.Type"
+	void* newObjInstance = CreateInstanceOfClass(2, &ex);
+	if (newObjInstance == nullptr)
+	{
+		ExceptionOccurred(currentFrame, ex, 0);
+		return MethodState::Aborted;
+	}
+
+	ClassDeclaration* cls = (ClassDeclaration*)(*(int32_t*)newObjInstance);
+			
+	// This is now a quite normal object instance
+	result.Type = VariableKind::Object;
+	result.Object = newObjInstance;
+	// Set the "_internalType" member to point to the class declaration
+	SetField(*cls, type, result, 0);
+	return MethodState::Running;
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
-MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable>& args, Variable& result)
+MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const vector<Variable>& args, Variable& result)
 {
 	u32 mil = 0;
 	int pin;
@@ -655,7 +676,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 			else
 			{
 				// This is invalid for this method. GpioDriver.GetPinMode is only valid if the pin is in one of the GPIO modes
-				ExceptionOccurred(state, SystemException::InvalidOperation, state->_executingMethod->methodToken);
+				ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
 			result.Type = VariableKind::Int32;
@@ -666,7 +687,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 			Variable array = args[0]; // Target array
 			ASSERT(array.Type == VariableKind::ValueArray);
 			Variable field = args[1]; // Runtime field type instance
-			ASSERT(field.Type == VariableKind::RuntimeFieldType);
+			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
 			uint32_t* data = (uint32_t*)array.Object;
 			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
 			ClassDeclaration& ty = _classes.at(*(data + 1));
@@ -675,9 +696,118 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* state, Nativ
 			memcpy(targetPtr, field.Object, size * ty.ClassDynamicSize);
 		}
 		break;
+	case NativeMethod::TypeGetTypeFromHandle:
+		ASSERT(args.size() == 1);
+		{
+			Variable type = args[0]; // type handle
+			ASSERT(type.Type == VariableKind::RuntimeTypeHandle);
+			MethodState value = GetTypeFromHandle(currentFrame, result, type);
+			if (value != MethodState::Running)
+			{
+				return value;
+			}
+		}
+		break;
+	case NativeMethod::ObjectEquals: // this is an instance method with 1 argument
+	case NativeMethod::ObjectReferenceEquals: // This is a static method with 2 arguments, but implicitly the same as the above
+		ASSERT(args.size() == 2)
+			result.Type = VariableKind::Boolean;
+			result.Boolean = args[0].Object == args[1].Object; // This implements reference equality (or binary equality for value types)
+		break;
+	case NativeMethod::TypeMakeGenericType:
+		ASSERT(args.size() == 2);
+		{
+			Variable type = args[0]; // type or type handle
+			Variable arguments = args[1]; // An array of types
+			ASSERT(arguments.Type == VariableKind::ReferenceArray);
+			uint32_t* data = (uint32_t*)arguments.Object;
+			int32_t size = *(data);
+			ClassDeclaration& typeOfType = _classes.at(2);
+			if (size != 1)
+			{
+				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+			}
+			uint32_t parameter = *(data + 2);
+			Variable argumentTypeInstance;
+			// First, get element of array (an object)
+			argumentTypeInstance.Uint32 = parameter;
+			argumentTypeInstance.Type = VariableKind::Object;
+			// then get its first field, which is the type token
+			Variable argumentType = GetField(typeOfType, argumentTypeInstance, 0);
+			int32_t genericToken = 0;
+			if (type.Type == VariableKind::RuntimeTypeHandle)
+			{
+				// Type handle
+				genericToken = type.Int32;
+			}
+			else if (type.Type == VariableKind::Object)
+			{
+				// Type instance
+				Variable token = GetField(typeOfType, type, 0);
+				genericToken = token.Int32;
+			}
+			else
+			{
+				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
+
+			// The sum of a generic type and its only type argument will yield the token for the combination
+			type.Int32 = genericToken + argumentType.Int32;
+			type.Type = VariableKind::RuntimeTypeHandle;
+			MethodState value = GetTypeFromHandle(currentFrame, result, type);
+			if (value != MethodState::Running)
+			{
+				return value;
+			}
+			// result is returning the newly constructed type instance
+		}
+		break;
+
+	case NativeMethod::TypeIsAssignableTo:
+		{
+			// Returns true if "this" type can be assigned to a variable of type "other"
+			ASSERT(args.size() == 2);
+			Variable ownTypeInstance = args[0]; // A type instance
+			Variable otherTypeInstance = args[1]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			Variable otherToken = GetField(*typeClassDeclaration, otherTypeInstance, 0);
+			result.Type = VariableKind::Boolean;
+			
+			if (ownToken.Int32 == otherToken.Int32)
+			{
+				result.Boolean = true;
+				break;
+			}
+			
+			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			ClassDeclaration& t2 = _classes.at(otherToken.Int32);
+			
+			ClassDeclaration* parent = &_classes.at(t1.ParentToken);
+			while (parent != nullptr)
+			{
+				if (parent->ClassToken == t2.ClassToken)
+				{
+					result.Boolean = true;
+					break;
+				}
+
+				parent = &_classes.at(parent->ParentToken);
+			}
+
+			// Note: List is not filled yet.
+			if (t1.interfaceTokens.contains(t2.ClassToken))
+			{
+				result.Boolean = true;
+				break;
+			}
+			result.Boolean = false;
+		}
+		break;
 	default:
 		Firmata.sendString(F("Unknown internal method: "), (int)method);
-		ExceptionOccurred(state, SystemException::MissingMethod, state->_executingMethod->methodToken);
+		ExceptionOccurred(currentFrame, SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 		return MethodState::Aborted;
 	}
 
@@ -723,10 +853,17 @@ void FirmataIlExecutor::SetField(ClassDeclaration& type, const Variable& data, V
 	memcpy(((byte*)instance.Object + offset), &data, Variable::datasize());
 }
 
-Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
+ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 {
 	byte* o = (byte*)obj.Object;
 	ClassDeclaration* vtable = (ClassDeclaration*)(*(int32_t*)o);
+	return vtable;
+}
+
+Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
+{
+	byte* o = (byte*)obj.Object;
+	ClassDeclaration* vtable = GetClassDeclaration(obj);
 
 	// Assuming sizeof(void*) == sizeof(any pointer type)
 	// and sizeof(void*) >= sizeof(int)
@@ -2140,7 +2277,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					else
 					{
 						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
-						ExceptionOccurred(currentFrame, SystemException::MissingMethod, token);
+						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
 						return MethodState::Aborted;
 					}
 					break;
@@ -2177,10 +2314,37 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					else
 					{
 						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
-						ExceptionOccurred(currentFrame, SystemException::MissingMethod, token);
+						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
 						return MethodState::Aborted;
 					}
 					break;
+				}
+				case CEE_CASTCLASS:
+				{
+					Variable value1 = stack->top();
+					stack->pop();
+					if (value1.Object == nullptr)
+					{
+						// Castclass on a null pointer just returns the same
+						stack->push(value1);
+						break;
+					}
+					if (!_classes.contains(token))
+					{
+						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+						return MethodState::Aborted;
+					}
+
+					ClassDeclaration& ty = _classes.at(token);
+					if (IsAssignableFrom(ty, value1) == MethodState::Running)
+					{
+						// if the cast is fine, just return the original object
+						stack->push(value1);
+						break;
+					}
+					// The cast fails. Throw a InvalidCastException
+					ExceptionOccurred(currentFrame, SystemException::InvalidCast, ty.ClassToken);
+					return MethodState::Aborted;
 				}
 				default:
 					InvalidOpCode(PC, instr);
@@ -2200,13 +2364,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							{
 								byte* data = _constants.at(token);
 								intermediate.Object = data;
-								intermediate.Type = VariableKind::RuntimeFieldType;
+								intermediate.Type = VariableKind::RuntimeFieldHandle;
+								stack->push(intermediate);
+							}
+							else if (_classes.contains(token))
+							{
+								intermediate.Int32 = token;
+								intermediate.Type = VariableKind::RuntimeTypeHandle;
 								stack->push(intermediate);
 							}
 							else
 							{
-								// Unsupported case (probably a type: needs a matching test case)
-								InvalidOpCode(PC, instr);
+								// Unsupported case
+								ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
 								return MethodState::Aborted;
 							}
 						}
@@ -2250,6 +2420,13 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 		return MethodState::Running;
 	}
 
+	// Special handling for types derived from "System.Type", because this runtime implements a subset of the type library only
+	if (sourceType->ClassToken == 2 && (typeToAssignTo.ClassToken == 5 || typeToAssignTo.ClassToken == 6))
+	{
+		// Casting System.Type to System.RuntimeType or System.Reflection.TypeInfo is fine
+		return MethodState::Running;
+	}
+
 	// If sourceType derives from typeToAssign, that works as well
 	ClassDeclaration* parent = &_classes.at(sourceType->ParentToken);
 	while (parent != nullptr)
@@ -2269,6 +2446,32 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 	}
 
 	return MethodState::Stopped;
+}
+
+/// <summary>
+/// Creates a class directly by its type (used i.e. to create instances of System::Type)
+/// </summary>
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, SystemException* exception)
+{
+	ClassDeclaration& cls = _classes.at(typeToken);
+	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
+	// Compute sizeof(class)
+	size_t sizeOfClass = SizeOfClass(&cls);
+
+	TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
+	void* ret = AllocGcInstance(sizeOfClass);
+	if (ret == nullptr)
+	{
+		*exception = SystemException::OutOfMemory;
+		Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
+		return nullptr;
+	}
+
+	// Save a reference to the class declaration in the first entry of the newly created instance.
+	// this will serve as vtable.
+	ClassDeclaration** vtable = (ClassDeclaration**)ret;
+	*vtable = &cls;
+	return ret;
 }
 
 void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exception)
@@ -2361,7 +2564,13 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 		decl->methodTypes.clear();
 	}
 
-	// A member
+	if (argc == 0)
+	{
+		// A class without a ctor or a field - this is an interface
+		return ExecutionError::None;
+	}
+
+	// A member, either a field or a method (only ctors and virtual methods provided here)
 	int i = 0;
 	Variable v;
 	v.Type = (VariableKind)argv[i];
