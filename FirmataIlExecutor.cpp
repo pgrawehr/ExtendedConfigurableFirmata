@@ -244,12 +244,23 @@ bool FirmataIlExecutor::IsExecutingCode()
 	return _methodCurrentlyExecuting != nullptr;
 }
 
-// TODO: Keep track, implemetn GC, etc...
+// TODO: Keep track, implement GC, etc...
 byte* AllocGcInstance(size_t bytes)
 {
 	byte* ret = (byte*)malloc(bytes);
 	memset(ret, 0, bytes);
 	return ret;
+}
+
+// Used if it is well known that a reference now runs out of scope
+void FreeGcInstance(Variable& obj)
+{
+	if (obj.Object != nullptr)
+	{
+		free(obj.Object);
+	}
+	obj.Object = nullptr;
+	obj.Type = VariableKind::Void;
 }
 
 void FirmataIlExecutor::KillCurrentTask()
@@ -589,12 +600,19 @@ MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, V
 	return MethodState::Running;
 }
 
+int FirmataIlExecutor::GetHandleFromType(Variable& object) const
+{
+	ClassDeclaration* cls = (ClassDeclaration*)(*(int32_t*)object.Object);
+	return cls->ClassToken;
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const vector<Variable>& args, Variable& result)
 {
 	u32 mil = 0;
 	int pin;
 	int mode;
+	MethodState state = MethodState::Running;
 	switch (method)
 	{
 	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
@@ -630,7 +648,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		mil = millis();
 		// this one returns signed, because it replaces a standard library function
 		result = { (int32_t)mil, VariableKind::Int32 };
-		return MethodState::Running;
+		break;
 	case NativeMethod::SleepMicroseconds:
 		delayMicroseconds(args[0].Uint32);
 		break;
@@ -677,7 +695,8 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			{
 				// This is invalid for this method. GpioDriver.GetPinMode is only valid if the pin is in one of the GPIO modes
 				ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				state = MethodState::Aborted;
+				break;
 			}
 			result.Type = VariableKind::Int32;
 			break;
@@ -701,11 +720,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		{
 			Variable type = args[0]; // type handle
 			ASSERT(type.Type == VariableKind::RuntimeTypeHandle);
-			MethodState value = GetTypeFromHandle(currentFrame, result, type);
-			if (value != MethodState::Running)
-			{
-				return value;
-			}
+			state = GetTypeFromHandle(currentFrame, result, type);
 		}
 		break;
 	case NativeMethod::ObjectEquals: // this is an instance method with 1 argument
@@ -726,6 +741,8 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			if (size != 1)
 			{
 				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+				state = MethodState::Aborted;
+				break;
 			}
 			uint32_t parameter = *(data + 2);
 			Variable argumentTypeInstance;
@@ -744,26 +761,49 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			{
 				// Type instance
 				Variable token = GetField(typeOfType, type, 0);
-				genericToken = token.Int32;
+				genericToken = token.Int32 & 0xFF000000; // Make sure this is a generic token (allows reusing this function for TypeCreateInstanceForAnotherGenericType)
 			}
 			else
 			{
 				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				state = MethodState::Aborted;
+				break;
 			}
 
 			// The sum of a generic type and its only type argument will yield the token for the combination
 			type.Int32 = genericToken + argumentType.Int32;
 			type.Type = VariableKind::RuntimeTypeHandle;
-			MethodState value = GetTypeFromHandle(currentFrame, result, type);
-			if (value != MethodState::Running)
-			{
-				return value;
-			}
+			state = GetTypeFromHandle(currentFrame, result, type);
 			// result is returning the newly constructed type instance
 		}
 		break;
 
+	case NativeMethod::CreateInstanceForAnotherGenericParameter:
+		{
+			// The definition of this (private) function isn't 100% clear, but
+			// "CreateInstanceForAnotherGenericType(typeof(List<int>), typeof(bool))" should return an instance(!) of List<bool>.
+			Variable type1 = args[0]; // type1. An instantiated generic type
+			Variable type2 = args[1]; // type2. a type parameter
+			ClassDeclaration& ty = _classes.at(2);
+			Variable tok1 = GetField(ty, type1, 0);
+			Variable tok2 = GetField(ty, type2, 0);
+			int token = tok1.Int32;
+			token = token & 0xFF000000;
+			token = token + tok2.Int32;
+			
+			SystemException exception;
+			void* ptr = CreateInstanceOfClass(token, &exception);
+			if (ptr == nullptr)
+			{
+				ExceptionOccurred(currentFrame, exception, token);
+				state = MethodState::Aborted;
+				break;
+			}
+			// TODO: We still have to execute the newly created instance's ctor
+			result.Object = ptr;
+			result.Type = VariableKind::Object;
+		}
+		break;
 	case NativeMethod::TypeIsAssignableTo:
 		{
 			// Returns true if "this" type can be assigned to a variable of type "other"
@@ -805,13 +845,26 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			result.Boolean = false;
 		}
 		break;
+	case NativeMethod::TypeIsEnum:
+		ASSERT(args.size() == 1)
+	{
+		// Find out whether the current type inherits (directly) from System.Enum
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			result.Type = VariableKind::Boolean;
+			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			// IsEnum returns true for enum types, but not if the type itself is "System.Enum".
+			result.Boolean = t1.ParentToken == (int)KnownTypeTokens::Enum;
+	}
+		break;
 	default:
 		Firmata.sendString(F("Unknown internal method: "), (int)method);
 		ExceptionOccurred(currentFrame, SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 		return MethodState::Aborted;
 	}
 
-	return MethodState::Running;
+	return state;
 }
 
 Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo)

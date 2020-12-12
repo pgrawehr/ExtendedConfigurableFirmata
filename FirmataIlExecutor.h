@@ -68,6 +68,20 @@ enum class ExecutionError : byte
 	OutOfMemory = 3,
 };
 
+enum class KnownTypeTokens
+{
+	None = 0,
+	Object = 1,
+	Type = 2,
+	ValueType = 3,
+	String = 4,
+	TypeInfo = 5,
+	RuntimeType = 6,
+	Nullable = 7,
+	Enum = 8,
+	LargestKnownTypeToken = 20,
+};
+
 enum class VariableKind : byte
 {
 	Void = 0, // The slot contains no data
@@ -134,7 +148,8 @@ enum class NativeMethod
 	TypeIsAssignableFrom,
 	TypeCtor,
 	ObjectReferenceEquals,
-	TypeMakeGenericType
+	TypeMakeGenericType,
+	CreateInstanceForAnotherGenericParameter
 };
 
 enum class SystemException
@@ -430,6 +445,7 @@ class FirmataIlExecutor: public FirmataFeature
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	MethodState GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
+    int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
     Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
     void SetField(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
