@@ -38,6 +38,7 @@ enum class ExecutorCommand : byte
 	ClassDeclaration = 8,
 	SendObject = 9,
 	ConstantData = 10,
+	Interfaces = 11,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -109,7 +110,9 @@ enum class NativeMethod
 	GetMicroseconds,
 	Debug,
 	ObjectEquals,
-	ReferenceEquals,
+	ObjectGetHashCode,
+	ObjectReferenceEquals,
+	ObjectToString,
 	GetType,
 	GetHashCode,
 	ArrayCopy5,
@@ -121,8 +124,6 @@ enum class NativeMethod
 	StringIndexer,
 	StringFormat2,
 	StringFormat2b,
-	BaseTypeEquals,
-	EmptyStaticCtor,
 	DefaultEqualityComparer,
 	ArrayCopy3,
 	StringFormat3,
@@ -132,13 +133,10 @@ enum class NativeMethod
 	GetPinCount,
 	RuntimeHelpersInitializeArray,
 	RuntimeHelpersRunClassConstructor,
-	TypeGetTypeFromHandle,
-	BaseGetHashCode,
 	FailFast1,
 	FailFast2,
 
-	TypeOp_Equality,
-	TypeOp_Inequality,
+	TypeGetTypeFromHandle,
 	TypeEquals,
 	TypeIsAssignableTo,
 	TypeIsEnum,
@@ -147,9 +145,10 @@ enum class NativeMethod
 	TypeIsSubclassOf,
 	TypeIsAssignableFrom,
 	TypeCtor,
-	ObjectReferenceEquals,
 	TypeMakeGenericType,
-	CreateInstanceForAnotherGenericParameter
+	TypeGetHashCode,
+
+	CreateInstanceForAnotherGenericParameter,
 };
 
 enum class SystemException
@@ -414,12 +413,14 @@ class FirmataIlExecutor: public FirmataFeature
     FirmataIlExecutor();
     boolean handlePinMode(byte pin, int mode) override;
     void handleCapability(byte pin) override;
+    
     boolean handleSysex(byte command, byte argc, byte* argv) override;
     void reset() override;
 	void report(bool elapsed);
  
   private:
-    ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
+	ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);

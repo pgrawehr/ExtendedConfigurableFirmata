@@ -144,6 +144,14 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
 				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			break;
+		case ExecutorCommand::Interfaces:
+			if (argc < 6)
+			{
+				Firmata.sendString(F("Not enough parameters"));
+				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+			}
+			SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
+			break;
 		case ExecutorCommand::SendObject:
 			// Not implemented
 			ReceiveObjectData(argc, argv);
@@ -658,11 +666,18 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 	case NativeMethod::Debug:
 		Firmata.sendString(F("Debug "), args[1].Uint32);
 		break;
-	case NativeMethod::BaseTypeEquals:
-		ASSERT(args.size() == 3);
-		// This also works for value field equality
-		result.Boolean = args[1].Object == args[2].Object;
-		result.Type = VariableKind::Boolean;
+	case NativeMethod::TypeEquals:
+		ASSERT(args.size() == 2);
+		{
+			// This implements System::Type::Equals(object)
+			result.Type = VariableKind::Boolean;
+			Variable type1 = args[0]; // type1.
+			Variable type2 = args[1]; // type2.
+			ClassDeclaration& ty = _classes.at(2);
+			Variable tok1 = GetField(ty, type1, 0);
+			Variable tok2 = GetField(ty, type2, 0);
+			result.Boolean = tok1.Int32 == tok2.Int32;
+		}
 		break;
 	case NativeMethod::GetPinCount:
 		ASSERT(args.size() == 1) // unused this pointer
@@ -792,6 +807,12 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			token = token + tok2.Int32;
 			
 			SystemException exception;
+			if (!_classes.contains(token))
+			{
+				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+				state = MethodState::Aborted;
+				break;
+			}
 			void* ptr = CreateInstanceOfClass(token, &exception);
 			if (ptr == nullptr)
 			{
@@ -2647,6 +2668,23 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 		me2.declarationTokens.push_back(DecodePackedUint32(argv + i));
 	}
 
+	return ExecutionError::None;
+}
+
+ExecutionError FirmataIlExecutor::LoadInterfaces(int32_t classToken, byte argc, byte* argv)
+{
+	if (!_classes.contains(classToken))
+	{
+		return ExecutionError::InvalidArguments;
+	}
+
+	ClassDeclaration& ty = _classes.at(classToken);
+	for (int i = 0; i < argc;)
+	{
+		int token = DecodePackedUint32(argv + i);
+		ty.interfaceTokens.push_back(token);
+		i += 5;
+	}
 	return ExecutionError::None;
 }
 
