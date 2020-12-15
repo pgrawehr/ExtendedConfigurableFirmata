@@ -83,6 +83,8 @@ enum class KnownTypeTokens
 	LargestKnownTypeToken = 20,
 };
 
+#define GENERIC_TOKEN_MASK 0xFF800000
+
 enum class VariableKind : byte
 {
 	Void = 0, // The slot contains no data
@@ -97,6 +99,7 @@ enum class VariableKind : byte
 	Reference = 9, // Address of a variable
 	RuntimeFieldHandle = 10, // So far this is a pointer to a constant initializer
 	RuntimeTypeHandle = 11, // A type handle. The value is a type token
+	AddressOfVariable = 12, // A pointer to an instance of a Variable, obtained i.e. by a LDLOCA instruction
 };
 
 enum class NativeMethod
@@ -147,8 +150,13 @@ enum class NativeMethod
 	TypeCtor,
 	TypeMakeGenericType,
 	TypeGetHashCode,
+	TypeGetGenericTypeDefinition,
+	TypeGetGenericArguments,
 
 	CreateInstanceForAnotherGenericParameter,
+	ValueTypeGetHashCode,
+	ValueTypeEquals,
+	ValueTypeToString
 };
 
 enum class SystemException

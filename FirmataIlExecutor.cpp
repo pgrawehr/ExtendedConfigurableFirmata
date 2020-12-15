@@ -18,6 +18,7 @@
 #include "ObjectVector.h"
 #include "ObjectStack.h"
 #include "Encoder7Bit.h"
+#include <stdint.h>
 
 typedef byte BYTE;
 typedef uint32_t DWORD;
@@ -776,7 +777,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			{
 				// Type instance
 				Variable token = GetField(typeOfType, type, 0);
-				genericToken = token.Int32 & 0xFF000000; // Make sure this is a generic token (allows reusing this function for TypeCreateInstanceForAnotherGenericType)
+				genericToken = token.Int32 & GENERIC_TOKEN_MASK; // Make sure this is a generic token (allows reusing this function for TypeCreateInstanceForAnotherGenericType)
 			}
 			else
 			{
@@ -803,7 +804,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			Variable tok1 = GetField(ty, type1, 0);
 			Variable tok2 = GetField(ty, type2, 0);
 			int token = tok1.Int32;
-			token = token & 0xFF000000;
+			token = token & GENERIC_TOKEN_MASK;
 			token = token + tok2.Int32;
 			
 			SystemException exception;
@@ -843,6 +844,13 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			}
 			
 			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			if (!_classes.contains(otherToken.Int32))
+			{
+				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, otherToken.Int32);
+				state = MethodState::Aborted;
+				break;
+			}
+			
 			ClassDeclaration& t2 = _classes.at(otherToken.Int32);
 			
 			ClassDeclaration* parent = &_classes.at(t1.ParentToken);
@@ -1779,18 +1787,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						locals->at(data) = stack->top();
 						stack->pop();
 						break;
-					/* case CEE_LDLOCA_S:
-						// Warn: Pointer to data conversion!
+					case CEE_LDLOCA_S:
 						intermediate.Object = &locals->at(data);
-						intermediate.Type = VariableKind::Object;
+						intermediate.Type = VariableKind::AddressOfVariable;
 						stack->push(intermediate);
-						break; */
+						break;
 					case CEE_LDARG_S:
 						stack->push(arguments->at(data));
 						break;
 					case CEE_LDARGA_S:
 						// Get address of argument x. 
-						// TODO: Byref parameter handling is not supported at the moment by the call implementation. 
 						intermediate.Object = &arguments->at(data);
 						intermediate.Type = VariableKind::Reference;
 						stack->push(intermediate);
@@ -2457,6 +2463,43 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					default:
 						InvalidOpCode(PC, instr);
+						return MethodState::Aborted;
+					}
+				}
+				break;
+			case InlineString:
+				{
+					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					PC += 4;
+					bool emptyString = (token & 0xFFFF) == 0;
+					if (_constants.contains(token) || emptyString)
+					{
+						byte* data = nullptr;
+						if (!emptyString)
+						{
+							data = _constants.at(token);
+						}
+						SystemException ex;
+						void* classInstance = CreateInstanceOfClass((int)KnownTypeTokens::String, &ex);
+						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
+						if (classInstance == nullptr)
+						{
+							ExceptionOccurred(currentFrame, ex, token);
+							return MethodState::Aborted;
+						}
+						// Length
+						Variable v(token & 0xFFFF, VariableKind::Int32);
+						intermediate.Type = VariableKind::Object;
+						intermediate.Object = classInstance;
+						SetField(string, v, intermediate, 0);
+						// Data. The string is immutable, therefore we can point it to our data heap
+						v.Object = data;
+						SetField(string, v, intermediate, 1);
+						stack->push(intermediate);
+					}
+					else
+					{
+						ExceptionOccurred(currentFrame, SystemException::NotSupported, token);
 						return MethodState::Aborted;
 					}
 				}
