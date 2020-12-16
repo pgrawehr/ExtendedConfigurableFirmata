@@ -141,7 +141,7 @@ void NetworkConnection::begin(int baudRate)
 
 	service.sin_family = AF_INET;
 	InetPton(AF_INET, L"127.0.0.1", &service.sin_addr.s_addr);
-	service.sin_port = htons(27015);
+	service.sin_port = htons(27016);
 
 	iResult = bind(_listen, (SOCKADDR*)&service, sizeof(service));
 	if (iResult == SOCKET_ERROR) {

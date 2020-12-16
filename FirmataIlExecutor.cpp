@@ -842,6 +842,13 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				result.Boolean = true;
 				break;
 			}
+
+			// a type can be assigned to it's nullable variant
+			if (ownToken.Int32 == (otherToken.Int32 & ~NULLABLE_TOKEN_MASK))
+			{
+				result.Boolean = true;
+				break;
+			}
 			
 			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
 			if (!_classes.contains(otherToken.Int32))
@@ -865,13 +872,109 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				parent = &_classes.at(parent->ParentToken);
 			}
 
-			// Note: List is not filled yet.
 			if (t1.interfaceTokens.contains(t2.ClassToken))
 			{
 				result.Boolean = true;
 				break;
 			}
 			result.Boolean = false;
+		}
+		break;
+	case NativeMethod::TypeIsAssignableFrom:
+	{
+		// Returns true if "this" type can be assigned from a variable of type "other"
+		// This is almost the inverse of the above, except for the identity case
+		// TODO: Combine the two
+		ASSERT(args.size() == 2);
+		Variable ownTypeInstance = args[0]; // A type instance
+		Variable otherTypeInstance = args[1]; // A type instance
+		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+		Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+		Variable otherToken = GetField(*typeClassDeclaration, otherTypeInstance, 0);
+		result.Type = VariableKind::Boolean;
+
+		if (ownToken.Int32 == otherToken.Int32)
+		{
+			result.Boolean = true;
+			break;
+		}
+
+		// a type can be assigned to it's nullable variant
+		if ((ownToken.Int32 & ~NULLABLE_TOKEN_MASK) == otherToken.Int32)
+		{
+			result.Boolean = true;
+			break;
+		}
+
+		ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+		if (!_classes.contains(otherToken.Int32))
+		{
+			ExceptionOccurred(currentFrame, SystemException::ClassNotFound, otherToken.Int32);
+			state = MethodState::Aborted;
+			break;
+		}
+
+		ClassDeclaration& t2 = _classes.at(otherToken.Int32);
+
+		// Am I a base class of the other?
+		ClassDeclaration* parent = &_classes.at(t2.ParentToken);
+		while (parent != nullptr)
+		{
+			if (parent->ClassToken == t1.ClassToken)
+			{
+				result.Boolean = true;
+				break;
+			}
+
+			parent = &_classes.at(parent->ParentToken);
+		}
+
+		// Am I an interface the other implements?
+		if (t2.interfaceTokens.contains(t1.ClassToken))
+		{
+			result.Boolean = true;
+			break;
+		}
+		result.Boolean = false;
+	}
+	break;
+	case NativeMethod::TypeGetGenericTypeDefinition:
+		{
+			ASSERT(args.size() == 1);
+			Variable type1 = args[0]; // type1. An (instantiated) generic type
+			ClassDeclaration& ty = _classes.at((int)KnownTypeTokens::Type);
+			Variable tok1 = GetField(ty, type1, 0);
+			int token = tok1.Int32;
+			token = token & GENERIC_TOKEN_MASK;
+
+			if (token == 0)
+			{
+				// Type was not generic -> throw InvalidOperationException
+				ExceptionOccurred(currentFrame, SystemException::InvalidOperation, token);
+				state = MethodState::Aborted;
+			}
+
+			SystemException exception;
+			if (!_classes.contains(token))
+			{
+				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+				state = MethodState::Aborted;
+				break;
+			}
+			
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, &exception);
+			if (ptr == nullptr)
+			{
+				ExceptionOccurred(currentFrame, exception, token);
+				state = MethodState::Aborted;
+				break;
+			}
+			
+			result.Object = ptr;
+			result.Type = VariableKind::Object;
+
+			tok1.Int32 = token;
+			SetField(ty, tok1, result, 0);
 		}
 		break;
 	case NativeMethod::TypeIsEnum:
@@ -886,6 +989,56 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			// IsEnum returns true for enum types, but not if the type itself is "System.Enum".
 			result.Boolean = t1.ParentToken == (int)KnownTypeTokens::Enum;
 	}
+		break;
+	case NativeMethod::TypeGetGenericArguments:
+		ASSERT(args.size() == 1);
+		{
+			// Get the type of the generic argument as an array. It is similar to GenericTypeDefinition, but returns the other part (for a single generic argument)
+			// Note: This function has a few other cases, which we do not handle here.
+			// In particular, we only support the case for one element
+			ASSERT(args.size() == 1);
+			Variable type1 = args[0]; // type1. An (instantiated) generic type
+			ClassDeclaration& ty = _classes.at((int)KnownTypeTokens::Type);
+			Variable tok1 = GetField(ty, type1, 0);
+			int token = tok1.Int32;
+			// If the token is a generic (open) type, we return "type"
+			if ((int)(token & GENERIC_TOKEN_MASK) == token)
+			{
+				token = (int)KnownTypeTokens::Type;
+			}
+			else
+			{
+				// otherwise we return the type of the generic argument
+				token = token & ~GENERIC_TOKEN_MASK;
+			}
+
+			if (!_classes.contains(token))
+			{
+				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+				state = MethodState::Aborted;
+				break;
+			}
+
+			SystemException exception;
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, &exception);
+			if (ptr == nullptr)
+			{
+				ExceptionOccurred(currentFrame, exception, token);
+				state = MethodState::Aborted;
+				break;
+			}
+
+			Variable t1;
+			t1.Object = ptr;
+			t1.Type = VariableKind::Object;
+
+			tok1.Int32 = token;
+			SetField(ty, tok1, t1, 0);
+			AllocateArrayInstance((int)KnownTypeTokens::Type, 1, result);
+			uint32_t* data = (uint32_t*)result.Object;
+			// Set the first (and for us, only) element of the array to the type instance
+			*(data + 2) = (uint32_t)ptr;
+		}
 		break;
 	default:
 		Firmata.sendString(F("Unknown internal method: "), (int)method);
@@ -1050,7 +1203,7 @@ void FirmataIlExecutor::Stfld(IlCode* currentMethod, Variable& obj, int32_t toke
 			return;
 		}
 
-		if (offset >= SizeOfClass(cls))
+		if ((uint16_t)offset >= SizeOfClass(cls))
 		{
 			// Something is wrong.
 			Firmata.sendString(F("Member offset exceeds class size"));
@@ -1571,12 +1724,38 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	case CEE_CONV_U4:
 		stack->push({ value1.Uint32, VariableKind::Uint32 });
 		break;
+	case CEE_VOLATILE_:
+		// Nothing to do really, we're not optimizing anything
+		break;
 	default:
 		InvalidOpCode(PC, instr);
 		return MethodState::Aborted;
 	}
 	
 	return MethodState::Running;
+}
+
+void FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result)
+{
+	ClassDeclaration& ty = _classes.at(tokenOfArrayType);
+	uint32_t* data;
+	if (ty.ValueType)
+	{
+		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length, Element 1 is the array type token
+		// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 32 bits per element
+		data = (uint32_t*)AllocGcInstance(ty.ClassDynamicSize * numberOfElements + 8);
+		result.Type = VariableKind::ValueArray;
+	}
+	else
+	{
+		// Otherwise we just store pointers
+		data = (uint32_t*)AllocGcInstance(numberOfElements * sizeof(void*) + 8);
+		result.Type = VariableKind::ReferenceArray;
+	}
+						
+	*data = numberOfElements;
+	*(data + 1) = tokenOfArrayType;
+	result.Object = data;
 }
 
 // Preconditions for save execution: 
@@ -2198,35 +2377,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				case CEE_NEWARR:
 					size = stack->top().Int32;
 					stack->pop();
-					if (_classes.contains(token))
+					if (!_classes.contains(token))
 					{
-						ClassDeclaration& ty = _classes.at(token);
-						uint32_t* data;
-						Variable v1;
-						if (ty.ValueType)
-						{
-							// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length, Element 1 is the array type token
-							// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 32 bits per element
-							data = (uint32_t*)AllocGcInstance(ty.ClassDynamicSize * size + 8);
-							v1.Type = VariableKind::ValueArray;
-						}
-						else
-						{
-							// Otherwise we just store pointers
-							data = (uint32_t*)AllocGcInstance(size * sizeof(void*) + 8);
-							v1.Type = VariableKind::ReferenceArray;
-						}
-						
-						*data = size;
-						*(data + 1) = token;
-						v1.Object = data;
-						stack->push(v1);
+						Firmata.sendStringf(F("Unknown class token in NEWARR instruction: %lx"), 4, token);
+						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+						return MethodState::Aborted;
 					}
 					else
 					{
-						Firmata.sendStringf(F("Unknown class token in NEWARR instruction: %lx"), 4, token);
-						return MethodState::Aborted;
+						Variable v1;
+						AllocateArrayInstance(token, size, v1);
+						stack->push(v1);
 					}
+					
 					break;
 				case CEE_STELEM:
 					{
@@ -2488,7 +2651,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							return MethodState::Aborted;
 						}
 						// Length
-						Variable v(token & 0xFFFF, VariableKind::Int32);
+						Variable v((uint32_t)(token & 0xFFFF), VariableKind::Int32);
 						intermediate.Type = VariableKind::Object;
 						intermediate.Object = classInstance;
 						SetField(string, v, intermediate, 0);

@@ -84,6 +84,7 @@ enum class KnownTypeTokens
 };
 
 #define GENERIC_TOKEN_MASK 0xFF800000
+#define NULLABLE_TOKEN_MASK 0x00800000
 
 enum class VariableKind : byte
 {
@@ -445,6 +446,7 @@ class FirmataIlExecutor: public FirmataFeature
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
                                        OPCODE instr, Variable value1, Variable value2, Variable value3);
+    void AllocateArrayInstance(int token, int size, Variable& v1);
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
