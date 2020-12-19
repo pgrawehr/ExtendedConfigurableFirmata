@@ -615,6 +615,41 @@ int FirmataIlExecutor::GetHandleFromType(Variable& object) const
 	return cls->ClassToken;
 }
 
+const int LogTable32[32] = {
+	 0,  9,  1, 10, 13, 21,  2, 29,
+	11, 14, 16, 18, 22, 25,  3, 30,
+	 8, 12, 20, 28, 15, 17, 24,  7,
+	19, 27, 23,  6, 26,  5,  4, 31 };
+
+int Log2_32(uint32_t value)
+{
+	value |= value >> 1;
+	value |= value >> 2;
+	value |= value >> 4;
+	value |= value >> 8;
+	value |= value >> 16;
+	return LogTable32[(uint32_t)(value * 0x07C4ACDD) >> 27];
+}
+
+const int TrailingZeroTable[32] =
+{
+	0, 1, 28, 2, 29, 14, 24, 3,
+	30, 22, 20, 15, 25, 17, 4, 8,
+	31, 27, 13, 23, 21, 19, 16, 7,
+	26, 12, 18, 6, 11, 05, 10, 9
+};
+
+int TrailingZeroCount(uint32_t value)
+{
+	// Unguarded fallback contract is 0->0, BSF contract is 0->undefined
+	if (value == 0)
+	{
+		return 32;
+	}
+
+	return TrailingZeroTable[(uint32_t)(value * 0x077CB531u) >> 27];
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const vector<Variable>& args, Variable& result)
 {
@@ -1038,6 +1073,20 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			uint32_t* data = (uint32_t*)result.Object;
 			// Set the first (and for us, only) element of the array to the type instance
 			*(data + 2) = (uint32_t)ptr;
+		}
+		break;
+	case NativeMethod::BitOperationsLog2SoftwareFallback:
+		{
+		ASSERT(args.size() == 1)
+		result.Int32 = Log2_32(args[0].Uint32);
+		result.Type = VariableKind::Int32;
+		}
+		break;
+	case NativeMethod::BitOperationsTrailingZeroCount:
+		{
+		ASSERT(args.size() == 1)
+		result.Int32 = TrailingZeroCount(args[0].Uint32);
+		result.Type = VariableKind::Int32;
 		}
 		break;
 	default:

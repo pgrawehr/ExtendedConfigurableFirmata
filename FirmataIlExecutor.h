@@ -157,7 +157,22 @@ enum class NativeMethod
 	CreateInstanceForAnotherGenericParameter,
 	ValueTypeGetHashCode,
 	ValueTypeEquals,
-	ValueTypeToString
+	ValueTypeToString,
+	ArrayClear,
+	StringEquals,
+	StringToString,
+	StringGetHashCode,
+	StringConcat2,
+	StringConcat3,
+	StringConcat4,
+	StringCtor2,
+	StringSetElem,
+	StringGetElem,
+	StringGetPinnableReference,
+	BitConverterSingleToInt32Bits,
+	StringEqualsStatic,
+	BitOperationsLog2SoftwareFallback,
+	BitOperationsTrailingZeroCount
 };
 
 enum class SystemException
