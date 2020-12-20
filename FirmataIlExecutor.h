@@ -96,11 +96,15 @@ enum class VariableKind : byte
 	Method = 5,
 	ValueArray = 6, // The slot contains a reference to an array of value types (inline)
 	ReferenceArray = 7, // The slot contains a reference to an array of reference types
-	StaticMember = 8, // type is defined by the first value it gets
-	Reference = 9, // Address of a variable
-	RuntimeFieldHandle = 10, // So far this is a pointer to a constant initializer
-	RuntimeTypeHandle = 11, // A type handle. The value is a type token
-	AddressOfVariable = 12, // A pointer to an instance of a Variable, obtained i.e. by a LDLOCA instruction
+	Float = 8,
+	Int64 = 16 + 1,
+	Uint64 = 16 + 2,
+	Double = 16 + 4,
+	Reference = 32, // Address of a variable
+	RuntimeFieldHandle = 33, // So far this is a pointer to a constant initializer
+	RuntimeTypeHandle = 34, // A type handle. The value is a type token
+	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist
+	StaticMember = 128, // type is defined by the first value it gets
 };
 
 enum class NativeMethod
@@ -201,6 +205,10 @@ struct Variable
 		int32_t Int32;
 		bool Boolean;
 		void* Object;
+		uint64_t Uint64;
+		int64_t Int64;
+		float Float;
+		double Double;
 	};
 
 	VariableKind Type;
@@ -230,9 +238,19 @@ struct Variable
 		Type = VariableKind::Void;
 	}
 
+	size_t fieldSize() const
+	{
+		// 64 bit types have bit 4 set
+		if (((int)Type & 16) != 0)
+		{
+			return 8;
+		}
+		return 4;
+	}
+
 	static size_t datasize()
 	{
-		return MAX(sizeof(void*), sizeof(uint32_t));
+		return MAX(sizeof(void*), sizeof(uint64_t));
 	}
 };
 
@@ -271,6 +289,7 @@ public:
 		ClassDynamicSize = dynamicSize;
 		ClassStaticSize = staticSize;
 		ValueType = valueType;
+		memberSize = 4;
 	}
 
 	~ClassDeclaration()
@@ -280,6 +299,7 @@ public:
 	}
 
 	bool ValueType;
+	short memberSize; // Size of the members in an instance (either 4 or 8, if the class has 64 bit members)
 	int32_t ClassToken;
 	int32_t ParentToken;
 	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
@@ -413,6 +433,12 @@ class ExecutionState
 		// Doesn't matter which actual value it is - we're just byte-copying here
 		_arguments[argNo].Uint32 = value;
 	}
+
+	void SetArgumentValue(int argNo, uint64_t value)
+	{
+		// Doesn't matter which actual value it is - we're just byte-copying here
+		_arguments[argNo].Uint64 = value;
+	}
 	
 	void UpdatePc(u16 pc)
 	{
@@ -465,6 +491,7 @@ class FirmataIlExecutor: public FirmataFeature
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
+	uint64_t DecodePackedUint64(byte* argv);
 	bool IsExecutingCode();
 	void KillCurrentTask();
     RuntimeException* UnrollExecutionStack();
@@ -474,7 +501,7 @@ class FirmataIlExecutor: public FirmataFeature
     int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
     Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
-    void SetField(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
+    void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
     ClassDeclaration* GetClassDeclaration(Variable& obj);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
@@ -488,6 +515,7 @@ class FirmataIlExecutor: public FirmataFeature
 	IlCode* GetMethodByCodeReference(u16 codeReference);
 	void AttachToMethodList(IlCode* newCode);
 	void SendPackedInt32(int32_t value);
+	void SendPackedInt64(int64_t value);
 	IlCode* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
