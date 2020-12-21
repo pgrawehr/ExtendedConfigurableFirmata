@@ -500,6 +500,18 @@ uint32_t FirmataIlExecutor::DecodeUint32(byte* argv)
 	return result;
 }
 
+/// <summary>
+/// Simple 7 bit encoding for a 32 bit value. Inverse to the above. Note that this is not equivalent to SendPackedUint32
+/// </summary>
+void FirmataIlExecutor::SendUint32(uint32_t value)
+{
+	// It doesn't matter whether the shift is arithmetic or not here
+	Firmata.sendValueAsTwo7bitBytes(value & 0xFF);
+	Firmata.sendValueAsTwo7bitBytes(value >> 8 & 0xFF);
+	Firmata.sendValueAsTwo7bitBytes(value >> 16 & 0xFF);
+	Firmata.sendValueAsTwo7bitBytes(value >> 24 & 0xFF);
+}
+
 void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException* ex, Variable returnValue, MethodState execResult)
 {
 	// Reply format:
@@ -545,14 +557,16 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException*
 	}
 	else
 	{
-		Firmata.write(1); // Number of arguments that follow
 		if (returnValue.fieldSize() <= 4)
 		{
-			SendPackedInt32(returnValue.Int32);
+			Firmata.write(8); // Number of bytes that follow
+			SendUint32(returnValue.Int32);
 		}
 		else
 		{
-			SendPackedInt64(returnValue.Int64);
+			Firmata.write(16); // Number of bytes that follow
+			SendUint32((uint32_t)returnValue.Int64);
+			SendUint32((uint32_t)(returnValue.Int64 >> 32));
 		}
 		
 	}
@@ -1121,6 +1135,13 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		ASSERT(args.size() == 1)
 		result.Int32 = TrailingZeroCount(args[0].Uint32);
 		result.Type = VariableKind::Int32;
+		}
+		break;
+	case NativeMethod::UnsafeNullRef:
+		{
+			// This just returns a null pointer
+		result.Object = nullptr;
+		result.Type = VariableKind::Reference;
 		}
 		break;
 	default:
@@ -2008,6 +2029,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	}
 
 	int instructionsExecuted = 0;
+	int constrainedTypeToken = 0; // Only used for the CONSTRAINED. prefix
 	u16 PC = 0;
 	u32* hlpCodePtr;
 	stack<Variable>* stack;
@@ -2458,6 +2480,53 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// The this pointer for the new method is the object that is last on the stack, so we need to use
 					// the argument count. Fortunately, this also works if so far we only have the abstract base.
 					Variable instance = stack->nth(newMethod->numArgs - 1); // numArgs includes the this pointer
+
+					// The constrained prefix just means that it may be a reference. We'll have to check its type
+					// TODO: Add test that checks the different cases
+					if (constrainedTypeToken != 0)
+					{
+						ASSERT(instance.Type == VariableKind::Reference);
+						// The reference points to an instance of type constrainedTypeToken
+						cls = &_classes.at(constrainedTypeToken);
+						if (cls->ValueType)
+						{
+							// This will be the this pointer for a method call on a value type (we'll have to do a real boxing if the
+							// callee is virtual (can only be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
+							// System.Object, System.Enum or System.ValueType)
+							if (newMethod->methodFlags & (int)MethodFlags::Virtual)
+							{
+								size_t sizeOfClass = SizeOfClass(cls);
+								void* ret = AllocGcInstance(sizeOfClass);
+								if (ret == nullptr)
+								{
+									ExceptionOccurred(currentFrame, SystemException::OutOfMemory, constrainedTypeToken);
+									return MethodState::Aborted;
+								}
+
+								// Save a reference to the class declaration in the first entry of the newly created instance.
+								// this will serve as vtable.
+								ClassDeclaration** vtable = (ClassDeclaration**)ret;
+								*vtable = cls;
+								Variable* value1 = (Variable*)instance.Object;
+								instance.Object = ret;
+								instance.Type = VariableKind::Object;
+								// Copy the value to the newly allocated boxed instance (just the first member for now)
+								SetField4(*cls, *value1, instance, 0); // Since fieldNo is 0, we can use the size-independent version here
+							}
+							else
+							{
+								// TODO: Untested case - test!!
+								ExceptionOccurred(currentFrame, SystemException::InvalidOperation, constrainedTypeToken);
+								return MethodState::Aborted;
+							}
+						}
+						else
+						{
+							// Dereference the instance
+							instance.Object = reinterpret_cast<void*>(*(int*)(instance.Object));
+							instance.Type = VariableKind::Object;
+						}
+					}
 					
 					if (instance.Type != VariableKind::Object)
 					{
@@ -2475,11 +2544,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						ExceptionOccurred(currentFrame, SystemException::NullReference, 0);
 						return MethodState::Aborted;
 					}
-					
-					// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
-					byte* o = (byte*)instance.Object;
-					// Get the first data element of where the object points to
-					cls = ((ClassDeclaration*)(*(int*)o));
+
+					if (cls == nullptr)
+					{
+						// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
+						byte* o = (byte*)instance.Object;
+						// Get the first data element of where the object points to
+						cls = ((ClassDeclaration*)(*(int*)o));
+					}
 					for (Method* met = cls->methodTypes.begin(); met != cls->methodTypes.end(); ++met)
 					{
 						// The method is being called using the static type of the target
@@ -2598,7 +2670,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						oldStack->pop();
 					}
 				}
-            		
+
+				constrainedTypeToken = 0;
 				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
 				break;
             }
@@ -2874,6 +2947,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					ExceptionOccurred(currentFrame, SystemException::InvalidCast, ty.ClassToken);
 					return MethodState::Aborted;
 				}
+				case CEE_CONSTRAINED_:
+					constrainedTypeToken = token; // This is always immediately followed by a callvirt
+					break;
 				default:
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;

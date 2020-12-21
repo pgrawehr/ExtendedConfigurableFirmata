@@ -176,7 +176,12 @@ enum class NativeMethod
 	BitConverterSingleToInt32Bits,
 	StringEqualsStatic,
 	BitOperationsLog2SoftwareFallback,
-	BitOperationsTrailingZeroCount
+	BitOperationsTrailingZeroCount,
+	StringFastAllocateString,
+	EnumGetHashCode,
+	EumToUInt64,
+	UnsafeNullRef,
+	UnsafeAs2,
 };
 
 enum class SystemException
@@ -215,26 +220,28 @@ struct Variable
 
 	Variable(uint32_t value, VariableKind type)
 	{
+		Int64 = 0;
 		Uint32 = value;
 		Type = type;
 	}
 
 	Variable(int32_t value, VariableKind type)
 	{
+		Int64 = 0;
 		Int32 = value;
 		Type = type;
 	}
 
 	Variable(VariableKind type)
 	{
-		Int32 = 0;
+		Int64 = 0;
 		Type = type;
 		Object = nullptr;
 	}
 
 	Variable()
 	{
-		Uint32 = 0;
+		Uint64 = 0;
 		Type = VariableKind::Void;
 	}
 
@@ -509,6 +516,7 @@ class FirmataIlExecutor: public FirmataFeature
 	uint16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
+	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(u16 codeReference, RuntimeException* lastState, Variable returnValue, MethodState execResult);
 	IlCode* GetMethodByToken(IlCode* code, int32_t token);
