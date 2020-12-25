@@ -640,7 +640,7 @@ MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, V
 {
 	SystemException ex = SystemException::None;
 	// Create an instance of "System.Type"
-	void* newObjInstance = CreateInstanceOfClass(2, &ex);
+	void* newObjInstance = CreateInstanceOfClass(2, 0, &ex);
 	if (newObjInstance == nullptr)
 	{
 		ExceptionOccurred(currentFrame, ex, 0);
@@ -896,7 +896,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				state = MethodState::Aborted;
 				break;
 			}
-			void* ptr = CreateInstanceOfClass(token, &exception);
+			void* ptr = CreateInstanceOfClass(token, 0, &exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1044,7 +1044,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				break;
 			}
 			
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, &exception);
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, &exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1103,7 +1103,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			}
 
 			SystemException exception;
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, &exception);
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, &exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1163,6 +1163,12 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 	byte* o = (byte*)instancePtr.Object;
 	for (auto handle = type.fieldTypes.begin(); handle != type.fieldTypes.end(); ++handle)
 	{
+		// Ignore static member here
+		if ((int)handle->Type & 0x80)
+		{
+			continue;
+		}
+
 		if (idx == fieldNo)
 		{
 			// Found the member
@@ -1211,6 +1217,12 @@ Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t 
 	// Todo: Check base classes
 	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
 	{
+		// Ignore static member here
+		if ((int)handle->Type & 0x80)
+		{
+			continue;
+		}
+		
 		if (handle->Int32 == token)
 		{
 			// Found the member
@@ -1235,38 +1247,20 @@ Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t 
 
 Variable FirmataIlExecutor::Ldsfld(int token)
 {
-	// Find the class that has this member token
-	/* ClassDeclaration* cls = nullptr;
-	int offset;
-	auto entry = _classes.begin();
-	for (; entry != _classes.end(); ++entry)
-	{
-		cls = &entry.second();
-		offset = 0;
-		for (auto member = cls->memberTypes.begin(); member != cls->memberTypes.end(); ++member)
-		{
-			if (member->Int32 == token)
-			{
-				Variable v;
-				memcpy(&v.Object, (byte*)cls->statics + offset, Variable::datasize());
-				v.Type = member->Type;
-				return v;
-			}
-			offset += Variable::datasize();
-		}
-	}
-
-	Firmata.sendStringf(F("No such static member anywhere: %lx"), 4, token); */
-
 	if (_statics.contains(token))
 	{
 		return _statics.at(token);
 	}
 
-	// TODO: We do not currently execute the static cctors, otherwise uninitialized statics would not be valid
-	_statics.insert(token, Variable());
+	// We get here if reading an uninitialized static field
 
-	return Variable();
+	// We don't have the type of static fields, let's hope the only operation done on them is a comparison with null
+	Variable ret;
+	ret.Type = VariableKind::Object;
+		
+	_statics.insert(token, ret);
+
+	return ret;
 }
 
 
@@ -1353,19 +1347,95 @@ case VariableKind::Double:\
 	intermediate.Type = VariableKind::Double;\
 	break;\
 default:\
-	ExceptionOccurred(state, SystemException::InvalidOperation, state->_executingMethod->methodToken);\
+	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 	return MethodState::Aborted;\
 }
 
-MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
+
+#define ComparisonOperation(op) \
+intermediate.Type = VariableKind::Boolean;\
+switch (value1.Type)\
+{\
+case VariableKind::Int32:\
+	intermediate.Boolean = value1.Int32 op value2.Int32;\
+	break;\
+case VariableKind::RuntimeTypeHandle:\
+case VariableKind::Object:\
+case VariableKind::Reference:\
+case VariableKind::Boolean:\
+case VariableKind::Uint32:\
+	intermediate.Boolean = value1.Uint32 op value2.Uint32;\
+	break;\
+case VariableKind::Uint64:\
+	intermediate.Boolean = value1.Uint64 op value2.Uint64;\
+	break;\
+case VariableKind::Int64:\
+	intermediate.Boolean = value1.Int64 op value2.Int64;\
+	break;\
+case VariableKind::Float:\
+	intermediate.Boolean = value1.Float op value2.Float;\
+	break;\
+case VariableKind::Double:\
+	intermediate.Boolean = value1.Double op value2.Double;\
+	break;\
+default:\
+	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
+	return MethodState::Aborted;\
+}
+
+// Implements binary operations when they're only defined on integral types (i.e AND, OR)
+#define BinaryOperationIntOnly(op) \
+switch (value1.Type)\
+{\
+case VariableKind::Int32:\
+	intermediate.Int32 = value1.Int32 op value2.Int32;\
+	intermediate.Type = value1.Type;\
+	break;\
+case VariableKind::Boolean:\
+case VariableKind::Uint32:\
+	intermediate.Uint32 = value1.Uint32 op value2.Uint32;\
+	intermediate.Type = VariableKind::Uint32;\
+	break;\
+case VariableKind::Uint64:\
+	intermediate.Uint64 = value1.Uint64 op value2.Uint64;\
+	intermediate.Type = VariableKind::Uint64;\
+	break;\
+case VariableKind::Int64:\
+	intermediate.Int64 = value1.Int64 op value2.Int64;\
+	intermediate.Type = VariableKind::Int64;\
+	break;\
+default:\
+	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
+	return MethodState::Aborted;\
+}
+
+#define MakeUnsigned() \
+	if (value1.Type == VariableKind::Int64 || value1.Type == VariableKind::Uint64)\
+	{\
+		value1.Type = VariableKind::Uint64;\
+	}\
+	else\
+	{\
+		value1.Type = VariableKind::Uint32;\
+	}
+
+MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
 	OPCODE instr, Variable value1, Variable value2, Variable value3)
 {
 	Variable intermediate;
 	switch (instr)
 	{
 	case CEE_THROW:
-		InvalidOpCode(PC, instr);
+	{
+		// Throw empties the execution stack
+		while (!stack->empty())
+		{
+			stack->pop();
+		}
+		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
+		ExceptionOccurred(currentFrame, SystemException::CustomException, exceptionType->ClassToken);
 		return MethodState::Aborted;
+	}
 	case CEE_NOP:
 		break;
 	case CEE_BREAK:
@@ -1416,8 +1486,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		stack->push(Variable(VariableKind::Object));
 		break;
 	case CEE_CEQ:
-		intermediate.Type = VariableKind::Boolean;
-		intermediate.Boolean = (value1.Uint32 == value2.Uint32);
+		ComparisonOperation(== );
 		stack->push(intermediate);
 		break;
 		
@@ -1437,7 +1506,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	case CEE_DIV:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		
@@ -1447,7 +1516,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	case CEE_REM:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		switch (value1.Type)
@@ -1477,7 +1546,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			intermediate.Type = VariableKind::Double;
 			break;
 		default:
-			ExceptionOccurred(state, SystemException::InvalidOperation, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		stack->push(intermediate);
@@ -1485,7 +1554,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	case CEE_DIV_UN:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		if (value1.fieldSize() <= 4)
@@ -1502,7 +1571,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	case CEE_REM_UN:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(state, SystemException::DivideByZero, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// Operation is not directly allowed on floating point variables by the CLR
@@ -1518,78 +1587,82 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		
 		stack->push(intermediate);
 		break;
+	case CEE_CGT_UN:
+		if (value1.Type == VariableKind::Int64 || value1.Type == VariableKind::Uint64)
+		{
+			value1.Type = VariableKind::Uint64;
+		}
+		else
+		{
+			value1.Type = VariableKind::Uint32;
+		}
+		// fall trough
 	case CEE_CGT:
 		{
-			if (value1.Type == VariableKind::Int32)
-			{
-				intermediate.Boolean = value1.Int32 > value2.Int32;
-				intermediate.Type = VariableKind::Boolean;
-			}
-			else
-			{
-				intermediate = { (uint32_t)(value1.Uint32 > value2.Uint32), VariableKind::Boolean };
-			}
+			ComparisonOperation(> );
 			stack->push(intermediate);
 			break;
 		}
-	case CEE_CGT_UN:
-		intermediate = { (uint32_t)(value1.Uint32 > value2.Uint32), VariableKind::Boolean };
-		stack->push(intermediate);
-		break;
 	case CEE_NOT:
-		stack->push({ ~value1.Uint32, value1.Type });
-		break;
-	case CEE_NEG:
-		stack->push({ -value1.Int32, value1.Type });
-		break;
-	case CEE_AND:
-		stack->push({ value1.Uint32 & value2.Uint32, value1.Type });
-		break;
-	case CEE_OR:
-		stack->push({ value1.Uint32 | value2.Uint32, value1.Type });
-		break;
-	case CEE_XOR:
-		stack->push({ value1.Uint32 ^ value2.Uint32, value1.Type });
-		break;
-	case CEE_CLT:
-		if (value1.Type == VariableKind::Int32)
+		if (value1.fieldSize() == 4)
 		{
-			intermediate.Boolean = value1.Int32 < value2.Int32;
-			intermediate.Type = VariableKind::Boolean;
+			intermediate.Uint32 = ~value1.Uint32;
+			intermediate.Type = value1.Type;
 		}
 		else
 		{
-			intermediate = { (uint32_t)(value1.Uint32 < value2.Uint32), VariableKind::Boolean };
+			intermediate.Uint64 = ~value1.Uint64;
+			intermediate.Type = value1.Type;
 		}
+		stack->push(intermediate);
+		break;
+	case CEE_NEG:
+		if (value1.fieldSize() == 4)
+		{
+			intermediate.Int32 = -value1.Int32;
+			intermediate.Type = value1.Type;
+		}
+		else
+		{
+			intermediate.Int64 = -value1.Int64;
+			intermediate.Type = value1.Type;
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_AND:
+		BinaryOperationIntOnly(&);
+		stack->push(intermediate);
+		break;
+	case CEE_OR:
+		BinaryOperationIntOnly(| );
+		stack->push(intermediate);
+		break;
+	case CEE_XOR:
+		BinaryOperationIntOnly(^);
+		stack->push(intermediate);
+		break;
+	case CEE_CLT:
+		ComparisonOperation(< );
 		stack->push(intermediate);
 		break;
 	case CEE_SHL:
-		if (value1.Type == VariableKind::Int32)
+		BinaryOperationIntOnly(<< );
+		stack->push(intermediate);
+		break;
+
+	case CEE_SHR_UN:
+		if (value1.Type == VariableKind::Int64 || value1.Type == VariableKind::Uint64)
 		{
-			intermediate.Int32 = value1.Int32 << value2.Int32;
-			intermediate.Type = VariableKind::Int32;
+			value1.Type = VariableKind::Uint64;
 		}
 		else
 		{
-			intermediate = { value1.Uint32 << value2.Uint32, VariableKind::Uint32 };
+			value1.Type = VariableKind::Uint32;
 		}
-		stack->push(intermediate);
-		break;
+		// fall trough
 	case CEE_SHR:
 		// The right-hand-side of a shift operation always requires to be of type signed int
-		if (value1.Type == VariableKind::Int32)
-		{
-			intermediate.Int32 = value1.Int32 >> value2.Int32;
-			intermediate.Type = VariableKind::Int32;
-		}
-		else
-		{
-			intermediate = { value1.Uint32 >> value2.Int32, VariableKind::Uint32 };
-		}
-		stack->push(intermediate);
-		break;
-	case CEE_SHR_UN:
-		intermediate = { value1.Uint32 >> value2.Int32, VariableKind::Uint32 };
+		BinaryOperationIntOnly(>> );
 		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_0:
@@ -1675,7 +1748,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			// Get the address of the array and push the array size (at index 0)
 			if (value1.Object == nullptr)
 			{
-				ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
 			uint32_t i = *((uint32_t*)value1.Object);
@@ -1688,7 +1761,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// The instruction suffix (here .i2) indicates the element size
@@ -1697,7 +1770,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -1721,7 +1794,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// The instruction suffix (here .i2) indicates the element size
@@ -1730,7 +1803,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -1745,7 +1818,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// The instruction suffix (here .i1) indicates the element size
@@ -1754,7 +1827,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -1778,7 +1851,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// The instruction suffix (here .i4) indicates the element size
@@ -1787,7 +1860,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -1802,7 +1875,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		{
 			if (value1.Object == nullptr)
 			{
-				ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
 			// The instruction suffix (here .i4) indicates the element size
@@ -1811,7 +1884,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			int32_t index = value2.Int32;
 			if (index < 0 || index >= size)
 			{
-				ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+				ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
 
@@ -1843,7 +1916,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(state, SystemException::NullReference, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 		// The instruction suffix (here .i4) indicates the element size
@@ -1852,7 +1925,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(state, SystemException::IndexOutOfRange, state->_executingMethod->methodToken);
+			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -1866,7 +1939,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* state, u16
 			{
 				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
 				// at least it should be a reference
-				ExceptionOccurred(state, SystemException::ArrayTypeMismatch, state->_executingMethod->methodToken);
+				ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
 			// can only be an object now
@@ -2263,7 +2336,25 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				break;
             }
-			
+
+			case InlineI8:
+			{
+				uint64_t* hlpCodePtr8 = (uint64_t*)(pCode + PC);
+				uint64_t v = *hlpCodePtr8;
+				PC += 8;
+				if (instr == CEE_LDC_I8)
+				{
+					intermediate.Type = VariableKind::Int64;
+					intermediate.Int64 = v;
+					stack->push(intermediate);
+				}
+				else
+				{
+					InvalidOpCode(PC, instr);
+					return MethodState::Aborted;
+				}
+				break;
+			}
             case ShortInlineBrTarget:
 			case InlineBrTarget:
             {
@@ -2282,101 +2373,76 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					value1 = stack->top();
 					stack->pop();
 				}
-            		
-				bool doBranch = false;
+
+				intermediate.Type = VariableKind::Boolean;
+				intermediate.Boolean = false;
 				switch (instr)
 				{
 					case CEE_BR:
 					case CEE_BR_S:
-						doBranch = true;
+						intermediate.Boolean = true;
 						break;
 					case CEE_BEQ:
 					case CEE_BEQ_S:
-						doBranch = value1.Uint32 == value2.Uint32;
-						break;
-					case CEE_BGE:
-					case CEE_BGE_S:
-						if (value1.Type == VariableKind::Int32)
-						{
-							doBranch = value1.Int32 >= value2.Int32;
-						}
-						else
-						{
-							doBranch = value1.Uint32 >= value2.Uint32;
-						}
-						break;
-					case CEE_BLE:
-					case CEE_BLE_S:
-						if (value1.Type == VariableKind::Int32)
-						{
-							doBranch = value1.Int32 <= value2.Int32;
-						}
-						else
-						{
-							doBranch = value1.Uint32 <= value2.Uint32;
-						}
-						break;
-						break;
-					case CEE_BGT:
-					case CEE_BGT_S:
-						if (value1.Type == VariableKind::Int32)
-						{
-							doBranch = value1.Int32 > value2.Int32;
-						}
-						else
-						{
-							doBranch = value1.Uint32 > value2.Uint32;
-						}
-						break;
-						break;
-					case CEE_BLT:
-					case CEE_BLT_S:
-						if (value1.Type == VariableKind::Int32)
-						{
-							doBranch = value1.Int32 < value2.Int32;
-						}
-						else
-						{
-							doBranch = value1.Uint32 < value2.Uint32;
-						}
-						break;
+						ComparisonOperation(== );
 						break;
 					case CEE_BGE_UN:
 					case CEE_BGE_UN_S:
-						doBranch = value1.Uint32 >= value2.Uint32;
-						break;
-					case CEE_BGT_UN:
-					case CEE_BGT_UN_S:
-						doBranch = value1.Uint32 > value2.Uint32;
+						MakeUnsigned();
+						// fall trough
+					case CEE_BGE:
+					case CEE_BGE_S:
+						ComparisonOperation(>= );
 						break;
 					case CEE_BLE_UN:
 					case CEE_BLE_UN_S:
-						doBranch = value1.Uint32 <= value2.Uint32;
+						MakeUnsigned();
+						// fall trough
+					case CEE_BLE:
+					case CEE_BLE_S:
+						ComparisonOperation(<= );
+						break;
+					case CEE_BGT_UN:
+					case CEE_BGT_UN_S:
+						MakeUnsigned();
+						// fall trough
+					case CEE_BGT:
+					case CEE_BGT_S:
+						ComparisonOperation(> );
 						break;
 					case CEE_BLT_UN:
 					case CEE_BLT_UN_S:
-						doBranch = value1.Uint32 < value2.Uint32;
+						MakeUnsigned();
+						// fall trough
+					case CEE_BLT:
+					case CEE_BLT_S:
+						ComparisonOperation(< );
 						break;
 					case CEE_BNE_UN:
 					case CEE_BNE_UN_S:
-						doBranch = value1.Uint32 != value2.Uint32;
+						MakeUnsigned();
+						ComparisonOperation(!= );
 						break;
 					case CEE_BRFALSE:
 					case CEE_BRFALSE_S:
-						doBranch = value1.Uint32 == 0;
+						value2.Type = value1.Type;
+						value2.Uint64 = 0;
+						ComparisonOperation(== );
 						break;
 					case CEE_BRTRUE:
 					case CEE_BRTRUE_S:
-						doBranch = value1.Uint32 != 0;
+						value2.Type = value1.Type;
+						value2.Uint64 = 0;
+						ComparisonOperation(!= );
 						break;
 					default:
 						InvalidOpCode(PC, instr);
 						return MethodState::Aborted;
 				}
-
+				// the variable intermediate now contains true if we should take the branch, false otherwise
 				if (opCodeType == ShortInlineBrTarget)
 				{
-					if (doBranch)
+					if (intermediate.Boolean)
 					{
 						int32_t offset = pCode[PC];
 						// Manually ensure correct sign extension
@@ -2394,7 +2460,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC++; // Skip offset byte
 					}
 				}
-				else if (doBranch)
+				else if (intermediate.Boolean)
 				{
 					int32_t offset = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 					int32_t dest = (PC + 4) + offset;
@@ -2537,11 +2603,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						if (newMethod->nativeMethod != NativeMethod::None)
 						{
-							// For native methods, the this pointer may be null, that is ok (we're calling on an dummy interface)
+							// For native methods, the this pointer may be null, that is ok (we're calling on a dummy interface)
 							goto outer;
 						}
 						Firmata.sendString(F("NullReferenceException calling virtual method"));
-						ExceptionOccurred(currentFrame, SystemException::NullReference, 0);
+						ExceptionOccurred(currentFrame, SystemException::NullReference, newMethod->methodToken);
 						return MethodState::Aborted;
 					}
 
@@ -2920,6 +2986,35 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					break;
 				}
+				case CEE_ISINST:
+				{
+					Variable value1 = stack->top();
+					stack->pop();
+					if (value1.Object == nullptr)
+					{
+						// ISINST on a null pointer just returns the same (which is considered false)
+						stack->push(value1);
+						break;
+					}
+					if (!_classes.contains(token))
+					{
+						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+						return MethodState::Aborted;
+					}
+
+					ClassDeclaration& ty = _classes.at(token);
+					if (IsAssignableFrom(ty, value1) == MethodState::Running)
+					{
+						// if the cast is fine, just return the original object
+						stack->push(value1);
+						break;
+					}
+					// The cast fails, return null
+					intermediate.Object = nullptr;
+					intermediate.Type = VariableKind::Object;
+					stack->push(intermediate);
+					break;
+				}
 				case CEE_CASTCLASS:
 				{
 					Variable value1 = stack->top();
@@ -2993,18 +3088,22 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				break;
 			case InlineString:
 				{
+					// opcode must be CEE_LDSTR
 					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 					PC += 4;
 					bool emptyString = (token & 0xFFFF) == 0;
 					if (_constants.contains(token) || emptyString)
 					{
 						byte* data = nullptr;
+						uint32_t length = (uint32_t)(token & 0xFFFF);
 						if (!emptyString)
 						{
 							data = _constants.at(token);
 						}
 						SystemException ex;
-						void* classInstance = CreateInstanceOfClass((int)KnownTypeTokens::String, &ex);
+						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2, &ex); // *2, because length is in chars here
+						// The string data is stored inline in the class data junk
+						memcpy(classInstance + 8, data, length * 2);
 						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
 						if (classInstance == nullptr)
 						{
@@ -3012,13 +3111,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							return MethodState::Aborted;
 						}
 						// Length
-						Variable v((uint32_t)(token & 0xFFFF), VariableKind::Int32);
+						Variable v(length, VariableKind::Int32);
 						intermediate.Type = VariableKind::Object;
 						intermediate.Object = classInstance;
 						SetField4(string, v, intermediate, 0);
-						// Data. The string is immutable, therefore we can point it to our data heap
-						v.Object = data;
-						SetField4(string, v, intermediate, 1);
 						stack->push(intermediate);
 					}
 					else
@@ -3092,12 +3188,16 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 /// <summary>
 /// Creates a class directly by its type (used i.e. to create instances of System::Type)
 /// </summary>
-void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, SystemException* exception)
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */, SystemException* exception)
 {
 	ClassDeclaration& cls = _classes.at(typeToken);
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 	// Compute sizeof(class)
 	size_t sizeOfClass = SizeOfClass(&cls);
+	if (cls.ClassToken == (int)KnownTypeTokens::String)
+	{
+		sizeOfClass = sizeof(void*) + 4 + length + 2;
+	}
 
 	TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
 	void* ret = AllocGcInstance(sizeOfClass);
@@ -3115,6 +3215,10 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, SystemExceptio
 	return ret;
 }
 
+/// <summary>
+/// Creates an instance of the given type.
+/// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
+/// </summary>
 void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exception)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));

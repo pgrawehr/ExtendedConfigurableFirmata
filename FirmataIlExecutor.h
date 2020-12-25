@@ -199,6 +199,7 @@ enum class SystemException
 	ClassNotFound = 10,
 	InvalidCast = 11,
 	NotSupported = 12,
+	CustomException = 13,
 };
 
 struct Variable
@@ -512,7 +513,7 @@ class FirmataIlExecutor: public FirmataFeature
     ClassDeclaration* GetClassDeclaration(Variable& obj);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
-	void* CreateInstanceOfClass(int32_t typeToken, SystemException* exception);
+	void* CreateInstanceOfClass(int32_t typeToken, u32 length, SystemException* exception);
 	uint16_t SizeOfClass(ClassDeclaration* cls);
     IlCode* ResolveToken(IlCode* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
