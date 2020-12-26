@@ -1742,7 +1742,27 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			stack->push({ (int32_t)i, VariableKind::Int32 });
 		}
 		break; */
-
+	case CEE_LDIND_REF:
+		{
+			uint32_t* pTarget = (uint32_t*)value1.Object;
+			intermediate.Object = (void*)*pTarget;
+			intermediate.Type = VariableKind::Object;
+			stack->push(intermediate);
+		}
+		break;
+	case CEE_STIND_I1:
+		{
+			// Store a byte (i.e. a bool) to the place where value1 points to
+			byte* pTarget = (byte*)value1.Object;
+			*pTarget = (byte)value2.Uint32;
+		}
+		break;
+	case CEE_STIND_REF:
+		{
+		uint32_t* pTarget = (uint32_t*)value1.Object;
+		*pTarget = value2.Uint32;
+		}
+		break;
 	case CEE_LDLEN:
 		{
 			// Get the address of the array and push the array size (at index 0)
@@ -2986,6 +3006,29 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					break;
 				}
+				case CEE_INITOBJ:
+				{
+					Variable value1 = stack->top();
+					stack->pop();
+						// According to docs, this shouldn't happen, but better be safe
+					if (value1.Object == nullptr)
+					{
+						ExceptionOccurred(currentFrame, SystemException::NullReference, token);
+						return MethodState::Aborted;
+					}
+					ClassDeclaration& ty = _classes.at(token);
+					if (ty.ValueType)
+					{
+						size_t size = SizeOfClass(&ty);
+						memset(value1.Object, 0, size);
+					}
+					else
+					{
+						// per definition, INITOBJ with a reference type token assumes the target is a pointer, so null it.
+						memset(value1.Object, 0, sizeof(void*));
+					}
+				}
+				break;
 				case CEE_ISINST:
 				{
 					Variable value1 = stack->top();
