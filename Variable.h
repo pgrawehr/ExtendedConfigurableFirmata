@@ -21,16 +21,22 @@ enum class VariableKind : byte
 	Int64 = 16 + 1,
 	Uint64 = 16 + 2,
 	Double = 16 + 4,
-	Reference = 32, // Address of a variable
 	RuntimeFieldHandle = 33, // So far this is a pointer to a constant initializer
 	RuntimeTypeHandle = 34, // A type handle. The value is a type token
-	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist
+	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist (obtained by LDLOCA or LDARGA)
 	StaticMember = 128, // type is defined by the first value it gets
 };
 
 struct Variable
 {
-	// Important: Data must come first (because we sometimes take the address of this)
+	VariableKind Type;
+	byte Marker; // Actually a padding byte, but may later be helpful for the GC
+
+	// This may be unset if the value is smaller than the union below (currently 8 bytes)
+	uint16_t Size;
+	
+	// Important: Data must come last (because we sometimes take the address of this, and
+	// the actual data may (for large value types) exceed the size of the union
 	union
 	{
 		uint32_t Uint32;
@@ -43,42 +49,40 @@ struct Variable
 		double Double;
 	};
 
-	VariableKind Type;
-
-	// This may be unset if the value is smaller than the union above (currently 8 bytes)
-	uint16_t Size;
-
 	Variable(uint32_t value, VariableKind type)
 	{
-		Int64 = 0;
+		CommonInit();
 		Uint32 = value;
 		Type = type;
-		Size = 0;
 	}
 
 	Variable(int32_t value, VariableKind type)
 	{
-		Int64 = 0;
+		CommonInit();
 		Int32 = value;
 		Type = type;
-		Size = 0;
 	}
 
 	Variable(VariableKind type)
 	{
-		Int64 = 0;
+		CommonInit();
 		Type = type;
-		Object = nullptr;
-		Size = 0;
 	}
 
 	Variable()
 	{
-		Uint64 = 0;
-		Type = VariableKind::Void;
-		Size = 0;
+		CommonInit();
 	}
 
+private: void CommonInit()
+	{
+		Marker = 0x37;
+		Size = 0;
+		Uint64 = 0;
+		Type = VariableKind::Void;
+	}
+	
+public:
 	size_t fieldSize() const
 	{
 		if (Size != 0)

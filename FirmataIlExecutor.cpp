@@ -1141,7 +1141,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		{
 			// This just returns a null pointer
 		result.Object = nullptr;
-		result.Type = VariableKind::Reference;
+		result.Type = VariableKind::AddressOfVariable;
 		}
 		break;
 	default:
@@ -1195,7 +1195,7 @@ void FirmataIlExecutor::SetField4(ClassDeclaration& type, const Variable& data, 
 {
 	uint32_t offset = sizeof(void*);
 	offset += Variable::datasize() * fieldNo;
-	memcpy(((byte*)instance.Object + offset), &data, data.fieldSize());
+	memcpy(((byte*)instance.Object + offset), &(data.Int64), data.fieldSize());
 }
 
 ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
@@ -1361,7 +1361,7 @@ case VariableKind::Int32:\
 	break;\
 case VariableKind::RuntimeTypeHandle:\
 case VariableKind::Object:\
-case VariableKind::Reference:\
+case VariableKind::AddressOfVariable:\
 case VariableKind::Boolean:\
 case VariableKind::Uint32:\
 	intermediate.Boolean = value1.Uint32 op value2.Uint32;\
@@ -2317,7 +2317,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->pop();
 						break;
 					case CEE_LDLOCA_S:
-						intermediate.Object = &locals->at(data);
+						// Be sure not to make a copy of the local variable here
+						intermediate.Object = &(locals->at(data).Int64);
 						intermediate.Type = VariableKind::AddressOfVariable;
 						stack->push(intermediate);
 						break;
@@ -2325,9 +2326,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->push(arguments->at(data));
 						break;
 					case CEE_LDARGA_S:
-						// Get address of argument x. 
-						intermediate.Object = &arguments->at(data);
-						intermediate.Type = VariableKind::Reference;
+						// Get address of argument x. Do not copy the value.
+						intermediate.Object = &(arguments->at(data).Int64);
+						intermediate.Type = VariableKind::AddressOfVariable;
 						stack->push(intermediate);
 						break;
 					case CEE_STARG_S:
@@ -2571,7 +2572,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// TODO: Add test that checks the different cases
 					if (constrainedTypeToken != 0)
 					{
-						ASSERT(instance.Type == VariableKind::Reference);
+						ASSERT(instance.Type == VariableKind::AddressOfVariable);
 						// The reference points to an instance of type constrainedTypeToken
 						cls = &_classes.at(constrainedTypeToken);
 						if (cls->ValueType)
@@ -2740,7 +2741,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						argumentCount--;
 						Variable v = oldStack->top();
-						if (argumentCount == 0 && v.Type == VariableKind::Reference)
+						if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
 						{
 							// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
 							// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
