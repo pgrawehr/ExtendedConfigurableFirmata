@@ -19,11 +19,12 @@
 #include "ObjectVector.h"
 #include "ObjectMap.h"
 #include "openum.h"
+#include "Variable.h"
+#include "VariableContainer.h"
 
 using namespace stdSimple;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 enum class ExecutorCommand : byte
 {
@@ -86,26 +87,6 @@ enum class KnownTypeTokens
 #define GENERIC_TOKEN_MASK 0xFF800000
 #define NULLABLE_TOKEN_MASK 0x00800000
 
-enum class VariableKind : byte
-{
-	Void = 0, // The slot contains no data
-	Uint32 = 1, // The slot contains unsigned integer data
-	Int32 = 2, // The slot contains signed integer data
-	Boolean = 3, // The slot contains true or false
-	Object = 4, // The slot contains an object reference
-	Method = 5,
-	ValueArray = 6, // The slot contains a reference to an array of value types (inline)
-	ReferenceArray = 7, // The slot contains a reference to an array of reference types
-	Float = 8,
-	Int64 = 16 + 1,
-	Uint64 = 16 + 2,
-	Double = 16 + 4,
-	Reference = 32, // Address of a variable
-	RuntimeFieldHandle = 33, // So far this is a pointer to a constant initializer
-	RuntimeTypeHandle = 34, // A type handle. The value is a type token
-	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist
-	StaticMember = 128, // type is defined by the first value it gets
-};
 
 enum class NativeMethod
 {
@@ -202,66 +183,6 @@ enum class SystemException
 	CustomException = 13,
 };
 
-struct Variable
-{
-	// Important: Data must come first (because we sometimes take the address of this)
-	union
-	{
-		uint32_t Uint32;
-		int32_t Int32;
-		bool Boolean;
-		void* Object;
-		uint64_t Uint64;
-		int64_t Int64;
-		float Float;
-		double Double;
-	};
-
-	VariableKind Type;
-
-	Variable(uint32_t value, VariableKind type)
-	{
-		Int64 = 0;
-		Uint32 = value;
-		Type = type;
-	}
-
-	Variable(int32_t value, VariableKind type)
-	{
-		Int64 = 0;
-		Int32 = value;
-		Type = type;
-	}
-
-	Variable(VariableKind type)
-	{
-		Int64 = 0;
-		Type = type;
-		Object = nullptr;
-	}
-
-	Variable()
-	{
-		Uint64 = 0;
-		Type = VariableKind::Void;
-	}
-
-	size_t fieldSize() const
-	{
-		// 64 bit types have bit 4 set
-		if (((int)Type & 16) != 0)
-		{
-			return 8;
-		}
-		return 4;
-	}
-
-	static size_t datasize()
-	{
-		return MAX(sizeof(void*), sizeof(uint64_t));
-	}
-};
-
 struct Method
 {
 	// Our own token
@@ -321,10 +242,10 @@ public:
 	vector<int> interfaceTokens;
 };
 
-class IlCode
+class MethodBody
 {
 public:
-	IlCode()
+	MethodBody()
 	{
 		methodToken = 0;
 		methodFlags = 0;
@@ -337,7 +258,7 @@ public:
 		nativeMethod = NativeMethod::None;
 	}
 
-	~IlCode()
+	~MethodBody()
 	{
 		Clear();
 	}
@@ -369,7 +290,7 @@ public:
 	byte* methodIl;
 	// Native method number
 	NativeMethod nativeMethod;
-	IlCode* next;
+	MethodBody* next;
 };
 
 class ExecutionState
@@ -377,22 +298,24 @@ class ExecutionState
 	private:
 	u16 _pc;
 	stack<Variable> _executionStack;
-	vector<Variable> _locals;
-	vector<Variable> _arguments;
+	VariableVector _locals;
+	VariableVector _arguments;
 	u16 _codeReference;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
-	IlCode* _executingMethod;
+	MethodBody* _executingMethod;
 	RuntimeException* _runtimeException;
 
 	u32 _memoryGuard;
-	ExecutionState(int codeReference, unsigned maxLocals, unsigned argCount, IlCode* executingMethod) :
+	ExecutionState(u16 codeReference, u16 maxLocals, u16 argCount, MethodBody* executingMethod) :
 	_pc(0), _executionStack(10),
-	_locals(maxLocals, maxLocals), _arguments(argCount, argCount),
+	_locals(), _arguments(),
 	_runtimeException(nullptr)
 	{
+		_locals.InitDefault(maxLocals);
+		_arguments.InitDefault(argCount);
 		_codeReference = codeReference;
 		_next = nullptr;
 		_runtimeException = nullptr;
@@ -400,14 +323,14 @@ class ExecutionState
 		for(unsigned i = 0; i < maxLocals && i < executingMethod->localTypes.size(); i++)
 		{
 			// Initialize locals with correct type
-			_locals.at(i).Uint32 = 0;
+			_locals.at(i).Uint64 = 0;
 			_locals.at(i).Type = executingMethod->localTypes.at(i);
 		}
 
 		for (unsigned i = 0; i < executingMethod->numArgs && i < executingMethod->argumentTypes.size(); i++)
 		{
 			// Initialize locals with correct type
-			_arguments.at(i).Uint32 = 0;
+			_arguments.at(i).Uint64 = 0;
 			_arguments.at(i).Type = executingMethod->argumentTypes.at(i);
 		}
 		
@@ -424,7 +347,7 @@ class ExecutionState
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
-	void ActivateState(u16* pc, stack<Variable>** stack, vector<Variable>** locals, vector<Variable>** arguments)
+	void ActivateState(u16* pc, stack<Variable>** stack, VariableVector** locals, VariableVector** arguments)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
@@ -485,15 +408,15 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError ReceiveObjectData(byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 
-	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const vector<Variable> &args, Variable& result);
+	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
     Variable Ldsfld(int token);
     void Stsfld(int token, Variable value);
-	Variable Ldfld(IlCode* currentMethod, Variable& obj, int32_t token);
-	void Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var);
+	Variable Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token);
+	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
-    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments,
+    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable value1, Variable value2, Variable value3);
     void AllocateArrayInstance(int token, int size, Variable& v1);
 
@@ -515,17 +438,17 @@ class FirmataIlExecutor: public FirmataFeature
     void* CreateInstance(int32_t ctorToken, SystemException* exception);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length, SystemException* exception);
 	uint16_t SizeOfClass(ClassDeclaration* cls);
-    IlCode* ResolveToken(IlCode* code, int32_t token);
+    MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(u16 codeReference, RuntimeException* lastState, Variable returnValue, MethodState execResult);
-	IlCode* GetMethodByToken(IlCode* code, int32_t token);
-	IlCode* GetMethodByCodeReference(u16 codeReference);
-	void AttachToMethodList(IlCode* newCode);
+	MethodBody* GetMethodByToken(MethodBody* code, int32_t token);
+	MethodBody* GetMethodByCodeReference(u16 codeReference);
+	void AttachToMethodList(MethodBody* newCode);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
-	IlCode* _firstMethod;
+	MethodBody* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.

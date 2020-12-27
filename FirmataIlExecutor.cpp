@@ -379,7 +379,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	NativeMethod nativeMethod, int token)
 {
 	TRACE(Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags));
-	IlCode* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
 	{
 		method->Clear();
@@ -387,7 +387,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	}
 	else
 	{
-		method = new IlCode();
+		method = new MethodBody();
 		method->codeReference = codeReference;
 		// And immediately attach to the list
 		AttachToMethodList(method);
@@ -406,7 +406,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv)
 {
 	TRACE(Firmata.sendStringf(F("Loading Declaration."), 0));
-	IlCode* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
@@ -443,7 +443,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
 {
 	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
-	IlCode* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
@@ -592,7 +592,7 @@ void FirmataIlExecutor::SendPackedInt64(int64_t value)
 void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv)
 {
 	Variable result;
-	IlCode* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByCodeReference(codeReference);
 	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
 	_methodCurrentlyExecuting = rootState;
@@ -699,7 +699,7 @@ int TrailingZeroCount(uint32_t value)
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
-MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const vector<Variable>& args, Variable& result)
+MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
 	u32 mil = 0;
 	int mode;
@@ -1205,7 +1205,7 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 	return vtable;
 }
 
-Variable FirmataIlExecutor::Ldfld(IlCode* currentMethod, Variable& obj, int32_t token)
+Variable FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token)
 {
 	byte* o = (byte*)obj.Object;
 	ClassDeclaration* vtable = GetClassDeclaration(obj);
@@ -1275,7 +1275,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable value)
 	_statics.insert(token, value);
 }
 
-void FirmataIlExecutor::Stfld(IlCode* currentMethod, Variable& obj, int32_t token, Variable& var)
+void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
 	byte* o = (byte*)obj.Object;
@@ -1419,7 +1419,7 @@ default:\
 		value1.Type = VariableKind::Uint32;\
 	}
 
-MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, stack<Variable>* stack, vector<Variable>* locals, vector<Variable>* arguments, 
+MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, stack<Variable>* stack, VariableVector* locals, VariableVector* arguments, 
 	OPCODE instr, Variable value1, Variable value2, Variable value3)
 {
 	Variable intermediate;
@@ -2126,12 +2126,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	u16 PC = 0;
 	u32* hlpCodePtr;
 	stack<Variable>* stack;
-	vector<Variable>* locals;
-	vector<Variable>* arguments;
+	VariableVector* locals;
+	VariableVector* arguments;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
-	IlCode* currentMethod = currentFrame->_executingMethod;
+	MethodBody* currentMethod = currentFrame->_executingMethod;
 
 	byte* pCode = currentMethod->methodIl;
 	TRACE(u32 startTime = micros());
@@ -2551,7 +2551,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				u32 tk = *hlpCodePtr;
                 PC += 4;
 
-				IlCode* newMethod = ResolveToken(currentMethod, tk);
+				MethodBody* newMethod = ResolveToken(currentMethod, tk);
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
@@ -2700,7 +2700,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	// Save return PC
                 currentFrame->UpdatePc(PC);
 				
-				int argumentCount = newMethod->numArgs;
+				u16 argumentCount = newMethod->numArgs;
 				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxLocals, argumentCount, newMethod);
 				currentFrame->_next = newState;
 				
@@ -3019,7 +3019,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					ClassDeclaration& ty = _classes.at(token);
 					if (ty.ValueType)
 					{
-						size_t size = SizeOfClass(&ty);
+						size = SizeOfClass(&ty);
 						memset(value1.Object, 0, size);
 					}
 					else
@@ -3310,13 +3310,6 @@ void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exce
 uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 {
 	// + (platform specific) vtable* size
-	if (cls->ValueType)
-	{
-		if  (cls->ClassDynamicSize > 0 && cls->ClassDynamicSize <= Variable::datasize())
-		{
-			return (uint16_t)(Variable::datasize() + sizeof(void*));
-		}
-	}
 	return cls->ClassDynamicSize + sizeof(void*);
 }
 
@@ -3402,7 +3395,7 @@ ExecutionError FirmataIlExecutor::LoadInterfaces(int32_t classToken, byte argc, 
 	return ExecutionError::None;
 }
 
-IlCode* FirmataIlExecutor::ResolveToken(IlCode* code, int32_t token)
+MethodBody* FirmataIlExecutor::ResolveToken(MethodBody* code, int32_t token)
 {
 	// All tokens are resolved and combined into a single namespace by the host already.
 	// However, if we want to still use the address patching (which is a good idea), we need to
@@ -3452,7 +3445,7 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 }
 
 
-void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
+void FirmataIlExecutor::AttachToMethodList(MethodBody* newCode)
 {
 	if (_firstMethod == nullptr)
 	{
@@ -3460,7 +3453,7 @@ void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
 		return;
 	}
 
-	IlCode* parent = _firstMethod;
+	MethodBody* parent = _firstMethod;
 	while (parent->next != nullptr)
 	{
 		parent = parent->next;
@@ -3469,9 +3462,9 @@ void FirmataIlExecutor::AttachToMethodList(IlCode* newCode)
 	parent->next = newCode;
 }
 
-IlCode* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
+MethodBody* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 {
-	IlCode* current = _firstMethod;
+	MethodBody* current = _firstMethod;
 	while (current != nullptr)
 	{
 		if (current->codeReference == codeReference)
@@ -3486,13 +3479,13 @@ IlCode* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 	return nullptr;
 }
 
-IlCode* FirmataIlExecutor::GetMethodByToken(IlCode* code, int32_t token)
+MethodBody* FirmataIlExecutor::GetMethodByToken(MethodBody* code, int32_t token)
 {
 	// Methods in the method list have their top nibble patched with the module ID.
 	// if the token to be searched has module 0, we need to add the current module Id (from the
 	// token of the currently executing method)
 
-	IlCode* current = _firstMethod;
+	MethodBody* current = _firstMethod;
 	while (current != nullptr)
 	{
 		if (current->methodToken == token)

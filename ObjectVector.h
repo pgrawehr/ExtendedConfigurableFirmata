@@ -2,21 +2,6 @@
 
 namespace stdSimple
 {
-	class exception
-	{
-	private:
-		const __FlashStringHelper* _error;
-	public:
-		exception(const __FlashStringHelper* error)
-		{
-		}
-
-		const char* what()
-		{
-			return nullptr; // TODO
-		}
-	};
-
 	template<class T>
 	class vector
 	{

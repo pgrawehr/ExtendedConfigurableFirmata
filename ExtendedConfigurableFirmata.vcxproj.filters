@@ -33,6 +33,12 @@
     <ClInclude Include="FirmataStatusLed.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Variable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VariableContainer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">

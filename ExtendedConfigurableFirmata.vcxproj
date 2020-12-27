@@ -113,6 +113,8 @@
       </SubType>
     </ClInclude>
     <ClInclude Include="openum.h" />
+    <ClInclude Include="Variable.h" />
+    <ClInclude Include="VariableContainer.h" />
     <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h" />
   </ItemGroup>
   <ItemGroup>
