@@ -17,6 +17,12 @@ T* AddBytes(T* inPtr, int offset)
 	return (T*)(((byte*)inPtr) + offset);
 }
 
+template <typename T>
+int ByteDifference(T* higher, T* lower)
+{
+	return (byte*)higher - (byte*)lower;
+}
+
 enum class VariableKind : byte
 {
 	Void = 0, // The slot contains no data

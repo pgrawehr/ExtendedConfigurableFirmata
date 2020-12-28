@@ -82,6 +82,9 @@
     <ClCompile Include="..\FirmataStatusLed.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\SelfTest.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -181,6 +184,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\FirmataStatusLed.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SelfTest.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

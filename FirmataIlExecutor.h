@@ -407,7 +407,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
-                                       OPCODE instr, Variable value1, Variable value2, Variable value3);
+                                       OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     void AllocateArrayInstance(int token, int size, Variable& v1);
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);

@@ -58,7 +58,7 @@ public:
 				canUseDefaultSizes = false;
 				break;
 			}
-			totalSize += MIN(size, sizeof(double)) + 4; // Each variable carries a 4 byte header and holds at least 8 bytes
+			totalSize += MAX(size, sizeof(double)) + 4; // Each variable carries a 4 byte header and holds at least 8 bytes
 		}
 
 		if (canUseDefaultSizes)
@@ -82,7 +82,7 @@ public:
 			size_t size = start->fieldSize();
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
-			currentField->Size = MIN(start->fieldSize(), 8);
+			currentField->Size = (uint16_t)MAX(start->fieldSize(), 8);
 			currentFieldPtr += sizeof(VariableDescription) + size;
 			currentField = (Variable*)currentFieldPtr;
 		}

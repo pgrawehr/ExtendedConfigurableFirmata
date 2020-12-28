@@ -18,6 +18,7 @@
 #include "ObjectVector.h"
 #include "ObjectStack.h"
 #include "Encoder7Bit.h"
+#include "SelfTest.h"
 #include <stdint.h>
 
 typedef byte BYTE;
@@ -69,6 +70,8 @@ FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
 	_firstMethod = nullptr;
+	SelfTest test;
+	test.PerformSelfTest();
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -419,7 +422,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 	if (signatureType == 0)
 	{
 		// Argument types. (This can be called multiple times for very long argument lists)
-		for (byte i = 0; i < argc;)
+		for (byte i = 0; i < argc - 1;) // The last byte in the arglist is the END_SYSEX byte
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
@@ -431,7 +434,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 	else if (signatureType == 1)
 	{
 		// Type of the locals (also possibly called several times)
-		for (byte i = 0; i < argc;)
+		for (byte i = 0; i < argc - 1;)
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
@@ -1429,7 +1432,7 @@ default:\
 	}
 
 MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
-	OPCODE instr, Variable value1, Variable value2, Variable value3)
+	OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
 	Variable intermediate;
 	switch (instr)
@@ -1727,9 +1730,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	case CEE_DUP:
-		intermediate = value1;
-		stack->push(intermediate);
-		stack->push(intermediate);
+		stack->push(value1);
+		stack->push(value1);
 		break;
 	case CEE_POP:
 		// Nothing to do, already popped
@@ -2655,6 +2657,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (instance.Type != VariableKind::Object)
 					{
 						Firmata.sendString(F("Virtual function call on something that is not an object"));
+						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
 						return MethodState::Aborted;
 					}
 					if (instance.Object == nullptr)

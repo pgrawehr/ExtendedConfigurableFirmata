@@ -43,7 +43,7 @@ public:
 
 	uint32_t BytesUsed() const
 	{
-		return (byte*)_sp - (byte*)_begin;
+		return ByteDifference(_sp, _begin);
 	}
 
 	uint32_t FreeBytes() const
@@ -53,7 +53,9 @@ public:
 
 	void push(const Variable& object)
 	{
-		int sizeUsed = MIN(object.fieldSize(), 8) + sizeof(VariableDescription) + 4; // + 4 for the tail (the reverse pointer)
+		// This might be 8, depending on compiler alignment of i64 and double types, therefore it is different from sizeof(VariableDescription)
+		const int variableDescriptionSizeUsed = sizeof(Variable) - sizeof(int64_t);
+		uint32_t sizeUsed = MAX(object.fieldSize(), 8) + variableDescriptionSizeUsed + 4; // + 4 for the tail (the reverse pointer)
 		if (sizeUsed > FreeBytes())
 		{
 			uint32_t newSize = _bytesAllocated + sizeUsed; // Extend so that it certainly matches
@@ -70,7 +72,7 @@ public:
 		Variable* oldsp = _sp;
 		_sp = AddBytes(_sp, sizeUsed);
 		_revPtr = (int*)AddBytes(_sp, -4);
-		*_revPtr = _sp - oldsp;
+		*_revPtr = ByteDifference(_sp, oldsp);
 	}
 
 	Variable& top() const

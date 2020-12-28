@@ -42,12 +42,18 @@
     <ClInclude Include="VariableDynamicStack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SelfTest.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FirmataStatusLed.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SelfTest.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
