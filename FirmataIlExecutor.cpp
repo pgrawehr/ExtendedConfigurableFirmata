@@ -375,7 +375,7 @@ void FirmataIlExecutor::report(bool elapsed)
 	_methodCurrentlyExecuting = nullptr;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount,
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxStack, byte argCount,
 	NativeMethod nativeMethod, int token)
 {
 	TRACE(Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags));
@@ -394,7 +394,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	}
 
 	method->methodFlags = (byte)flags;
-	method->maxLocals = maxLocals;
+	method->maxStack = maxStack;
 	method->nativeMethod = nativeMethod;
 	method->numArgs = argCount; // Argument count
 	method->methodToken = token;
@@ -414,22 +414,30 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 		return ExecutionError::InvalidArguments;
 	}
 
+	VariableDescription desc;
+	int size;
 	if (signatureType == 0)
 	{
 		// Argument types. (This can be called multiple times for very long argument lists)
-		for (byte i = 0; i < argc; i++)
+		for (byte i = 0; i < argc;)
 		{
-			VariableKind v = (VariableKind)argv[i];
-			method->argumentTypes.push_back(v);
+			desc.Type = (VariableKind)argv[i];
+			size = argv[i + 1] | argv[i + 2] << 7;
+			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			method->argumentTypes.push_back(desc);
+			i += 3;
 		}
 	}
 	else if (signatureType == 1)
 	{
 		// Type of the locals (also possibly called several times)
-		for (byte i = 0; i < argc; i++)
+		for (byte i = 0; i < argc;)
 		{
-			VariableKind v = (VariableKind)argv[i];
-			method->localTypes.push_back(v);
+			desc.Type = (VariableKind)argv[i];
+			size = argv[i + 1] | argv[i + 2] << 7;
+			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			method->localTypes.push_back(desc);
+			i += 3;
 		}
 	}
 	else
@@ -593,23 +601,24 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 {
 	Variable result;
 	MethodBody* method = GetMethodByCodeReference(codeReference);
-	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxLocals);
-	ExecutionState* rootState = new ExecutionState(codeReference, method->maxLocals, method->numArgs, method);
+	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack);
+	ExecutionState* rootState = new ExecutionState(codeReference, method->maxStack, method);
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
 	for (int i = 0; i < method->numArgs; i++)
 	{
-		VariableKind k = method->argumentTypes[i];
+		VariableDescription desc = method->argumentTypes[i];
+		VariableKind k = desc.Type;
 		if (((int)k & 16) == 0)
 		{
-			rootState->SetArgumentValue(i, DecodeUint32(argv + idx));
+			rootState->SetArgumentValue(i, DecodeUint32(argv + idx), k);
 			idx += 8;
 		}
 		else
 		{
 			uint64_t combined = DecodeUint32(argv + idx);
 			combined += static_cast<uint64_t>(DecodeUint32(argv + idx + 8)) << 32;
-			rootState->SetArgumentValue(i, combined);
+			rootState->SetArgumentValue(i, combined, k);
 			idx += 16;
 		}
 	}
@@ -2702,7 +2711,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
                 currentFrame->UpdatePc(PC);
 				
 				u16 argumentCount = newMethod->numArgs;
-				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxLocals, argumentCount, newMethod);
+				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxStack, newMethod);
 				currentFrame->_next = newState;
 				
 				stdSimple::stack<Variable>* oldStack = stack;

@@ -5,6 +5,7 @@
 #include "openum.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum class VariableKind : byte
 {
@@ -100,5 +101,51 @@ public:
 	static size_t datasize()
 	{
 		return MAX(sizeof(void*), sizeof(uint64_t));
+	}
+};
+
+/// <summary>
+/// Very similar to <see cref="Variable"/> however does not include the actual data
+/// </summary>
+struct VariableDescription
+{
+	VariableKind Type;
+	byte Marker; // Actually a padding byte, but may later be helpful for the GC
+
+	// This may be unset if the value is smaller than the union below (currently 8 bytes)
+	uint16_t Size;
+
+	VariableDescription(VariableKind type, size_t size)
+	{
+		CommonInit();
+		Size = size;
+		Type = type;
+	}
+
+	VariableDescription()
+	{
+		CommonInit();
+	}
+
+private: void CommonInit()
+{
+	Marker = 0x37;
+	Size = 0;
+	Type = VariableKind::Void;
+}
+
+public:
+	size_t fieldSize() const
+	{
+		if (Size != 0)
+		{
+			return Size;
+		}
+		// 64 bit types have bit 4 set
+		if (((int)Type & 16) != 0)
+		{
+			return 8;
+		}
+		return 4;
 	}
 };

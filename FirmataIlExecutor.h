@@ -251,7 +251,7 @@ public:
 		methodFlags = 0;
 		methodLength = 0;
 		methodIl = nullptr;
-		maxLocals = 0;
+		maxStack = 0;
 		numArgs = 0;
 		next = nullptr;
 		codeReference = -1;
@@ -283,10 +283,10 @@ public:
 	byte methodFlags;
 	u16 methodLength;
 	u16 codeReference;
-	byte maxLocals;
-	vector<VariableKind> localTypes;
+	byte maxStack;
+	vector<VariableDescription> localTypes;
 	byte numArgs;
-	vector<VariableKind> argumentTypes;
+	vector<VariableDescription> argumentTypes;
 	byte* methodIl;
 	// Native method number
 	NativeMethod nativeMethod;
@@ -309,31 +309,18 @@ class ExecutionState
 	RuntimeException* _runtimeException;
 
 	u32 _memoryGuard;
-	ExecutionState(u16 codeReference, u16 maxLocals, u16 argCount, MethodBody* executingMethod) :
-	_pc(0), _executionStack(10),
-	_locals(), _arguments(),
-	_runtimeException(nullptr)
+	
+	ExecutionState(u16 codeReference, u16 maxStack, MethodBody* executingMethod) :
+		_pc(0), _executionStack(10),
+		_locals(), _arguments(),
+		_runtimeException(nullptr)
 	{
-		_locals.InitDefault(maxLocals);
-		_arguments.InitDefault(argCount);
+		_locals.InitFrom(executingMethod->localTypes);
+		_arguments.InitFrom(executingMethod->argumentTypes);
 		_codeReference = codeReference;
 		_next = nullptr;
 		_runtimeException = nullptr;
 		_executingMethod = executingMethod;
-		for(unsigned i = 0; i < maxLocals && i < executingMethod->localTypes.size(); i++)
-		{
-			// Initialize locals with correct type
-			_locals.at(i).Uint64 = 0;
-			_locals.at(i).Type = executingMethod->localTypes.at(i);
-		}
-
-		for (unsigned i = 0; i < executingMethod->numArgs && i < executingMethod->argumentTypes.size(); i++)
-		{
-			// Initialize locals with correct type
-			_arguments.at(i).Uint64 = 0;
-			_arguments.at(i).Type = executingMethod->argumentTypes.at(i);
-		}
-		
 		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
@@ -359,16 +346,18 @@ class ExecutionState
 		*arguments = &_arguments;
 	}
 	
-	void SetArgumentValue(int argNo, uint32_t value)
+	void SetArgumentValue(int argNo, uint32_t value, VariableKind type)
 	{
 		// Doesn't matter which actual value it is - we're just byte-copying here
 		_arguments[argNo].Uint32 = value;
+		_arguments[argNo].Type = type;
 	}
 
-	void SetArgumentValue(int argNo, uint64_t value)
+	void SetArgumentValue(int argNo, uint64_t value, VariableKind type)
 	{
 		// Doesn't matter which actual value it is - we're just byte-copying here
 		_arguments[argNo].Uint64 = value;
+		_arguments[argNo].Type = type;
 	}
 	
 	void UpdatePc(u16 pc)
