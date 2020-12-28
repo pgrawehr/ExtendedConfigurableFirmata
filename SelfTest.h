@@ -1,4 +1,4 @@
-// SelfTest.h
+﻿// SelfTest.h
 
 #ifndef _SELFTEST_h
 #define _SELFTEST_h
@@ -25,7 +25,7 @@ private:
 
 	void ValidateExecutionStack();
 
-	void UnallignedAccessWorks();
+	void UnalignedAccessWorks();
 };
 #endif
 

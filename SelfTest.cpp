@@ -4,11 +4,19 @@
 #include "VariableContainer.h"
 #include "VariableDynamicStack.h"
 
+#define ASSERT(x, msg) if (!(x)) \
+	{\
+		Firmata.sendString(F(msg));\
+		_statusFlag = false;\
+		return;\
+	}
+
 bool SelfTest::PerformSelfTest()
 {
 	_statusFlag = true;
 	PerformMemoryAnalysis();
 	ValidateExecutionStack();
+	UnalignedAccessWorks();
 	return _statusFlag;
 }
 
@@ -43,57 +51,36 @@ void SelfTest::ValidateExecutionStack()
 	Variable a(10, VariableKind::Int32);
 	st.push(a);
 	Variable b = st.top();
-	if (b.Int32 != 10)
-	{
-		Firmata.sendString(F("Internal selftest error: 1"));
-		_statusFlag = false;
-		return;
-	}
+	ASSERT(b.Int32 == 10, "Element is not at top of stack");
 	st.pop();
-	if (!st.empty())
-	{
-		Firmata.sendString(F("Internal selftest error: 2"));
-		_statusFlag = false;
-		return;
-	}
+	ASSERT(st.empty(), "Stack is not empty");
 
 	b.Int32 = 0xFFFF;
 	st.push(b);
 	Variable c = st.top();
 	st.pop();
-	if (b.Int32 != c.Int32)
-	{
-		Firmata.sendString(F("Internal selftest error: 3"));
-		_statusFlag = false;
-		return;
-	}
+	ASSERT(b.Int32 == c.Int32, "Element not found");
+	
 	st.push(b);
 	st.pop();
 	st.push(c);
-	if (b.Int32 != 10)
-	{
-		Firmata.sendString(F("Internal selftest error: Stack overwrites instances"));
-		_statusFlag = false;
-		return;
-	}
-
+	ASSERT(b.Int32 == 0xFFFF, "Internal selftest error: Stack overwrites instances");
 	st.pop();
 	st.push(a);
 	st.push(b);
 	c = st.nth(1);
-	if (c.Int32 != a.Int32)
-	{
-		Firmata.sendString(F("Internal selftest error: Stack count doesn't fit"));
-		_statusFlag = false;
-		return;
-	}
+	ASSERT(c.Int32 == a.Int32, "Internal selftest error: Stack count doesn't fit");
 }
 
-void SelfTest::UnallignedAccessWorks()
+void SelfTest::UnalignedAccessWorks()
 {
 	int64_t* ptr = (int64_t*)malloc(20);
 	*ptr = -1;
 	int64_t* ptr2 = ptr;
-	ASSERT(*ptr2 == *ptr, F("Pointer access error"));
+	ASSERT(*ptr2 == *ptr, "Pointer access error");
+	ptr = AddBytes(ptr, 4);
+	*ptr = 10;
+	ptr2 = ptr;
+	ASSERT(*ptr2 == *ptr, "Unable to read 8-byte values from 4-byte aligned addresses")
 }
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
@@ -102,15 +102,14 @@ public:
 		int i = index;
 		Variable* iter = _sp;
 		int* rev = _revPtr;
-		Variable* current = nullptr;
 		// One iteration for index == 0
 		while (i >= 0)
 		{
-			current = AddBytes(iter, -*rev);
-			rev = (int*)AddBytes(current, -4);
+			iter = AddBytes(iter, -*rev);
+			rev = (int*)AddBytes(iter, -4);
 			i--;
 		}
 
-		return *current;
+		return *iter;
 	}
 };
