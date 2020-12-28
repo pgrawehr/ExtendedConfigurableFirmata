@@ -8,6 +8,15 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+/// <summary>
+/// Pointer arithmetic on byte level on other object types. This shall be used if the offset is in bytes, but T is some other pointer type.
+/// </summary>
+template <typename T>
+T* AddBytes(T* inPtr, int offset)
+{
+	return (T*)(((byte*)inPtr) + offset);
+}
+
 enum class VariableKind : byte
 {
 	Void = 0, // The slot contains no data
@@ -33,10 +42,10 @@ struct Variable
 {
 	VariableKind Type;
 	byte Marker; // Actually a padding byte, but may later be helpful for the GC
-
+	
 	// This may be unset if the value is smaller than the union below (currently 8 bytes)
 	uint16_t Size;
-	
+
 	// Important: Data must come last (because we sometimes take the address of this, and
 	// the actual data may (for large value types) exceed the size of the union
 	union
@@ -57,7 +66,7 @@ struct Variable
 		Size(other.Size),
 		Uint64(other.Uint64)
 	{
-		if (other.Size > sizeof(Uint64))
+		if (other.fieldSize() > sizeof(Uint64))
 		{
 			Firmata.sendString(F("FATAL: Copy ctor not allowed on this instance"));
 		}
@@ -75,7 +84,7 @@ struct Variable
 		{
 			// Copy the full size to the target.
 			// WARN: This is dangerous, and we must make sure the target has actually allocated memory for this
-			memcpy(&this->Uint32, &other.Uint32, other.Size);
+			memcpy(&this->Uint32, &other.Uint32, other.fieldSize());
 		}
 		return *this;
 	}
@@ -114,7 +123,7 @@ private: void CommonInit()
 	}
 	
 public:
-	size_t fieldSize() const
+	uint16_t fieldSize() const
 	{
 		if (Size != 0)
 		{

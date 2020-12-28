@@ -82,7 +82,7 @@ public:
 			size_t size = start->fieldSize();
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
-			currentField->Size = MIN(start->Size, 8);
+			currentField->Size = MIN(start->fieldSize(), 8);
 			currentFieldPtr += sizeof(VariableDescription) + size;
 			currentField = (Variable*)currentFieldPtr;
 		}

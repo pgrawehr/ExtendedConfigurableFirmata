@@ -1428,7 +1428,7 @@ default:\
 		value1.Type = VariableKind::Uint32;\
 	}
 
-MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, stack<Variable>* stack, VariableVector* locals, VariableVector* arguments, 
+MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
 	OPCODE instr, Variable value1, Variable value2, Variable value3)
 {
 	Variable intermediate;
@@ -1492,7 +1492,9 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(locals->at(3));
 		break;
 	case CEE_LDNULL:
-		stack->push(Variable(VariableKind::Object));
+		intermediate.Object = nullptr;
+		intermediate.Type = VariableKind::Object;
+		stack->push(intermediate);
 		break;
 	case CEE_CEQ:
 		ComparisonOperation(== );
@@ -1675,34 +1677,54 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_0:
-		stack->push({ (int32_t)0, VariableKind::Int32 });
+		intermediate.Int32 = 0;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_1:
-		stack->push({ (int32_t)1, VariableKind::Int32 });
+		intermediate.Int32 = 1;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_2:
-		stack->push({ (int32_t)2, VariableKind::Int32 });
+		intermediate.Int32 = 2;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_3:
-		stack->push({ (int32_t)3, VariableKind::Int32 });
+		intermediate.Int32 = 3;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_4:
-		stack->push({ (int32_t)4, VariableKind::Int32 });
+		intermediate.Int32 = 4;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_5:
-		stack->push({ (int32_t)5, VariableKind::Int32 });
+		intermediate.Int32 = 5;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_6:
-		stack->push({ (int32_t)6, VariableKind::Int32 });
+		intermediate.Int32 = 6;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_7:
-		stack->push({ (int32_t)7, VariableKind::Int32 });
+		intermediate.Int32 = 7;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_8:
-		stack->push({ (int32_t)8, VariableKind::Int32 });
+		intermediate.Int32 = 8;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_LDC_I4_M1:
-		stack->push({ (int32_t)-1, VariableKind::Int32 });
+		intermediate.Int32 = -1;
+		intermediate.Type = VariableKind::Int32;
+		stack->push(intermediate);
 		break;
 	case CEE_DUP:
 		intermediate = value1;
@@ -1781,7 +1803,9 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				return MethodState::Aborted;
 			}
 			uint32_t i = *((uint32_t*)value1.Object);
-			stack->push({ i, VariableKind::Uint32 });
+			intermediate.Uint32 = i;
+			intermediate.Type = VariableKind::Uint32;
+			stack->push(intermediate);
 		}
 		break;
 
@@ -2134,7 +2158,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	int constrainedTypeToken = 0; // Only used for the CONSTRAINED. prefix
 	u16 PC = 0;
 	u32* hlpCodePtr;
-	stack<Variable>* stack;
+	VariableDynamicStack* stack;
 	VariableVector* locals;
 	VariableVector* arguments;
 	
@@ -2316,7 +2340,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC--;
 						break;
 					case CEE_LDC_I4_S:
-						stack->push({ (int32_t)data, VariableKind::Int32 });
+						intermediate.Int32 = data;
+						intermediate.Type = VariableKind::Int32;
+						stack->push(intermediate);
 						break;
 					case CEE_LDLOC_S:
 						stack->push(locals->at(data));
@@ -2357,7 +2383,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
                 PC += 4;
 				if (instr == CEE_LDC_I4)
 				{
-					stack->push({ (int32_t)v, VariableKind::Int32 });
+					intermediate.Int32 = v;
+					intermediate.Type = VariableKind::Int32;
+					stack->push(intermediate);
 				}
 				else
 				{
@@ -2714,7 +2742,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxStack, newMethod);
 				currentFrame->_next = newState;
 				
-				stdSimple::stack<Variable>* oldStack = stack;
+				VariableDynamicStack* oldStack = stack;
 				// Start of the called method
 				currentFrame = newState;
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);

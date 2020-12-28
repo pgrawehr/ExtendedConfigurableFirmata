@@ -21,6 +21,7 @@
 #include "openum.h"
 #include "Variable.h"
 #include "VariableContainer.h"
+#include "VariableDynamicStack.h"
 
 using namespace stdSimple;
 
@@ -297,7 +298,7 @@ class ExecutionState
 {
 	private:
 	u16 _pc;
-	stack<Variable> _executionStack;
+	VariableDynamicStack _executionStack;
 	VariableVector _locals;
 	VariableVector _arguments;
 	u16 _codeReference;
@@ -334,7 +335,7 @@ class ExecutionState
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
-	void ActivateState(u16* pc, stack<Variable>** stack, VariableVector** locals, VariableVector** arguments)
+	void ActivateState(u16* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
@@ -405,7 +406,7 @@ class FirmataIlExecutor: public FirmataFeature
 	Variable Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token);
 	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
-    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, stack<Variable>* stack, VariableVector* locals, VariableVector* arguments,
+    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable value1, Variable value2, Variable value3);
     void AllocateArrayInstance(int token, int size, Variable& v1);
 
