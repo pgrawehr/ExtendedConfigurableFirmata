@@ -83,7 +83,7 @@ public:
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
 			currentField->Size = MIN(start->Size, 8);
-			currentFieldPtr += sizeof(VariableDescription) + currentField->Size;
+			currentFieldPtr += sizeof(VariableDescription) + size;
 			currentField = (Variable*)currentFieldPtr;
 		}
 		// There's room for one last VariableDescription after the now filled data. Leave it empty, so we have a guard when traversing the list.

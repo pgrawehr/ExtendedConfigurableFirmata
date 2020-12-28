@@ -2,6 +2,7 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+
 #include "openum.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -49,6 +50,35 @@ struct Variable
 		float Float;
 		double Double;
 	};
+
+	Variable(const Variable& other)
+		: Type(other.Type),
+		Marker(other.Marker),
+		Size(other.Size),
+		Uint64(other.Uint64)
+	{
+		if (other.Size > sizeof(Uint64))
+		{
+			Firmata.sendString(F("FATAL: Copy ctor not allowed on this instance"));
+		}
+	}
+
+	Variable& operator=(const Variable& other)
+	{
+		if (this == &other)
+			return *this;
+		Type = other.Type;
+		Marker = other.Marker;
+		Size = other.Size;
+		Uint64 = other.Uint64;
+		if (other.Size > sizeof(Uint64))
+		{
+			// Copy the full size to the target.
+			// WARN: This is dangerous, and we must make sure the target has actually allocated memory for this
+			memcpy(&this->Uint32, &other.Uint32, other.Size);
+		}
+		return *this;
+	}
 
 	Variable(uint32_t value, VariableKind type)
 	{
@@ -118,7 +148,7 @@ struct VariableDescription
 	VariableDescription(VariableKind type, size_t size)
 	{
 		CommonInit();
-		Size = size;
+		Size = (uint16_t)size;
 		Type = type;
 	}
 
