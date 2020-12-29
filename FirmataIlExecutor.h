@@ -1,4 +1,4 @@
-/*
+﻿/*
   FirmataIlExecutor
 
   This library is free software; you can redistribute it and/or
@@ -403,7 +403,7 @@ class FirmataIlExecutor: public FirmataFeature
 	
     Variable Ldsfld(int token);
     void Stsfld(int token, Variable value);
-	Variable Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token);
+	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,

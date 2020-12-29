@@ -85,6 +85,10 @@ public:
 		return *lastElem;
 	}
 
+	/// <summary>
+	/// Removes the last element from the stack.
+	/// Any previously retrieved elements (using top() or nth() stay valid until the next push)
+	/// </summary>
 	void pop()
 	{
 		if (empty())

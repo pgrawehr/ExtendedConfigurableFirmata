@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
@@ -24,7 +24,7 @@ public:
 		_size = 0;
 	}
 
-	void InitDefault(int size)
+	bool InitDefault(int size, stdSimple::vector<VariableDescription>& variableDescriptions)
 	{
 		_defaultSizesOnly = true;
 		if (_data != nullptr)
@@ -35,16 +35,32 @@ public:
 		if (size > 0)
 		{
 			_data = (Variable*)malloc(size * sizeof(Variable));
+			if (_data == nullptr)
+			{
+				return false;
+			}
+			
 			memset(_data, 0, size * sizeof(Variable));
+
+			int idx = 0;
+			for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+			{
+				size_t fieldSize = start->fieldSize();
+				_data[idx].Size = (u16)fieldSize;
+				_data[idx].Type = start->Type;
+				_data[idx].Marker = start->Marker;
+				idx++;
+			}
 		}
 		else
 		{
 			_data = nullptr;
 		}
 		_size = size;
+		return true;
 	}
 
-	void InitFrom(stdSimple::vector<VariableDescription> &variableDescriptions)
+	bool InitFrom(stdSimple::vector<VariableDescription> &variableDescriptions)
 	{
 		bool canUseDefaultSizes = true;
 		int totalSize = 0;
@@ -56,15 +72,13 @@ public:
 			if (size > sizeof(double))
 			{
 				canUseDefaultSizes = false;
-				break;
 			}
 			totalSize += MAX(size, sizeof(double)) + 4; // Each variable carries a 4 byte header and holds at least 8 bytes
 		}
 
 		if (canUseDefaultSizes)
 		{
-			InitDefault(variableDescriptions.size());
-			return;
+			return InitDefault(variableDescriptions.size(), variableDescriptions);
 		}
 
 		// This variable still contains the number of elements in the vector
@@ -72,6 +86,11 @@ public:
 		_defaultSizesOnly = false;
 		totalSize += sizeof(VariableDescription);
 		_data = (Variable*)malloc(totalSize);
+		if (_data == nullptr)
+		{
+			return false;
+		}
+		
 		memset(_data, 0, totalSize);
 
 		Variable* currentField = _data;
@@ -87,6 +106,7 @@ public:
 			currentField = (Variable*)currentFieldPtr;
 		}
 		// There's room for one last VariableDescription after the now filled data. Leave it empty, so we have a guard when traversing the list.
+		return true;
 	}
 
 	~VariableVector()

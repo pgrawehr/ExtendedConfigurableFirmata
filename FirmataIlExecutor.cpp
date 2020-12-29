@@ -1,4 +1,4 @@
-/*
+﻿/*
   FirmataIlExecutor
 
   This library is free software; you can redistribute it and/or
@@ -1184,6 +1184,8 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 		if (idx == fieldNo)
 		{
 			// Found the member
+			// TODO: This is just wrong: Use a reference instead (not critical as long as this method is only
+			// used from native methods, where the actual size of the arguments is known)
 			Variable v;
 			memcpy(&v.Object, (o + offset), handle->fieldSize());
 			v.Type = handle->Type;
@@ -1217,7 +1219,7 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 	return vtable;
 }
 
-Variable FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token)
+byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description)
 {
 	byte* o = (byte*)obj.Object;
 	ClassDeclaration* vtable = GetClassDeclaration(obj);
@@ -1238,10 +1240,10 @@ Variable FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int3
 		if (handle->Int32 == token)
 		{
 			// Found the member
-			Variable v;
-			memcpy(&v.Object, (o + offset), handle->fieldSize());
-			v.Type = handle->Type;
-			return v;
+			description.Marker = 0x37;
+			description.Type = handle->Type;
+			description.Size = handle->fieldSize();
+			return o + offset;
 		}
 
 		offset += handle->fieldSize();
@@ -1253,7 +1255,7 @@ Variable FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int3
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
-	return Variable();
+	return nullptr;
 }
 
 
@@ -1792,8 +1794,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_STIND_REF:
 		{
-		uint32_t* pTarget = (uint32_t*)value1.Object;
-		*pTarget = value2.Uint32;
+			uint32_t* pTarget = (uint32_t*)value1.Object;
+			if (pTarget == nullptr)
+			{
+				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+				return MethodState::Aborted;
+			}
+			*pTarget = value2.Uint32;
 		}
 		break;
 	case CEE_LDLEN:
@@ -2546,7 +2553,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC += 4;
 						obj = stack->top();
 						stack->pop();
-						stack->push(Ldfld(currentMethod, obj, token));
+						VariableDescription desc;
+						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
+						// Combine the variable again with its metadata, so we can put it back to the stack
+						Variable* stackVar = (Variable*)alloca(desc.fieldSize() + sizeof(Variable));
+						stackVar->Size = desc.Size;
+						stackVar->Marker = 0x37;
+						stackVar->Type = desc.Size > 8 ? VariableKind::LargeValueType : VariableKind::Int32;
+						memcpy(&(stackVar->Int32), dataPtr, desc.Size);
+						stack->push(*stackVar);
 						break;
 						}
 		            	// Store a value to a field
@@ -2605,7 +2620,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// For a virtual call, we need to grab the instance we operate on from the stack.
 					// The this pointer for the new method is the object that is last on the stack, so we need to use
 					// the argument count. Fortunately, this also works if so far we only have the abstract base.
-					Variable instance = stack->nth(newMethod->numArgs - 1); // numArgs includes the this pointer
+					Variable& instance = stack->nth(newMethod->numArgs - 1); // numArgs includes the this pointer
 
 					// The constrained prefix just means that it may be a reference. We'll have to check its type
 					// TODO: Add test that checks the different cases
@@ -2742,6 +2757,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
                 currentFrame->UpdatePc(PC);
 				
 				u16 argumentCount = newMethod->numArgs;
+				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
+				// to calculate on void types)
 				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxStack, newMethod);
 				currentFrame->_next = newState;
 				
@@ -2780,18 +2797,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					while (argumentCount > 0)
 					{
 						argumentCount--;
-						Variable v = oldStack->top();
-						if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
+						Variable& v = oldStack->top();
+						////if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
+						////{
+						////	// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
+						////	// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
+						////	// There are a few more special cases to consider it seems, especially when the called method is virtual, see §8.6.1.5
+						////	Variable v2;
+						////	v2.Object = (void*)(*((uint32_t*)v.Object));
+						////	v2.Type = VariableKind::Object;
+						////	arguments->at(0) = v2;
+						////}
+						////else
 						{
-							// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
-							// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
-							// There are a few more special cases to consider it seems, especially when the called method is virtual, see �8.6.1.5
-							v.Object = (void*)(*((uint32_t*)v.Object));
-							v.Type = VariableKind::Object;
-							arguments->at(0) = v;
-						}
-						else
-						{
+							// This calls operator =, potentially copying more than sizeof(Variable)
 							arguments->at(argumentCount) = v;
 						}
 						oldStack->pop();
@@ -2964,7 +2983,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				case CEE_BOX:
 				{
-					Variable value1 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
 					if (_classes.contains(token))
 					{
@@ -3013,18 +3032,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				case CEE_UNBOX_ANY:
 				{
 					// Note: UNBOX and UNBOX.any are quite different
-					Variable value1 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
 					if (_classes.contains(token))
 					{
 						ClassDeclaration& ty = _classes.at(token);
-						Variable r;
 						if (ty.ValueType)
 						{
 							// TODO: This requires special handling for types derived from Nullable<T>
 
-							// Note: Still not sure how large value types need to be handled (with size > 4 or multiple fields)
-							r = GetField(ty, value1, 0);
+							uint32_t offset = sizeof(void*);
+							// Get the beginning of the data part of the object
+							byte* o = (byte*)value1.Object;
+							size = ty.ClassDynamicSize;
+							// Reserve enough memory on the stack, so we can temporarily hold the whole variable
+							Variable* unboxed = (Variable*)alloca(size + sizeof(Variable));
+							unboxed->Size = (uint16_t)size;
+							unboxed->Marker = 0x37;
+							unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int32;
+							memcpy(&(unboxed->Int32), o + offset, size);
+							stack->push(*unboxed);
 						}
 						else
 						{
@@ -3034,10 +3061,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							{
 								return result;
 							}
+							Variable r;
 							r.Object = value1.Object;
 							r.Type = value1.Type;
+							stack->push(r);
 						}
-						stack->push(r);
+						
 					}
 					else
 					{
@@ -3143,7 +3172,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 					case CEE_LDTOKEN:
 						{
-							if (_constants.contains(token))
+							// constants above 0x10000 are string tokens, but they're not used with LDTOKEN, but with LDSTR
+							if (token < 0x10000 && _constants.contains(token))
 							{
 								byte* data = _constants.at(token);
 								intermediate.Object = data;

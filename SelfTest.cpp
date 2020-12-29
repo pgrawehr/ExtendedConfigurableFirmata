@@ -48,7 +48,9 @@ void SelfTest::PerformMemoryAnalysis()
 void SelfTest::ValidateExecutionStack()
 {
 	VariableDynamicStack st(10);
-	Variable a(10, VariableKind::Int32);
+	Variable a;
+	a.Type = VariableKind::Int32;
+	a.Int32 = 10;
 	st.push(a);
 	Variable b = st.top();
 	ASSERT(b.Int32 == 10, "Element is not at top of stack");
