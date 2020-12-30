@@ -165,6 +165,33 @@ enum class NativeMethod
 	EumToUInt64,
 	UnsafeNullRef,
 	UnsafeAs2,
+	UnsafeAddByteOffset,
+	UnsafeSizeOfType,
+	StringGetRawStringData,
+	RuntimeHelpersIsReferenceOrContainsReferencesCore,
+	StringCtor1,
+	UnsafeAsPointer,
+	StringEqualsStringComparison,
+	StringInternalAllocateString,
+	ArrayResize,
+	UnsafeByteOffset,
+	UnsafeAreSame,
+	BufferMemmove,
+	BufferMemmoveRefArgs,
+	StringMiniStringConversion,
+	StringUnEqualsStatic,
+	RuntimeHelpersGetHashCode,
+	RuntimeHelpersIsBitwiseEquatable,
+	RuntimeHelpersGetMethodTable,
+	RuntimeHelpersGetRawArrayData,
+	UnsafeIsAddressGreaterThan,
+	UnsafeIsAddressLessThan,
+	ObjectMemberwiseClone,
+	MiniBuffer_BulkMoveWithWriteBarrier,
+	MiniBuffer_ZeroMemory,
+	RuntimeTypeHandleValue,
+	MiniRuntimeTypeHandleGetCorElementType,
+	Interop_GlobalizationGetCalendarInfo
 };
 
 enum class SystemException
@@ -407,7 +434,7 @@ class FirmataIlExecutor: public FirmataFeature
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
-    void AllocateArrayInstance(int token, int size, Variable& v1);
+    int AllocateArrayInstance(int token, int size, Variable& v1);
 
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);

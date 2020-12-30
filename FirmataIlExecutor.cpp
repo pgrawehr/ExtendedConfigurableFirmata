@@ -844,6 +844,49 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			result.Type = VariableKind::Boolean;
 			result.Boolean = args[0].Object == args[1].Object; // This implements reference equality (or binary equality for value types)
 		break;
+	case NativeMethod::ObjectMemberwiseClone:
+		ASSERT(args.size() == 1) // just the "this" pointer
+		{
+			Variable& self = args[0];
+			ClassDeclaration* ty = GetClassDeclaration(self);
+			if (ty->ClassToken == (int)KnownTypeTokens::String)
+			{
+				// Strings are immutable (and have dynamic length, therefore the shortcut is easier)
+				result = self;
+				break;
+			}
+
+			if (ty->ClassToken == (int)KnownTypeTokens::Array)
+			{
+				// Arrays need special handling, since they have dynamic length
+				uint32_t* data = (uint32_t*)self.Object;
+				uint32_t length = *(data + 1);
+				uint32_t contentType = *(data + 2);
+				int bytesAllocated = AllocateArrayInstance(contentType, length, result);
+				memcpy(AddBytes(result.Object, 12), AddBytes(self.Object, 12), bytesAllocated);
+				break;
+			}
+		
+			// TODO: Validate this operation on value types
+			if (ty->ValueType)
+			{
+				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+				state = MethodState::Aborted;
+				break;
+			}
+			SystemException exception;
+			void* data = CreateInstanceOfClass(ty->ClassToken, 0, &exception);
+			if (data == nullptr)
+			{
+				ExceptionOccurred(currentFrame, SystemException::OutOfMemory, currentFrame->_executingMethod->methodToken);
+				state = MethodState::Aborted;
+				break;
+			}
+			memcpy(AddBytes(data, 4), AddBytes(args[0].Object, 4), ty->ClassDynamicSize);
+			result.Size = 4;
+			result.Object = data;
+			break;
+		}
 	case NativeMethod::TypeMakeGenericType:
 		ASSERT(args.size() == 2);
 		{
@@ -2143,21 +2186,25 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 /// <param name="numberOfElements">The number of elements the array will contain</param>
 /// <param name="result">The array object, either a value array or a reference array. Returns type void if there's not enough memory to allocate
 /// the array. </param>
-void FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result)
+/// <returns>
+/// The size of the allocated array, in bytes, without the type header (12 bytes)
+/// </returns>
+int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result)
 {
 	ClassDeclaration& ty = _classes.at(tokenOfArrayType);
 	uint32_t* data;
+	uint64_t sizeToAllocate;
 	if (ty.ValueType)
 	{
 		
 		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array type token (since arrays are also objects), index 1 the array length,
 		// Element 1 is the array content type token
 		// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 64 bits per element
-		uint64_t sizeToAllocate = (uint64_t)ty.ClassDynamicSize * numberOfElements;
+		sizeToAllocate = (uint64_t)ty.ClassDynamicSize * numberOfElements;
 		if (sizeToAllocate > INT32_MAX - 64 * 1024)
 		{
 			result = Variable();
-			return;
+			return 0;
 		}
 		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
 		result.Type = VariableKind::ValueArray;
@@ -2165,11 +2212,11 @@ void FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOf
 	else
 	{
 		// Otherwise we just store pointers
-		uint64_t sizeToAllocate = (uint64_t)sizeof(void*) * numberOfElements;
+		sizeToAllocate = (uint64_t)sizeof(void*) * numberOfElements;
 		if (sizeToAllocate > INT32_MAX - 64 * 1024)
 		{
 			result = Variable();
-			return;
+			return 0;
 		}
 		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
 		result.Type = VariableKind::ReferenceArray;
@@ -2178,13 +2225,16 @@ void FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOf
 	if (data == nullptr)
 	{
 		result = Variable();
-		return;
+		return 0;
 	}
 
-	*data = (int)KnownTypeTokens::Array;
+	ClassDeclaration& arrType = _classes.at((int)KnownTypeTokens::Array);
+	
+	*data = (uint32_t)&arrType;
 	*(data + 1)= numberOfElements;
 	*(data + 2) = tokenOfArrayType;
 	result.Object = data;
+	return (int)sizeToAllocate;
 }
 
 // Preconditions for save execution: 
@@ -2591,6 +2641,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC += 4;
 						obj = stack->top();
 						stack->pop();
+						if (obj.Object == nullptr)
+						{
+							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+							return MethodState::Aborted;
+						}
 						VariableDescription desc;
 						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
 						// Combine the variable again with its metadata, so we can put it back to the stack
@@ -2709,7 +2764,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 					}
 					
-					if (instance.Type != VariableKind::Object)
+					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray && instance.Type != VariableKind::ReferenceArray)
 					{
 						Firmata.sendString(F("Virtual function call on something that is not an object"));
 						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
@@ -3180,6 +3235,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (value1.Object == nullptr)
 					{
 						// Castclass on a null pointer just returns the same
+						stack->push(value1);
+						break;
+					}
+					// Our metadata list does not contain array[] types, therefore we assume this matches for now
+					if (value1.Type == VariableKind::ReferenceArray || value1.Type == VariableKind::ReferenceArray)
+					{
+						// TODO: Verification possible when looking inside?
 						stack->push(value1);
 						break;
 					}
