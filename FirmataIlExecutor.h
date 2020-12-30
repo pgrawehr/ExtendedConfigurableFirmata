@@ -82,6 +82,7 @@ enum class KnownTypeTokens
 	RuntimeType = 6,
 	Nullable = 7,
 	Enum = 8,
+	Array = 9,
 	LargestKnownTypeToken = 20,
 };
 
@@ -219,7 +220,6 @@ public:
 		ClassDynamicSize = dynamicSize;
 		ClassStaticSize = staticSize;
 		ValueType = valueType;
-		memberSize = 4;
 	}
 
 	~ClassDeclaration()
@@ -229,7 +229,6 @@ public:
 	}
 
 	bool ValueType;
-	short memberSize; // Size of the members in an instance (either 4 or 8, if the class has 64 bit members)
 	int32_t ClassToken;
 	int32_t ParentToken;
 	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
@@ -402,7 +401,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
     Variable Ldsfld(int token);
-    void Stsfld(int token, Variable value);
+    void Stsfld(int token, Variable& value);
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	

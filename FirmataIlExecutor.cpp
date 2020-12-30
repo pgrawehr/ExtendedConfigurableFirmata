@@ -270,6 +270,11 @@ bool FirmataIlExecutor::IsExecutingCode()
 byte* AllocGcInstance(size_t bytes)
 {
 	byte* ret = (byte*)malloc(bytes);
+	if (ret == nullptr)
+	{
+		return nullptr;
+	}
+	
 	memset(ret, 0, bytes);
 	return ret;
 }
@@ -819,9 +824,9 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
 			uint32_t* data = (uint32_t*)array.Object;
 			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
-			ClassDeclaration& ty = _classes.at(*(data + 1));
-			int32_t size = *(data);
-			byte* targetPtr = (byte*)(data + 2);
+			ClassDeclaration& ty = _classes.at(*(data + 2));
+			int32_t size = *(data + 1);
+			byte* targetPtr = (byte*)(data + 3);
 			memcpy(targetPtr, field.Object, size * ty.ClassDynamicSize);
 		}
 		break;
@@ -846,7 +851,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			Variable arguments = args[1]; // An array of types
 			ASSERT(arguments.Type == VariableKind::ReferenceArray);
 			uint32_t* data = (uint32_t*)arguments.Object;
-			int32_t size = *(data);
+			int32_t size = *(data + 1);
 			ClassDeclaration& typeOfType = _classes.at(2);
 			if (size != 1)
 			{
@@ -854,7 +859,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				state = MethodState::Aborted;
 				break;
 			}
-			uint32_t parameter = *(data + 2);
+			uint32_t parameter = *(data + 3); // First element of array
 			Variable argumentTypeInstance;
 			// First, get element of array (an object)
 			argumentTypeInstance.Uint32 = parameter;
@@ -1132,7 +1137,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			AllocateArrayInstance((int)KnownTypeTokens::Type, 1, result);
 			uint32_t* data = (uint32_t*)result.Object;
 			// Set the first (and for us, only) element of the array to the type instance
-			*(data + 2) = (uint32_t)ptr;
+			*(data + 3) = (uint32_t)ptr;
 		}
 		break;
 	case NativeMethod::BitOperationsLog2SoftwareFallback:
@@ -1258,7 +1263,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	return nullptr;
 }
 
-
+// TODO: This should return a reference, but we can't simply change that, because it breaks the "not found" case (returning a stack reference)
 Variable FirmataIlExecutor::Ldsfld(int token)
 {
 	if (_statics.contains(token))
@@ -1278,7 +1283,7 @@ Variable FirmataIlExecutor::Ldsfld(int token)
 }
 
 
-void FirmataIlExecutor::Stsfld(int token, Variable value)
+void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
 	if (_statics.contains(token))
 	{
@@ -1286,6 +1291,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable value)
 		return;
 	}
 
+	// TODO: Allocate enough memory if the type of token is a large value type
 	_statics.insert(token, value);
 }
 
@@ -1373,9 +1379,12 @@ switch (value1.Type)\
 case VariableKind::Int32:\
 	intermediate.Boolean = value1.Int32 op value2.Int32;\
 	break;\
-case VariableKind::RuntimeTypeHandle:\
 case VariableKind::Object:\
 case VariableKind::AddressOfVariable:\
+case VariableKind::ReferenceArray:\
+case VariableKind::ValueArray:\
+	intermediate.Boolean = value1.Object op value2.Object; \
+case VariableKind::RuntimeTypeHandle:\
 case VariableKind::Boolean:\
 case VariableKind::Uint32:\
 	intermediate.Boolean = value1.Uint32 op value2.Uint32;\
@@ -1811,8 +1820,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 				return MethodState::Aborted;
 			}
-			uint32_t i = *((uint32_t*)value1.Object);
-			intermediate.Uint32 = i;
+			uint32_t* data = (uint32_t*)value1.Object;
+			intermediate.Uint32 = *(data + 1);
 			intermediate.Type = VariableKind::Uint32;
 			stack->push(intermediate);
 		}
@@ -1828,7 +1837,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		// The instruction suffix (here .i2) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
-		int32_t size = *(data);
+		int32_t size = *(data + 1);
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
@@ -1841,12 +1850,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		if (instr == CEE_LDELEM_I1)
 		{
 			intermediate.Type = VariableKind::Int32;
-			intermediate.Int32 = *(sPtr + 4 + index);
+			intermediate.Int32 = *(sPtr + 6 + index);
 		}
 		else
 		{
 			intermediate.Type = VariableKind::Uint32;
-			intermediate.Uint32 = *(sPtr + 4 + index);
+			intermediate.Uint32 = *(sPtr + 6 + index);
 		}
 
 		stack->push(intermediate);
@@ -1861,7 +1870,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		// The instruction suffix (here .i2) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
-		int32_t size = *(data);
+		int32_t size = *(data + 1);
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
@@ -1871,7 +1880,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		// This can only be a value type (of type short or ushort)
 		u16* sPtr = (u16*)data;
-		*(sPtr + 4 + index) = (short)value3.Int32;
+		*(sPtr + 6 + index) = (short)value3.Int32;
 	}
 	break;
 
@@ -1885,7 +1894,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		// The instruction suffix (here .i1) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
-		int32_t size = *(data);
+		int32_t size = *(data + 1);
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
@@ -1898,12 +1907,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		if (instr == CEE_LDELEM_I1)
 		{
 			intermediate.Type = VariableKind::Int32;
-			intermediate.Int32 = *(bytePtr + 8 + index);
+			intermediate.Int32 = *(bytePtr + 12 + index);
 		}
 		else
 		{
 			intermediate.Type = VariableKind::Uint32;
-			intermediate.Uint32 = *(bytePtr + 8 + index);
+			intermediate.Uint32 = *(bytePtr + 12 + index);
 		}
 			
 		stack->push(intermediate);
@@ -1918,7 +1927,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		// The instruction suffix (here .i4) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
-		int32_t size = *(data);
+		int32_t size = *(data + 1);
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
@@ -1928,7 +1937,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		// This can only be a value type (of type byte or sbyte)
 		byte* bytePtr = (byte*)data;
-		*(bytePtr + 8 + index) = (byte)value3.Int32;
+		*(bytePtr + 12 + index) = (byte)value3.Int32;
 	}
 	break;
 	case CEE_LDELEM_REF:
@@ -1942,7 +1951,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			}
 			// The instruction suffix (here .i4) indicates the element size
 			uint32_t* data = (uint32_t*)value1.Object;
-			int32_t size = *(data);
+			int32_t size = *(data + 1);
 			int32_t index = value2.Int32;
 			if (index < 0 || index >= size)
 			{
@@ -1956,19 +1965,19 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				if (instr == CEE_LDELEM_I4)
 				{
 					intermediate.Type = VariableKind::Int32;
-					intermediate.Int32 = *(data + 2 + index);
+					intermediate.Int32 = *(data + 3 + index);
 				}
 				else
 				{
 					intermediate.Type = VariableKind::Uint32;
-					intermediate.Uint32 = *(data + 2 + index);
+					intermediate.Uint32 = *(data + 3 + index);
 				}
 
 				stack->push(intermediate);
 			}
 			else
 			{
-				Variable r(*(data + 2 + index), VariableKind::Object);
+				Variable r(*(data + 3 + index), VariableKind::Object);
 				stack->push(r);
 			}
 		}
@@ -1983,7 +1992,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		// The instruction suffix (here .i4) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
-		int32_t size = *(data);
+		int32_t size = *(data + 1);
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
@@ -1993,7 +2002,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		if (value1.Type == VariableKind::ValueArray)
 		{
-			*(data + 2 + index) = value3.Int32;
+			*(data + 3 + index) = value3.Int32;
 		}
 		else
 		{
@@ -2005,7 +2014,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				return MethodState::Aborted;
 			}
 			// can only be an object now
-			*(data + 2 + index) = (uint32_t)value3.Object;
+			*(data + 3 + index) = (uint32_t)value3.Object;
 		}
 	}
 	break;
@@ -2126,26 +2135,55 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	return MethodState::Running;
 }
 
+/// <summary>
+/// Allocate an array of instances of the given type. If the type is a value type, the array space is inline, otherwise an array
+/// of pointers is reserved.
+/// </summary>
+/// <param name="tokenOfArrayType">The type of object the array will contain</param>
+/// <param name="numberOfElements">The number of elements the array will contain</param>
+/// <param name="result">The array object, either a value array or a reference array. Returns type void if there's not enough memory to allocate
+/// the array. </param>
 void FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result)
 {
 	ClassDeclaration& ty = _classes.at(tokenOfArrayType);
 	uint32_t* data;
 	if (ty.ValueType)
 	{
-		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array length, Element 1 is the array type token
+		
+		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array type token (since arrays are also objects), index 1 the array length,
+		// Element 1 is the array content type token
 		// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 64 bits per element
-		data = (uint32_t*)AllocGcInstance(ty.ClassDynamicSize * numberOfElements + 8);
+		uint64_t sizeToAllocate = (uint64_t)ty.ClassDynamicSize * numberOfElements;
+		if (sizeToAllocate > INT32_MAX - 64 * 1024)
+		{
+			result = Variable();
+			return;
+		}
+		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
 		result.Type = VariableKind::ValueArray;
 	}
 	else
 	{
 		// Otherwise we just store pointers
-		data = (uint32_t*)AllocGcInstance(numberOfElements * sizeof(void*) + 8);
+		uint64_t sizeToAllocate = (uint64_t)sizeof(void*) * numberOfElements;
+		if (sizeToAllocate > INT32_MAX - 64 * 1024)
+		{
+			result = Variable();
+			return;
+		}
+		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
 		result.Type = VariableKind::ReferenceArray;
 	}
-						
-	*data = numberOfElements;
-	*(data + 1) = tokenOfArrayType;
+
+	if (data == nullptr)
+	{
+		result = Variable();
+		return;
+	}
+
+	*data = (int)KnownTypeTokens::Array;
+	*(data + 1)= numberOfElements;
+	*(data + 2) = tokenOfArrayType;
 	result.Object = data;
 }
 
@@ -2543,7 +2581,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			case InlineField:
 	            {
 				int32_t token = 0;
-				Variable obj, var;
+				Variable obj;
 		            switch(instr)
 		            {
 		            	// The ldfld instruction loads a field value of an object to the stack
@@ -2559,21 +2597,23 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						Variable* stackVar = (Variable*)alloca(desc.fieldSize() + sizeof(Variable));
 						stackVar->Size = desc.Size;
 						stackVar->Marker = 0x37;
-						stackVar->Type = desc.Size > 8 ? VariableKind::LargeValueType : VariableKind::Int32;
+						stackVar->Type = desc.Type;
 						memcpy(&(stackVar->Int32), dataPtr, desc.Size);
 						stack->push(*stackVar);
 						break;
 						}
 		            	// Store a value to a field
 					case CEE_STFLD:
+					{
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
-						var = stack->top();
+						Variable& var = stack->top();
 						stack->pop();
 						obj = stack->top();
 						stack->pop();
 						Stfld(currentMethod, obj, token, var);
 						break;
+					}
 		            	// Store a static field value on the stack
 					case CEE_STSFLD:
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
@@ -2841,6 +2881,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						Variable v1;
 						AllocateArrayInstance(token, size, v1);
+						if (v1.Type == VariableKind::Void)
+						{
+							ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
+							return MethodState::Aborted;
+						}
 						stack->push(v1);
 					}
 					
@@ -2860,8 +2905,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 						
 						uint32_t* data = (uint32_t*)value1.Object;
-						int32_t arraysize = *(data);
-						int32_t targetType = *(data + 1);
+						int32_t arraysize = *(data + 1);
+						int32_t targetType = *(data + 2);
 						if (token != targetType)
 						{
 							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
@@ -2880,24 +2925,24 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 1:
 						{
 							byte* dataptr = (byte*)data;
-							*(dataptr + 8 + index) = (byte)value3.Int32;
+							*(dataptr + 12 + index) = (byte)value3.Int32;
 							break;
 						}
 						case 2:
 						{
 							short* dataptr = (short*)data;
-							*(dataptr + 4 + index) = (short)value3.Int32;
+							*(dataptr + 6 + index) = (short)value3.Int32;
 							break;
 						}
 						case 4:
 						{
-							*(data + 2 + index) = value3.Int32;
+							*(data + 3 + index) = value3.Int32;
 							break;
 						}
 						case 8:
 						{
 							uint64_t* dataptr = (uint64_t*)data;
-							*(dataptr + 1 + index) = value3.Int64;
+							*(AddBytes(dataptr, 12) + index) = value3.Int64;
 							break;
 						}
 						default:
@@ -2920,7 +2965,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					// The instruction suffix (here .i4) indicates the element size
 					uint32_t* data = (uint32_t*)value1.Object;
-					int32_t arraysize = *(data);
+					int32_t arraysize = *(data + 1);
 					int32_t targetType = *(data + 1);
 					if (token != targetType)
 					{
@@ -2944,24 +2989,24 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 1:
 						{
 							byte* dataptr = (byte*)data;
-							v1.Int32 = *(dataptr + 8 + index);
+							v1.Int32 = *(dataptr + 12 + index);
 							break;
 						}
 						case 2:
 						{
 							short* dataptr = (short*)data;
-							v1.Int32 = *(dataptr + 4 + index);
+							v1.Int32 = *(dataptr + 6 + index);
 							break;
 						}
 						case 4:
 						{
-							v1.Int32 = *(data + 2 + index);
+							v1.Int32 = *(data + 3 + index);
 							break;
 						}
 						case 8:
 						{
 							uint64_t* dataptr = (uint64_t*)data;
-							v1.Int64 = *(dataptr + 1 + index);
+							v1.Int64 = *(AddBytes(dataptr, 12) + index);
 							break;
 						}
 						default:
@@ -2975,7 +3020,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					else
 					{
 						// can only be an object now
-						v1.Object = (void*)*(data + 2 + index);
+						v1.Object = (void*)*(data + 3 + index);
 						v1.Type = VariableKind::Object;
 					}
 					stack->push(v1);
@@ -3089,7 +3134,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					ClassDeclaration& ty = _classes.at(token);
 					if (ty.ValueType)
 					{
-						size = SizeOfClass(&ty);
+						size = ty.ClassDynamicSize;
 						memset(value1.Object, 0, size);
 					}
 					else
