@@ -657,7 +657,7 @@ MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, V
 {
 	SystemException ex = SystemException::None;
 	// Create an instance of "System.Type"
-	void* newObjInstance = CreateInstanceOfClass(2, 0, &ex);
+	void* newObjInstance = CreateInstanceOfClass(2, 0, ex);
 	if (newObjInstance == nullptr)
 	{
 		ExceptionOccurred(currentFrame, ex, 0);
@@ -875,7 +875,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				break;
 			}
 			SystemException exception;
-			void* data = CreateInstanceOfClass(ty->ClassToken, 0, &exception);
+			void* data = CreateInstanceOfClass(ty->ClassToken, 0, exception);
 			if (data == nullptr)
 			{
 				ExceptionOccurred(currentFrame, SystemException::OutOfMemory, currentFrame->_executingMethod->methodToken);
@@ -956,7 +956,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				state = MethodState::Aborted;
 				break;
 			}
-			void* ptr = CreateInstanceOfClass(token, 0, &exception);
+			void* ptr = CreateInstanceOfClass(token, 0, exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1104,7 +1104,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				break;
 			}
 			
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, &exception);
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1163,7 +1163,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			}
 
 			SystemException exception;
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, &exception);
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, exception);
 			if (ptr == nullptr)
 			{
 				ExceptionOccurred(currentFrame, exception, token);
@@ -1269,13 +1269,29 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 
 byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description)
 {
-	byte* o = (byte*)obj.Object;
-	ClassDeclaration* vtable = GetClassDeclaration(obj);
+	byte* o;
+	ClassDeclaration* vtable;
+	int offset;
+	if (obj.Type != VariableKind::Object)
+	{
+		// Ldfld from a value type needs one less indirection, but we need to get the type first.
+		// The value type does not carry the type information. Lets derive it from the field token.
+		// TODO: This is slow, not what one expects from accessing a value type
+		SystemException ex;
+		vtable = &ResolveClassFromFieldToken(token, ex);
+		offset = 0; // No extra header
+		o = (byte*)&obj.Int32; // Data is right there
+	}
+	else
+	{
+		o = (byte*)obj.Object;
+		vtable = GetClassDeclaration(obj);
 
-	// Assuming sizeof(void*) == sizeof(any pointer type)
-	// and sizeof(void*) >= sizeof(int)
-	// Our members start here
-	int offset = sizeof(void*);
+		// Assuming sizeof(void*) == sizeof(any pointer type)
+		// and sizeof(void*) >= sizeof(int)
+		// Our members start here
+		offset = sizeof(void*);
+	}
 	// Todo: Check base classes
 	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
 	{
@@ -1340,14 +1356,30 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 
 void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
-	// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
-	byte* o = (byte*)obj.Object;
-	// Get the first data element of where the object points to
-	ClassDeclaration* cls = ((ClassDeclaration*)(*(int32_t*)o));
+	ClassDeclaration* cls;
+	byte* o;
+	int offset;
+	if (obj.Type != VariableKind::Object)
+	{
+		// Stfld to a value type needs one less indirection, but we need to get the type first.
+		// The value type does not carry the type information. Lets derive it from the field token.
+		// TODO: This is slow, not what one expects from accessing a value type
+		SystemException ex;
+		cls = &ResolveClassFromFieldToken(token, ex);
+		offset = 0; // No extra header
+		o = (byte*)&obj.Int32; // Data is right there
+	}
+	else
+	{
+		// The vtable is actually a pointer to the class declaration and at the beginning of the object memory
+		o = (byte*)obj.Object;
+		// Get the first data element of where the object points to
+		cls = ((ClassDeclaration*)(*(int32_t*)o));
+		// Assuming sizeof(void*) == sizeof(any pointer type)
+		// Our members start here
+		offset = sizeof(void*);
+	}
 
-	// Assuming sizeof(void*) == sizeof(any pointer type)
-	// Our members start here
-	int offset = sizeof(void*);
 	// Todo: Check base classes
 	for (auto handle = cls->fieldTypes.begin(); handle != cls->fieldTypes.end(); ++handle)
 	{
@@ -1509,7 +1541,21 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		InvalidOpCode(PC, instr);
 		return MethodState::Aborted;
 	case CEE_LDARG_0:
-		stack->push(arguments->at(0));
+		Variable& self = arguments->at(0);
+		if ((currentFrame->_executingMethod->methodFlags & (int)MethodFlags::Static) == 0 && self.Type != VariableKind::Object)
+		{
+			// In a non-static instance method on a value type, LDARG.0 needs to load a reference instead of the actual instance, because
+			// the field might be manipulated by the class itself.
+			// I think the only two valid operations on this reference are LDFLD and STFLD (and CALL to base, but that's always only a call to System.Object..ctor,
+			// which does nothing)
+			intermediate.Type = VariableKind::AddressOfVariable;
+			intermediate.Object = &self.Int32;
+			stack->push(intermediate);
+		}
+		else
+		{
+			stack->push(self);
+		}
 		break;
 	case CEE_LDARG_1:
 		stack->push(arguments->at(1));
@@ -2303,16 +2349,32 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			// Remove the last frame and set the PC for the new current frame
 			frame->_next = nullptr;
 			
-			delete currentFrame;
+			ExecutionState* exitingFrame = currentFrame; // Need to keep it until we have saved the return value
 			currentFrame = frame;
-			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+			
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-			if ((currentMethod->methodFlags & (byte)MethodFlags::VoidOrCtor) == 0)
+    		if ((currentMethod->methodFlags & (byte)MethodFlags::Ctor) != 0)
+    		{
+    			// If the method was a ctor, we pick its first argument from the stack
+    			// and push it back to the caller. This might be a value type
+    			// Note: Rare case here - native ctors are special, but see below
+				Variable& newInstance = arguments->at(0); // reference to the terminating method's arglist
+				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+				stack->push(newInstance);
+    		}
+			else if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
 			{
+				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 				stack->push(retVal);
 			}
+			else
+			{
+				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+			}
 
+			delete exitingFrame;
+    		
 			currentMethod = currentFrame->_executingMethod;
 
 			pCode = currentMethod->methodIl;
@@ -2345,23 +2407,32 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			{
 				if (instr == CEE_RET)
 				{
-					if (!stack->empty())
-					{
-						*returnValue = stack->top();
-						stack->pop();
-					}
-					else
-					{
-						*returnValue = Variable();
-					}
-
-					bool oldMethodIsVoid = currentMethod->methodFlags & (byte)MethodFlags::VoidOrCtor;
 					// Remove current method from execution stack
 					ExecutionState* frame = rootState;
 					if (frame == currentFrame)
 					{
-						// We're at the outermost frame
+						// We're at the outermost frame, for now only basic types can be returned here
+						if (!stack->empty())
+						{
+							*returnValue = stack->top();
+							stack->pop();
+						}
+						else
+						{
+							*returnValue = Variable();
+						}
 						return MethodState::Stopped;
+					}
+
+					Variable* var;
+					if (!stack->empty())
+					{
+						var = &stack->top();
+						stack->pop();
+					}
+					else
+					{
+						var = nullptr;
 					}
 
 					// Find the frame which has the current frame as next (should be the second-last on the stack now)
@@ -2372,21 +2443,40 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// Remove the last frame and set the PC for the new current frame
 
 					frame->_next = nullptr;
-					delete currentFrame;
+					
+					ExecutionState* exitingFrame = currentFrame; // Need to keep it until we have saved the return value
 					currentFrame = frame;
-					currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+
+					// If the method we just terminated is not of type void, we push the result to the 
+					// stack of the calling method
+					if ((currentMethod->methodFlags & (byte)MethodFlags::Ctor) != 0)
+					{
+						// If the method was a ctor, we pick its first argument from the stack
+						// and push it back to the caller. This might be a value type
+						Variable& newInstance = arguments->at(0); // reference to the terminating method's arglist
+						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+						if (PC >= 5 && currentFrame->_executingMethod->methodIl[PC - 5] == CEE_NEWOBJ)
+						{
+							// This only applies if we return from a newobj call, not if the ctor was invoked using CALL (ie. base class ctor call)
+							stack->push(newInstance);
+						}
+					}
+					else if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
+					{
+						// If the method we just terminated is not of type void, we push the result to the 
+						// stack of the calling method (methodIndex still points to the old frame)
+						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+						stack->push(*var);
+					}
+					else
+					{
+						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+					}
+
+					delete exitingFrame;
 
 					currentMethod = currentFrame->_executingMethod;
-
 					pCode = currentMethod->methodIl;
-					// If the method we just terminated is not of type void, we push the result to the 
-					// stack of the calling method (methodIndex still points to the old frame)
-					if (!oldMethodIsVoid)
-					{
-						stack->push(*returnValue);
-
-						TRACE(Firmata.sendString(F("Pushing return value: "), returnValue->Uint32));
-					}
 					
 					break;
 				}
@@ -2828,11 +2918,33 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				if (instr == CEE_NEWOBJ)
 				{
 					SystemException ex = SystemException::None;
-					newObjInstance = CreateInstance(newMethod->methodToken, &ex);
-					if (newObjInstance == nullptr)
+					cls = &ResolveClassFromCtorToken(newMethod->methodToken, ex);
+					if (ex != SystemException::None)
 					{
 						ExceptionOccurred(currentFrame, ex, newMethod->methodToken);
 						return MethodState::Aborted;
+					}
+					if (cls->ValueType)
+					{
+						// If a value type is being created using a newobj instruction, an unboxed value is created and pushed as #0 on the stack
+						// we have to be careful to get it back on the ret.
+						size_t size = cls->ClassDynamicSize;
+						// Reserve enough memory on the stack, so we can temporarily hold the whole variable
+						Variable* unboxed = (Variable*)alloca(size + sizeof(Variable));
+						memset(unboxed, 0, size + sizeof(Variable));
+						unboxed->Size = (uint16_t)size;
+						unboxed->Marker = 0x37;
+						unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
+						newObjInstance = unboxed;
+					}
+					else
+					{
+						newObjInstance = CreateInstance(*cls, ex);
+						if (ex != SystemException::None)
+						{
+							ExceptionOccurred(currentFrame, ex, newMethod->methodToken);
+							return MethodState::Aborted;
+						}
 					}
 				}
 
@@ -2878,14 +2990,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 
 					// The last argument to push is the new object
-					Variable v;
-					v.Type = VariableKind::Object;
-					v.Object = newObjInstance;
-					arguments->at(0) = v;
-
-					// Also push it to the stack of the calling method - this will be the implicit return value of
-					// the newobj call.
-					oldStack->push(v);
+					if (cls->ValueType)
+					{
+						// See above, newObjInstance actually points to the new unboxed Variable instance. Copy it to the arglist
+						arguments->at(0) = *(Variable*)newObjInstance;
+						// We can't push that to the old stack yet, because it will be changed by the called ctor.
+					}
+					else
+					{
+						// This will be pushed to the stack of the calling method on return
+						Variable v;
+						v.Type = VariableKind::Object;
+						v.Object = newObjInstance;
+						arguments->at(0) = v;
+					}
             	}
 				else
 				{
@@ -3149,7 +3267,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							Variable* unboxed = (Variable*)alloca(size + sizeof(Variable));
 							unboxed->Size = (uint16_t)size;
 							unboxed->Marker = 0x37;
-							unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int32;
+							unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
 							memcpy(&(unboxed->Int32), o + offset, size);
 							stack->push(*unboxed);
 						}
@@ -3322,7 +3440,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							data = _constants.at(token);
 						}
 						SystemException ex;
-						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2, &ex); // *2, because length is in chars here
+						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2, ex); // *2, because length is in chars here
 						// The string data is stored inline in the class data junk
 						memcpy(classInstance + 8, data, length * 2);
 						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
@@ -3409,7 +3527,7 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 /// <summary>
 /// Creates a class directly by its type (used i.e. to create instances of System::Type)
 /// </summary>
-void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */, SystemException* exception)
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */, SystemException& exception)
 {
 	ClassDeclaration& cls = _classes.at(typeToken);
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
@@ -3424,7 +3542,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	void* ret = AllocGcInstance(sizeOfClass);
 	if (ret == nullptr)
 	{
-		*exception = SystemException::OutOfMemory;
+		exception = SystemException::OutOfMemory;
 		Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
 		return nullptr;
 	}
@@ -3436,49 +3554,75 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	return ret;
 }
 
-/// <summary>
-/// Creates an instance of the given type.
-/// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
-/// </summary>
-void* FirmataIlExecutor::CreateInstance(int32_t ctorToken, SystemException* exception)
+ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken, SystemException& exception)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
 	{
 		ClassDeclaration& cls = iterator.second();
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
-		for(size_t j = 0; j < cls.methodTypes.size(); j++)
+		for (size_t j = 0; j < cls.methodTypes.size(); j++)
 		{
 			Method& member = cls.methodTypes.at(j);
 			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
 			if (member.token == ctorToken)
 			{
-				TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
-				// The constructor that was called belongs to this class
-				// Compute sizeof(class)
-				size_t sizeOfClass = SizeOfClass(&cls);
-
-				TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
-				void* ret = AllocGcInstance(sizeOfClass);
-				if (ret == nullptr)
-				{
-					*exception = SystemException::OutOfMemory;
-					Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
-					return nullptr;
-				}
-
-				// Save a reference to the class declaration in the first entry of the newly created instance.
-				// this will serve as vtable.
-				ClassDeclaration** vtable = (ClassDeclaration**)ret;
-				*vtable = &cls;
-				return ret;
+				return cls;
 			}
 		}
 	}
 
-	*exception = SystemException::MissingMethod;
+	exception = SystemException::MissingMethod;
 	Firmata.sendString(F("No class found with that .ctor"));
-	return nullptr;
+	return *(ClassDeclaration*)nullptr;;
+}
+
+ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken, SystemException& exception)
+{
+	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
+	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
+	{
+		ClassDeclaration& cls = iterator.second();
+		for (size_t j = 0; j < cls.fieldTypes.size(); j++)
+		{
+			Variable& member = cls.fieldTypes.at(j);
+			if (member.Int32 == fieldToken)
+			{
+				return cls;
+			}
+		}
+	}
+
+	exception = SystemException::ClassNotFound;
+	Firmata.sendString(F("No class found with that field"));
+	return *(ClassDeclaration*)nullptr;;
+}
+
+/// <summary>
+/// Creates an instance of the given type.
+/// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
+/// </summary>
+void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls, SystemException& exception)
+{
+	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
+	// The constructor that was called belongs to this class
+	// Compute sizeof(class)
+	size_t sizeOfClass = SizeOfClass(&cls);
+
+	TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
+	void* ret = AllocGcInstance(sizeOfClass);
+	if (ret == nullptr)
+	{
+		exception = SystemException::OutOfMemory;
+		Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
+		return nullptr;
+	}
+
+	// Save a reference to the class declaration in the first entry of the newly created instance.
+	// this will serve as vtable.
+	ClassDeclaration** vtable = (ClassDeclaration**)ret;
+	*vtable = &cls;
+	return ret;
 }
 
 /// <summary>

@@ -51,8 +51,9 @@ enum class MethodFlags
 	Static = 1,
 	Virtual = 2,
 	Special = 4,
-	VoidOrCtor = 8,
-	Abstract = 16
+	Void = 8,
+	Ctor = 16,
+	Abstract = 32
 };
 
 enum class MethodState
@@ -451,9 +452,11 @@ class FirmataIlExecutor: public FirmataFeature
     void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
     ClassDeclaration* GetClassDeclaration(Variable& obj);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(int32_t ctorToken, SystemException* exception);
-	void* CreateInstanceOfClass(int32_t typeToken, u32 length, SystemException* exception);
-	uint16_t SizeOfClass(ClassDeclaration* cls);
+    void* CreateInstance(ClassDeclaration& cls, SystemException& exception);
+	void* CreateInstanceOfClass(int32_t typeToken, u32 length, SystemException& exception);
+    ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken, SystemException& exception);
+    ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken, SystemException& exception);
+    uint16_t SizeOfClass(ClassDeclaration* cls);
     MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
