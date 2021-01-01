@@ -1272,7 +1272,14 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	byte* o;
 	ClassDeclaration* vtable;
 	int offset;
-	if (obj.Type != VariableKind::Object)
+	if (obj.Type == VariableKind::AddressOfVariable)
+	{
+		SystemException ex;
+		vtable = &ResolveClassFromFieldToken(token, ex);
+		offset = 0; // No extra header
+		o = (byte*)obj.Object; // Data being pointed to
+	}
+	else if (obj.Type != VariableKind::Object)
 	{
 		// Ldfld from a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
@@ -1354,12 +1361,26 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 	_statics.insert(token, value);
 }
 
+/// <summary>
+/// Store value "var" in field "token" of instance "obj". Obj may be an object, a reference (pointer to a location) or a value type (rare)
+/// </summary>
+/// <param name="currentMethod"></param>
+/// <param name="obj"></param>
+/// <param name="token"></param>
+/// <param name="var"></param>
 void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	ClassDeclaration* cls;
 	byte* o;
 	int offset;
-	if (obj.Type != VariableKind::Object)
+	if (obj.Type == VariableKind::AddressOfVariable)
+	{
+		SystemException ex;
+		cls = &ResolveClassFromFieldToken(token, ex);
+		offset = 0; // No extra header
+		o = (byte*)obj.Object; // Data being pointed to
+	}
+	else if (obj.Type != VariableKind::Object)
 	{
 		// Stfld to a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
@@ -1541,21 +1562,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		InvalidOpCode(PC, instr);
 		return MethodState::Aborted;
 	case CEE_LDARG_0:
-		Variable& self = arguments->at(0);
-		if ((currentFrame->_executingMethod->methodFlags & (int)MethodFlags::Static) == 0 && self.Type != VariableKind::Object)
-		{
-			// In a non-static instance method on a value type, LDARG.0 needs to load a reference instead of the actual instance, because
-			// the field might be manipulated by the class itself.
-			// I think the only two valid operations on this reference are LDFLD and STFLD (and CALL to base, but that's always only a call to System.Object..ctor,
-			// which does nothing)
-			intermediate.Type = VariableKind::AddressOfVariable;
-			intermediate.Object = &self.Int32;
-			stack->push(intermediate);
-		}
-		else
-		{
-			stack->push(self);
-		}
+		stack->push(arguments->at(0));
 		break;
 	case CEE_LDARG_1:
 		stack->push(arguments->at(1));
@@ -2449,22 +2456,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 					// If the method we just terminated is not of type void, we push the result to the 
 					// stack of the calling method
-					if ((currentMethod->methodFlags & (byte)MethodFlags::Ctor) != 0)
+					if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Ctor) == 0)
 					{
-						// If the method was a ctor, we pick its first argument from the stack
-						// and push it back to the caller. This might be a value type
-						Variable& newInstance = arguments->at(0); // reference to the terminating method's arglist
-						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-						if (PC >= 5 && currentFrame->_executingMethod->methodIl[PC - 5] == CEE_NEWOBJ)
-						{
-							// This only applies if we return from a newobj call, not if the ctor was invoked using CALL (ie. base class ctor call)
-							stack->push(newInstance);
-						}
-					}
-					else if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
-					{
-						// If the method we just terminated is not of type void, we push the result to the 
-						// stack of the calling method (methodIndex still points to the old frame)
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 						stack->push(*var);
 					}
@@ -2989,12 +2982,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						oldStack->pop();
 					}
 
-					// The last argument to push is the new object
+					// The first argument of the ctor being invoked is the new object
 					if (cls->ValueType)
 					{
-						// See above, newObjInstance actually points to the new unboxed Variable instance. Copy it to the arglist
-						arguments->at(0) = *(Variable*)newObjInstance;
-						// We can't push that to the old stack yet, because it will be changed by the called ctor.
+						// See above, newObjInstance actually points to the new unboxed Variable instance.
+						// Push it to the old method's stack, and pass a reference to it as argument.
+						// By definition, the "this" pointer of a non-static non-virtual method on a value type is passed by reference
+						oldStack->push(*(Variable*)newObjInstance);
+						Variable v2(VariableKind::AddressOfVariable);
+						v2.Object = &(oldStack->top().Int32);
+						arguments->at(0) = v2;
 					}
 					else
 					{
@@ -3003,6 +3000,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						v.Type = VariableKind::Object;
 						v.Object = newObjInstance;
 						arguments->at(0) = v;
+
+						// Also push it to the stack of the calling method - this will be the implicit return value of
+						// the newobj call.
+						oldStack->push(v);
 					}
             	}
 				else
