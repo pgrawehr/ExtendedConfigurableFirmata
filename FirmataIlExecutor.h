@@ -428,10 +428,12 @@ class FirmataIlExecutor: public FirmataFeature
 	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
-    Variable Ldsfld(int token);
+    Variable Ldsfld(int token, bool address);
     void Stsfld(int token, Variable& value);
+    void CollectFields(ClassDeclaration* vtable, vector<Variable>& vector);
+
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
-	void Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
+	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);

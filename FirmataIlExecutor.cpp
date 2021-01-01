@@ -1224,7 +1224,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 	for (auto handle = type.fieldTypes.begin(); handle != type.fieldTypes.end(); ++handle)
 	{
 		// Ignore static member here
-		if ((int)handle->Type & 0x80)
+		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
 			continue;
 		}
@@ -1267,6 +1267,22 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 	return vtable;
 }
 
+void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable>& vector)
+{
+	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
+	// vector must be sorted base-class members first
+	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
+	{
+		ClassDeclaration* parent = &_classes.at(vtable->ParentToken);
+		CollectFields(parent, vector);
+	}
+
+	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
+	{
+		vector.push_back(*handle);
+	}
+}
+
 byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description)
 {
 	byte* o;
@@ -1292,6 +1308,11 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	else
 	{
 		o = (byte*)obj.Object;
+		if (o == nullptr)
+		{
+			return o;
+		}
+		
 		vtable = GetClassDeclaration(obj);
 
 		// Assuming sizeof(void*) == sizeof(any pointer type)
@@ -1299,11 +1320,19 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		// Our members start here
 		offset = sizeof(void*);
 	}
-	// Todo: Check base classes
-	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
+
+	// Early abort. Offsetting to a null ptr does not give a valid field
+	if (o == nullptr)
+	{
+		return nullptr;
+	}
+	
+	vector<Variable> allfields;
+	CollectFields(vtable, allfields);
+	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
 	{
 		// Ignore static member here
-		if ((int)handle->Type & 0x80)
+		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
 			continue;
 		}
@@ -1318,33 +1347,79 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		}
 
 		offset += handle->fieldSize();
-		if ((uint32_t)offset >= (SizeOfClass(vtable)))
-		{
-			// Something is wrong.
-			Firmata.sendString(F("Member offset exceeds class size"));
-		}
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
 	return nullptr;
 }
 
-// TODO: This should return a reference, but we can't simply change that, because it breaks the "not found" case (returning a stack reference)
-Variable FirmataIlExecutor::Ldsfld(int token)
+/// <summary>
+/// Load a value from a static field
+/// </summary>
+/// <param name="token">Token of the static field</param>
+/// <param name="address">True to get an address instead of the actual value</param>
+/// <remarks>TODO: This should return Variable&, but we can't simply change that, because it breaks the "not found" case (returning a stack reference)</remarks>
+Variable FirmataIlExecutor::Ldsfld(int token, bool address)
 {
 	if (_statics.contains(token))
 	{
+		if (address)
+		{
+			Variable& temp = _statics.at(token);
+			Variable ret(VariableKind::AddressOfVariable);
+			ret.Marker = VARIABLE_DEFAULT_MARKER;
+			ret.Object = &temp.Int32;
+			ret.Size = 4;
+			return ret;
+		}
 		return _statics.at(token);
 	}
 
 	// We get here if reading an uninitialized static field
 
-	// We don't have the type of static fields, let's hope the only operation done on them is a comparison with null
+	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
+	// Create an instance of the value type with the default zero value but the correct type
 	Variable ret;
 	ret.Type = VariableKind::Object;
-		
-	_statics.insert(token, ret);
 
+	SystemException exception = SystemException::None;
+	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
+
+	vector<Variable> allfields;
+	CollectFields(&cls, allfields);
+	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
+	{
+		// Only static members checked
+		if ((handle->Type & VariableKind::StaticMember) == VariableKind::Void)
+		{
+			continue;
+		}
+		if (handle->Int32 == token)
+		{
+			// Found the member
+			ret.Marker = VARIABLE_DEFAULT_MARKER;
+			ret.Type = handle->Type & ~VariableKind::StaticMember;
+			ret.Size = handle->fieldSize();
+			ret.Int64 = 0;
+			_statics.insert(token, ret);
+			if (address)
+			{
+				// Get the final address on the static heap (ret above is copied on insert)
+				Variable& temp = _statics.at(token);
+				ret.Marker = VARIABLE_DEFAULT_MARKER;
+				ret.Size = 4;
+				ret.Type = VariableKind::AddressOfVariable;
+				ret.Object = &temp.Int32;
+				return ret;
+			}
+			else
+			{
+				return ret;
+			}
+		}
+	}
+	
+	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls.ClassToken, token);
 	return ret;
 }
 
@@ -1357,6 +1432,12 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 		return;
 	}
 
+	if (value.Type == VariableKind::LargeValueType)
+	{
+		// Not supported
+		return;
+	}
+
 	// TODO: Allocate enough memory if the type of token is a large value type
 	_statics.insert(token, value);
 }
@@ -1364,11 +1445,14 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 /// <summary>
 /// Store value "var" in field "token" of instance "obj". Obj may be an object, a reference (pointer to a location) or a value type (rare)
 /// </summary>
-/// <param name="currentMethod"></param>
-/// <param name="obj"></param>
-/// <param name="token"></param>
-/// <param name="var"></param>
-void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var)
+/// <param name="currentMethod">Method currently executing</param>
+/// <param name="obj">Instance to manipulate. May be of type Object; AddressOfVariable or an inline value type (anything else)</param>
+/// <param name="token">The field token to use</param>
+/// <param name="var">The value to store</param>
+/// <returns>
+/// The address where the value was stored, or null if a nullreference exception should be thrown
+/// </returns>
+void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var)
 {
 	ClassDeclaration* cls;
 	byte* o;
@@ -1401,11 +1485,18 @@ void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t 
 		offset = sizeof(void*);
 	}
 
-	// Todo: Check base classes
-	for (auto handle = cls->fieldTypes.begin(); handle != cls->fieldTypes.end(); ++handle)
+	// Early abort. Offsetting to a null ptr does not give a valid field
+	if (o == nullptr)
+	{
+		return nullptr;
+	}
+	
+	vector<Variable> allfields;
+	CollectFields(cls, allfields);
+	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
 	{
 		// Ignore static member here
-		if ((int)handle->Type & 0x80)
+		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
 			continue;
 		}
@@ -1414,7 +1505,7 @@ void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t 
 		{
 			// Found the member
 			memcpy(o + offset, &var.Object, handle->fieldSize());
-			return;
+			return (o + offset);
 		}
 
 		if ((uint16_t)offset >= SizeOfClass(cls))
@@ -1428,6 +1519,7 @@ void FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t 
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
+	return nullptr;
 }
 
 void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken)
@@ -2290,6 +2382,19 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 	return (int)sizeToAllocate;
 }
 
+// This macro only works in the function below. It ensures the stack variable "tempVariable" has enough room to
+// store variable of the given size (+ header)
+#define EnsureStackVarSize(size) \
+	if (tempVariable == nullptr)\
+	{\
+		tempVariable = (Variable*)alloca((size)  + sizeof(Variable)); /* this is a bit more than what we need, but doesn't matter (is stack memory only) */ \
+		sizeOfTemp = size;\
+	} else if (sizeOfTemp < (size_t)(size))\
+	{\
+		tempVariable = (Variable*)alloca((size)  + sizeof(Variable)); \
+		sizeOfTemp = size;\
+	}
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -2311,6 +2416,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	VariableDynamicStack* stack;
 	VariableVector* locals;
 	VariableVector* arguments;
+
+	// Temporary location for a stack variable of arbitrary size. The memory is allocated using alloca() when needed
+	Variable* tempVariable = nullptr;
+	size_t sizeOfTemp = 0;
 	
 	currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 
@@ -2575,7 +2684,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				break;
             }
 
-			case InlineI8:
+			case InlineI8: // LDC.i8 instruction
 			{
 				uint64_t* hlpCodePtr8 = (uint64_t*)(pCode + PC);
 				uint64_t v = *hlpCodePtr8;
@@ -2584,6 +2693,42 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					intermediate.Type = VariableKind::Int64;
 					intermediate.Int64 = v;
+					stack->push(intermediate);
+				}
+				else
+				{
+					InvalidOpCode(PC, instr);
+					return MethodState::Aborted;
+				}
+				break;
+			}
+			case InlineR: // LDC.r8 instruction
+			{
+				double* hlpCodePtr8 = (double*)(pCode + PC);
+				double v = *hlpCodePtr8;
+				PC += 8;
+				if (instr == CEE_LDC_R8)
+				{
+					intermediate.Type = VariableKind::Double;
+					intermediate.Double = v;
+					stack->push(intermediate);
+				}
+				else
+				{
+					InvalidOpCode(PC, instr);
+					return MethodState::Aborted;
+				}
+				break;
+			}
+			case ShortInlineR: // LDC.r4 instruction
+			{
+				float* hlpCodePtr4 = (float*)(pCode + PC);
+				float v = *hlpCodePtr4;
+				PC += 4;
+				if (instr == CEE_LDC_R8)
+				{
+					intermediate.Type = VariableKind::Float;
+					intermediate.Float = v;
 					stack->push(intermediate);
 				}
 				else
@@ -2724,20 +2869,21 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC += 4;
 						obj = stack->top();
 						stack->pop();
-						if (obj.Object == nullptr)
+						
+						VariableDescription desc;
+						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
+						if (dataPtr == nullptr)
 						{
 							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 							return MethodState::Aborted;
 						}
-						VariableDescription desc;
-						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
 						// Combine the variable again with its metadata, so we can put it back to the stack
-						Variable* stackVar = (Variable*)alloca(desc.fieldSize() + sizeof(Variable));
-						stackVar->Size = desc.Size;
-						stackVar->Marker = 0x37;
-						stackVar->Type = desc.Type;
-						memcpy(&(stackVar->Int32), dataPtr, desc.Size);
-						stack->push(*stackVar);
+						EnsureStackVarSize(desc.fieldSize());
+						tempVariable->Size = desc.Size;
+						tempVariable->Marker = 0x37;
+						tempVariable->Type = desc.Type;
+						memcpy(&(tempVariable->Int32), dataPtr, desc.Size);
+						stack->push(*tempVariable);
 						break;
 						}
 		            	// Store a value to a field
@@ -2749,7 +2895,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->pop();
 						obj = stack->top();
 						stack->pop();
-						Stfld(currentMethod, obj, token, var);
+						void* ptr = Stfld(currentMethod, obj, token, var);
+						if (ptr == nullptr)
+						{
+							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+							return MethodState::Aborted;
+						}
 						break;
 					}
 		            	// Store a static field value on the stack
@@ -2762,7 +2913,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_LDSFLD:
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
-						stack->push(Ldsfld(token));
+						stack->push(Ldsfld(token, false));
+						break;
+					case CEE_LDSFLDA:
+						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+						PC += 4;
+						stack->push(Ldsfld(token, true));
 						break;
 					default:
 						InvalidOpCode(PC, instr);
@@ -2923,12 +3079,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						// we have to be careful to get it back on the ret.
 						size_t size = cls->ClassDynamicSize;
 						// Reserve enough memory on the stack, so we can temporarily hold the whole variable
-						Variable* unboxed = (Variable*)alloca(size + sizeof(Variable));
-						memset(unboxed, 0, size + sizeof(Variable));
-						unboxed->Size = (uint16_t)size;
-						unboxed->Marker = 0x37;
-						unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
-						newObjInstance = unboxed;
+						EnsureStackVarSize(size);
+						memset(tempVariable, 0, size + sizeof(Variable));
+						tempVariable->Size = (uint16_t)size;
+						tempVariable->Marker = 0x37;
+						tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
+						newObjInstance = tempVariable;
 					}
 					else
 					{
@@ -3140,7 +3296,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// The instruction suffix (here .i4) indicates the element size
 					uint32_t* data = (uint32_t*)value1.Object;
 					int32_t arraysize = *(data + 1);
-					int32_t targetType = *(data + 1);
+					int32_t targetType = *(data + 2);
 					if (token != targetType)
 					{
 						ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
@@ -3187,14 +3343,86 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
 							return MethodState::Aborted;
 						}
-						// Value arrays are expected to have just one type for now
-						// TODO: This needs a bitwise copy of the whole instance, but how do we handle it if sizeof(ValueType) > 4 (so that it doesn't fit in a stack slot)?
-						v1.Type = elemTy.fieldTypes[0].Type;
+
+						v1.Type = elemTy.ClassDynamicSize <= 8 ? elemTy.fieldTypes[0].Type : VariableKind::LargeValueType;
 					}
 					else
 					{
 						// can only be an object now
 						v1.Object = (void*)*(data + 3 + index);
+						v1.Type = VariableKind::Object;
+					}
+					stack->push(v1);
+					break;
+				}
+				case CEE_LDELEMA:
+				{
+					Variable value2 = stack->top();
+					stack->pop();
+					Variable value1 = stack->top();
+					stack->pop();
+					if (value1.Object == nullptr)
+					{
+						ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+
+					uint32_t* data = (uint32_t*)value1.Object;
+					int32_t arraysize = *(data + 1);
+					int32_t targetType = *(data + 2);
+					if (token != targetType)
+					{
+						ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+					int32_t index = value2.Int32;
+					if (index < 0 || index >= arraysize)
+					{
+						ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+						return MethodState::Aborted;
+					}
+
+					Variable v1;
+					if (value1.Type == VariableKind::ValueArray)
+					{
+						// This should always exist
+						ClassDeclaration& elemTy = _classes.at(token);
+						switch (elemTy.ClassDynamicSize)
+						{
+						case 1:
+						{
+							byte* dataptr = (byte*)data;
+							v1.Object = (dataptr + 12 + index);
+							break;
+						}
+						case 2:
+						{
+							short* dataptr = (short*)data;
+							v1.Object = (dataptr + 6 + index);
+							break;
+						}
+						case 4:
+						{
+							v1.Object = (data + 3 + index);
+							break;
+						}
+						case 8:
+						{
+							uint64_t* dataptr = (uint64_t*)data;
+							v1.Object = (AddBytes(dataptr, 12) + index);
+							break;
+						}
+						default:
+							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
+							return MethodState::Aborted;
+						}
+						
+						v1.Type = VariableKind::AddressOfVariable;
+					}
+					else
+					{
+						// can only be an object now
+						v1.Object = (data + 3 + index);
 						v1.Type = VariableKind::Object;
 					}
 					stack->push(v1);
@@ -3265,12 +3493,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							byte* o = (byte*)value1.Object;
 							size = ty.ClassDynamicSize;
 							// Reserve enough memory on the stack, so we can temporarily hold the whole variable
-							Variable* unboxed = (Variable*)alloca(size + sizeof(Variable));
-							unboxed->Size = (uint16_t)size;
-							unboxed->Marker = 0x37;
-							unboxed->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
-							memcpy(&(unboxed->Int32), o + offset, size);
-							stack->push(*unboxed);
+							EnsureStackVarSize(size);
+							tempVariable->Size = (uint16_t)size;
+							tempVariable->Marker = 0x37;
+							tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
+							memcpy(&(tempVariable->Int32), o + offset, size);
+							stack->push(*tempVariable);
 						}
 						else
 						{
@@ -3384,6 +3612,39 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				case CEE_CONSTRAINED_:
 					constrainedTypeToken = token; // This is always immediately followed by a callvirt
 					break;
+
+				case CEE_LDOBJ:
+				{
+					Variable value1 = stack->top();
+					stack->pop();
+					if (value1.Object == nullptr)
+					{
+						ExceptionOccurred(currentFrame, SystemException::NullReference, token);
+						return MethodState::Aborted;
+					}
+					if (value1.Type != VariableKind::AddressOfVariable)
+					{
+						ExceptionOccurred(currentFrame, SystemException::InvalidOperation, token);
+						return MethodState::Aborted;
+					}
+					
+					ClassDeclaration& ty = _classes.at(token);
+					size = ty.ClassDynamicSize;
+					EnsureStackVarSize(size);
+					if (ty.ValueType)
+					{
+						tempVariable->Type = (size > 8 ? VariableKind::LargeValueType : VariableKind::Int64);
+					}
+					else
+					{
+						tempVariable->Type = VariableKind::Object;
+					}
+					tempVariable->Size = (u16)size;
+					tempVariable->Marker = 0x37;
+					memcpy(&tempVariable->Int32, value1.Object, size);
+					stack->push(*tempVariable);
+				}
+				break;
 				default:
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
@@ -7,6 +7,8 @@
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define VARIABLE_DEFAULT_MARKER  0x37
 
 /// <summary>
 /// Pointer arithmetic on byte level on other object types. This shall be used if the offset is in bytes, but T is some other pointer type.
@@ -41,8 +43,18 @@ enum class VariableKind : byte
 	RuntimeFieldHandle = 33, // So far this is a pointer to a constant initializer
 	RuntimeTypeHandle = 34, // A type handle. The value is a type token
 	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist (obtained by LDLOCA or LDARGA)
-	StaticMember = 128, // type is defined by the first value it gets
+	StaticMember = 128, // This value is or'ed to the rest
 };
+
+inline VariableKind operator &(VariableKind a, VariableKind b)
+{
+	return (VariableKind)((int)a & (int)b);
+}
+
+inline VariableKind operator ~(VariableKind a)
+{
+	return (VariableKind)(~(int)a);
+}
 
 struct Variable
 {
@@ -122,7 +134,7 @@ struct Variable
 
 private: void CommonInit()
 	{
-		Marker = 0x37;
+		Marker = VARIABLE_DEFAULT_MARKER;
 		Size = 0;
 		Uint64 = 0;
 		Type = VariableKind::Void;
