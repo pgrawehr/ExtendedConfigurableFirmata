@@ -4,7 +4,7 @@
 #include "VariableContainer.h"
 #include "VariableDynamicStack.h"
 
-#define ASSERT(x, msg) if (!(x)) \
+#define ASSERT(x, msg) if (!(x))\
 	{\
 		Firmata.sendString(F(msg));\
 		_statusFlag = false;\
@@ -83,6 +83,10 @@ void SelfTest::UnalignedAccessWorks()
 	ptr = AddBytes(ptr, 4);
 	*ptr = 10;
 	ptr2 = ptr;
-	ASSERT(*ptr2 == *ptr, "Unable to read 8-byte values from 4-byte aligned addresses")
+	ASSERT(*ptr2 == *ptr, "Unable to read 8-byte values from 4-byte aligned addresses");
+
+	volatile int* iPtr = (int*)AddBytes(ptr, 1);
+	*iPtr = 5;
+	ASSERT(*iPtr == 5, "Error in unaligned memory access");
 }
 

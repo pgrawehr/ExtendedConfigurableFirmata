@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 namespace stdSimple
 {
@@ -80,12 +80,12 @@ namespace stdSimple
 			{
 				if (_size == 0)
 				{
-					_size = 10;
+					_size = 4;
 					_data = (T*)malloc(_size * sizeof(T));
 				}
 				else
 				{
-					_size *= 2;
+					_size += 4;
 					_data = (T*)realloc(_data, _size * sizeof(T));
 				}
 				
