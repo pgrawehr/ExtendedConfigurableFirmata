@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include "Exceptions.h"
+
 namespace stdSimple
 {
 	template<class T>
@@ -28,6 +30,10 @@ namespace stdSimple
 			if (initialSize > 0)
 			{
 				_data = (T*)malloc(initialSize * sizeof(T));
+				if (_data == nullptr)
+				{
+					throw Exception::OutOfMemoryException;
+				}
 			}
 			else
 			{
@@ -59,11 +65,19 @@ namespace stdSimple
 				{
 					_size = 10;
 					_data = (T*)malloc(_size * sizeof(T));
+					if (_data == nullptr)
+					{
+						throw Exception::OutOfMemoryException;
+					}
 				}
 				else
 				{
 					_size *= 2;
 					_data = (T*)realloc(_data, _size * sizeof(T));
+					if (_data == nullptr)
+					{
+						throw Exception::OutOfMemoryException;
+					}
 				}
 				
 				_data[_count++] = object;

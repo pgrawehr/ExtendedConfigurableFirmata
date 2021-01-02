@@ -3,6 +3,7 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
+#include "Exceptions.h"
 #include "SelfTest.h"
 #include <ConfigurableFirmata.h>
 

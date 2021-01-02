@@ -158,6 +158,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.cpp" />
+    <ClCompile Include="..\Exceptions.cpp" />
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
     <ClCompile Include="..\FirmataStatusLed.cpp" />
     <ClCompile Include="..\SelfTest.cpp" />
@@ -190,6 +191,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.h" />
+    <ClInclude Include="..\Exceptions.h" />
     <ClInclude Include="..\FirmataIlExecutor.h" />
     <ClInclude Include="..\FirmataStatusLed.h" />
     <ClInclude Include="..\FreeMemory.h" />
