@@ -3275,7 +3275,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							*(AddBytes(dataptr, 12) + index) = value3.Int64;
 							break;
 						}
-						default:
+						default: // Arbitrary size of the elements in the array
+						{
+							byte* dataptr = (byte*)data;
+							byte* targetPtr = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
+							memcpy(targetPtr, &value3.Int32, elemTy.ClassDynamicSize);
+							break;
+						}
+						case 0: // That's fishy
 							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
 							return MethodState::Aborted;
 						}
