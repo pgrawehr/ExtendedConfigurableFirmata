@@ -3,9 +3,8 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
-// #include "Exceptions.h"
-
 #include <ConfigurableFirmata.h>
+#include "Exceptions.h"
 #include "SelfTest.h"
 #include "FreeMemory.h"
 // Use these defines to easily enable or disable certain modules

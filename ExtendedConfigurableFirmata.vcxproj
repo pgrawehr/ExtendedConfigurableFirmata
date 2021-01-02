@@ -107,6 +107,7 @@
     <None Include="opcode.def.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Exceptions.h" />
     <ClInclude Include="FirmataIlExecutor.h" />
     <ClInclude Include="FirmataStatusLed.h">
       <SubType>
@@ -123,6 +124,7 @@
     <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Exceptions.cpp" />
     <ClCompile Include="FirmataIlExecutor.cpp" />
     <ClCompile Include="FirmataStatusLed.cpp">
       <SubType>
