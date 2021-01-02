@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict
@@ -8,7 +8,7 @@ extern char *__brkval;
 #endif  // __arm__
 
 #if SIM
-int freeMemory()
+static int freeMemory()
 {
 	// More than we need, anyway
 	return INT32_MAX;
@@ -17,7 +17,7 @@ int freeMemory()
 #else
 
 // Check current SRAM occupation 
-int freeMemory() 
+static int freeMemory() 
 {
   char top;
 #ifdef __arm__

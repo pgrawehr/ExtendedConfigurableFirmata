@@ -22,6 +22,7 @@ public:
 private:
 
 	void PerformMemoryAnalysis();
+	void ValidateMemoryManager();
 
 	void ValidateExecutionStack();
 

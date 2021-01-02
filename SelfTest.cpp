@@ -15,6 +15,10 @@ bool SelfTest::PerformSelfTest()
 {
 	_statusFlag = true;
 	PerformMemoryAnalysis();
+	// If this fails a second time, the memory management is broken
+	PerformMemoryAnalysis();
+	ValidateMemoryManager();
+	ValidateMemoryManager();
 	ValidateExecutionStack();
 	UnalignedAccessWorks();
 	return _statusFlag;
@@ -22,7 +26,7 @@ bool SelfTest::PerformSelfTest()
 
 void SelfTest::PerformMemoryAnalysis()
 {
-	const int SIZE_TO_TEST = 1024 * 64;
+	const int SIZE_TO_TEST = 1024 * 70;
 	int* mem = (int*)malloc(SIZE_TO_TEST);
 
 	for (int i = 0; i < SIZE_TO_TEST / 4; i++)
@@ -43,6 +47,40 @@ void SelfTest::PerformMemoryAnalysis()
 	}
 
 	free(mem);
+}
+
+void SelfTest::ValidateMemoryManager()
+{
+	const int oneK = 1024;
+	const int maxMemToTest = 100; // the arduino due has 96k of memory
+	void* ptrs[maxMemToTest];
+	int idx = 0;
+	int totalAllocsSucceeded = 0;
+	while (idx < maxMemToTest)
+	{
+		void* mem = malloc(oneK);
+		ptrs[idx] = mem;
+		if (mem == nullptr)
+		{
+			break;
+		}
+		idx++;
+	}
+
+	// Happens in simulation
+	if (idx == maxMemToTest)
+	{
+		idx--;
+	}
+	
+	totalAllocsSucceeded = idx;
+	while (idx >= 0)
+	{
+		free(ptrs[idx]);
+		idx--;
+	}
+
+	ASSERT(totalAllocsSucceeded > 64, "Not enough free memory after init");
 }
 
 void SelfTest::ValidateExecutionStack()
