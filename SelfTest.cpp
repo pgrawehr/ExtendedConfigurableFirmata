@@ -18,7 +18,7 @@ bool SelfTest::PerformSelfTest()
 	// If this fails a second time, the memory management is broken
 	PerformMemoryAnalysis();
 	ValidateMemoryManager();
-	ValidateMemoryManager();
+	// ValidateMemoryManager();
 	ValidateExecutionStack();
 	UnalignedAccessWorks();
 	return _statusFlag;

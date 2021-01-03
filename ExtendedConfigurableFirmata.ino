@@ -3,9 +3,11 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
-#include "SelfTest.h"
-#include <ConfigurableFirmata.h>
+// #include "Exceptions.h"
 
+#include <ConfigurableFirmata.h>
+#include "SelfTest.h"
+#include "FreeMemory.h"
 // Use these defines to easily enable or disable certain modules
 
 /* Note: Currently no client support by dotnet/iot for these, so they're disabled by default */
@@ -207,7 +209,7 @@ const byte SimulatedInput[] PROGMEM =
 0x06, 0x08, 0xF7,
 };
 
-#include <FlashMemoryStream.h>
+#include "FlashMemoryStream.h"
 FlashMemoryStream debugStream(SimulatedInput, sizeof(SimulatedInput));
 #endif
 
@@ -297,11 +299,13 @@ void initFirmata()
 
 void setup()
 {
-  initFirmata();
+	initTransport();
+	Firmata.sendString(F("Booting device. Stand by..."));
+	initFirmata();
 
-  initTransport();
+	Firmata.parse(SYSTEM_RESET);
 
-  Firmata.parse(SYSTEM_RESET);
+	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
 
 void loop()
