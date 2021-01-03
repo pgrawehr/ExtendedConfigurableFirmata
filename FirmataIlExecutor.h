@@ -428,9 +428,10 @@ class FirmataIlExecutor: public FirmataFeature
 	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
-    Variable Ldsfld(int token, bool address);
+	void* Ldsfld(int token, VariableDescription& declaration, bool& fullVariableReturn);
+	Variable FirmataIlExecutor::Ldsflda(int token);
     void Stsfld(int token, Variable& value);
-    void CollectFields(ClassDeclaration* vtable, vector<Variable>& vector);
+    void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
 
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
@@ -479,6 +480,8 @@ class FirmataIlExecutor: public FirmataFeature
 
 	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;
+
+	VariableVector _largeStatics;
 
 	// Constant data fields (such as array initializers or strings)
 	stdSimple::map<u32, byte*> _constants;

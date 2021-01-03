@@ -9,6 +9,7 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define VARIABLE_DEFAULT_MARKER  0x37
+#define VARIABLE_DECLARATION_MARKER 0x39
 
 /// <summary>
 /// Pointer arithmetic on byte level on other object types. This shall be used if the offset is in bytes, but T is some other pointer type.

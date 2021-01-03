@@ -1267,7 +1267,7 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 	return vtable;
 }
 
-void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable>& vector)
+void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector)
 {
 	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
 	// vector must be sorted base-class members first
@@ -1279,7 +1279,7 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable>
 
 	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
 	{
-		vector.push_back(*handle);
+		vector.push_back(handle);
 	}
 }
 
@@ -1335,10 +1335,12 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		return nullptr;
 	}
 	
-	vector<Variable> allfields;
+	vector<Variable*> allfields;
 	CollectFields(vtable, allfields);
-	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
+		// The type of handle1 is Variable**, because we must make sure not to use copy operations above
+		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -1348,7 +1350,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		if (handle->Int32 == token)
 		{
 			// Found the member
-			description.Marker = 0x37;
+			description.Marker = VARIABLE_DEFAULT_MARKER;
 			description.Type = handle->Type;
 			description.Size = handle->fieldSize();
 			return o + offset;
@@ -1365,22 +1367,15 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 /// Load a value from a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
-/// <param name="address">True to get an address instead of the actual value</param>
-/// <remarks>TODO: This should return Variable&, but we can't simply change that, because it breaks the "not found" case (returning a stack reference)</remarks>
-Variable FirmataIlExecutor::Ldsfld(int token, bool address)
+/// <param name="declaration>[Out] Description of the field</param>
+/// <param name="fullVariableReturn">[Out] The returned pointer is actually a Variable* ptr (declaration can be ignored)</param>
+void* FirmataIlExecutor::Ldsfld(int token, VariableDescription& declaration, bool& fullVariableReturn)
 {
+	fullVariableReturn = false;
 	if (_statics.contains(token))
 	{
-		if (address)
-		{
-			Variable& temp = _statics.at(token);
-			Variable ret(VariableKind::AddressOfVariable);
-			ret.Marker = VARIABLE_DEFAULT_MARKER;
-			ret.Object = &temp.Int32;
-			ret.Size = 4;
-			return ret;
-		}
-		return _statics.at(token);
+		fullVariableReturn = true;
+		return &_statics.at(token);
 	}
 
 	// We get here if reading an uninitialized static field
@@ -1393,10 +1388,11 @@ Variable FirmataIlExecutor::Ldsfld(int token, bool address)
 	SystemException exception = SystemException::None;
 	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
 
-	vector<Variable> allfields;
+	vector<Variable*> allfields;
 	CollectFields(&cls, allfields);
-	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
+		Variable* handle = (*handle1);
 		// Only static members checked
 		if ((handle->Type & VariableKind::StaticMember) == VariableKind::Void)
 		{
@@ -1408,26 +1404,78 @@ Variable FirmataIlExecutor::Ldsfld(int token, bool address)
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
 			ret.Size = handle->fieldSize();
-				ret.Int64 = 0;
+			ret.Int64 = 0;
+			
 			_statics.insert(token, ret);
-			if (address)
-			{
-				// Get the final address on the static heap (ret above is copied on insert)
-				Variable& temp = _statics.at(token);
-				ret.Marker = VARIABLE_DEFAULT_MARKER;
-				ret.Size = 4;
-				ret.Type = VariableKind::AddressOfVariable;
-					ret.Object = &temp.Int32;
-				return ret;
-			}
-			else
-			{
-				return ret;
-			}
+			fullVariableReturn = true;
+			return &_statics.at(token);
 		}
 	}
 	
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls.ClassToken, token);
+	return nullptr;
+}
+
+
+/// <summary>
+/// Load a value address of a static field
+/// </summary>
+/// <param name="token">Token of the static field</param>
+Variable FirmataIlExecutor::Ldsflda(int token)
+{
+	Variable ret;
+	if (_statics.contains(token))
+	{
+		Variable& temp = _statics.at(token);
+		ret.Type = VariableKind::AddressOfVariable;
+		ret.Marker = VARIABLE_DEFAULT_MARKER;
+		ret.Size = 4;
+		return ret;
+	}
+
+	// We get here if reading an uninitialized static field
+
+	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
+	// Create an instance of the value type with the default zero value but the correct type
+
+	SystemException exception = SystemException::None;
+	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
+
+	vector<Variable*> allfields;
+	CollectFields(&cls, allfields);
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	{
+		Variable* handle = (*handle1);
+		// Only static members checked
+		if ((handle->Type & VariableKind::StaticMember) == VariableKind::Void)
+		{
+			continue;
+		}
+		if (handle->Int32 == token)
+		{
+			// Found the member
+			ret.Marker = VARIABLE_DEFAULT_MARKER;
+			ret.Type = handle->Type & ~VariableKind::StaticMember;
+			ret.Size = handle->fieldSize();
+			ret.Int64 = 0;
+			if (ret.Size > 8)
+			{
+				return ret; // Not supported
+			}
+			
+			_statics.insert(token, ret);
+			
+			// Get the final address on the static heap (ret above is copied on insert)
+			Variable& temp = _statics.at(token);
+			ret.Marker = VARIABLE_DEFAULT_MARKER;
+			ret.Size = 4;
+			ret.Type = VariableKind::AddressOfVariable;
+			ret.Object = &temp.Int32;
+			return ret;
+		}
+	}
+
+	Firmata.sendStringf(F("Class %lx has no static member %lx"), 8, cls.ClassToken, token);
 	return ret;
 }
 
@@ -1436,7 +1484,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
 	if (_statics.contains(token))
 	{
-			_statics.at(token) = value;
+		_statics.at(token) = value;
 		return;
 	}
 
@@ -1499,10 +1547,11 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 		return nullptr;
 	}
 	
-	vector<Variable> allfields;
+	vector<Variable*> allfields;
 	CollectFields(cls, allfields);
-	for (auto handle = allfields.begin(); handle != allfields.end(); ++handle)
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
+		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -3358,7 +3407,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							return MethodState::Aborted;
 						}
 
-						v1.Type = elemTy.ClassDynamicSize <= 8 ? elemTy.fieldTypes[0].Type : VariableKind::LargeValueType;
+						v1.Type = elemTy.ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
 					}
 					else
 					{
@@ -3952,11 +4001,13 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	// A member, either a field or a method (only ctors and virtual methods provided here)
 	int i = 0;
 	Variable v;
+	v.Marker = VARIABLE_DECLARATION_MARKER;
 	v.Type = (VariableKind)argv[i];
-	v.Int32 = DecodePackedUint32(argv + i + 1); // uses 5 bytes
+	v.Int32 = DecodePackedUint32(argv + i + 1); // this is the token. It uses 5 bytes
 	i += 6;
 	if (v.Type != VariableKind::Method)
 	{
+		v.Size = DecodePackedUint14(argv + i);
 		decl->fieldTypes.push_back(v);
 		return ExecutionError::None;
 	}
