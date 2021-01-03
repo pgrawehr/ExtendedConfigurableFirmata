@@ -1283,6 +1283,14 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable>
 	}
 }
 
+/// <summary>
+/// Load a value from field "token" of instance "obj". Returns the pointer to the location of the value (which might have arbitrary size)
+/// </summary>
+/// <param name="currentMethod">The method being executed. For error handling only</param>
+/// <param name="obj">The instance which contains the field (can be an object, a reference to an object or a value type)</param>
+/// <param name="token">The field token</param>
+/// <param name="description">[Out] The description of the field returned</param>
+/// <returns>Pointer to the data of the field</returns>
 byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description)
 {
 	byte* o;
@@ -1400,7 +1408,7 @@ Variable FirmataIlExecutor::Ldsfld(int token, bool address)
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
 			ret.Size = handle->fieldSize();
-			ret.Int64 = 0;
+				ret.Int64 = 0;
 			_statics.insert(token, ret);
 			if (address)
 			{
@@ -1409,7 +1417,7 @@ Variable FirmataIlExecutor::Ldsfld(int token, bool address)
 				ret.Marker = VARIABLE_DEFAULT_MARKER;
 				ret.Size = 4;
 				ret.Type = VariableKind::AddressOfVariable;
-				ret.Object = &temp.Int32;
+					ret.Object = &temp.Int32;
 				return ret;
 			}
 			else
@@ -1428,7 +1436,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
 	if (_statics.contains(token))
 	{
-		_statics.at(token) = value;
+			_statics.at(token) = value;
 		return;
 	}
 
@@ -2859,7 +2867,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			case InlineField:
 	            {
 				int32_t token = 0;
-				Variable obj;
 		            switch(instr)
 		            {
 		            	// The ldfld instruction loads a field value of an object to the stack
@@ -2867,7 +2874,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
-						obj = stack->top();
+						Variable& obj = stack->top();
 						stack->pop();
 						
 						VariableDescription desc;
@@ -2893,7 +2900,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						PC += 4;
 						Variable& var = stack->top();
 						stack->pop();
-						obj = stack->top();
+						Variable& obj = stack->top();
 						stack->pop();
 						void* ptr = Stfld(currentMethod, obj, token, var);
 						if (ptr == nullptr)
