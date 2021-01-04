@@ -428,8 +428,8 @@ class FirmataIlExecutor: public FirmataFeature
 	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
-	void* Ldsfld(int token, VariableDescription& declaration, bool& fullVariableReturn);
-	Variable FirmataIlExecutor::Ldsflda(int token);
+	Variable& Ldsfld(int token);
+	Variable Ldsflda(int token);
     void Stsfld(int token, Variable& value);
     void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
 

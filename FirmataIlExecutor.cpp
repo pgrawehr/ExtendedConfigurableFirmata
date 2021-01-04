@@ -1367,24 +1367,17 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 /// Load a value from a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
-/// <param name="declaration>[Out] Description of the field</param>
-/// <param name="fullVariableReturn">[Out] The returned pointer is actually a Variable* ptr (declaration can be ignored)</param>
-void* FirmataIlExecutor::Ldsfld(int token, VariableDescription& declaration, bool& fullVariableReturn)
+Variable& FirmataIlExecutor::Ldsfld(int token)
 {
-	fullVariableReturn = false;
 	if (_statics.contains(token))
 	{
-		fullVariableReturn = true;
-		return &_statics.at(token);
+		return _statics.at(token);
 	}
 
 	// We get here if reading an uninitialized static field
 
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
 	// Create an instance of the value type with the default zero value but the correct type
-	Variable ret;
-	ret.Type = VariableKind::Object;
-
 	SystemException exception = SystemException::None;
 	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
 
@@ -1400,20 +1393,27 @@ void* FirmataIlExecutor::Ldsfld(int token, VariableDescription& declaration, boo
 		}
 		if (handle->Int32 == token)
 		{
-			// Found the member
+			// Found the member, create an empty variable
+			Variable ret;
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
 			ret.Size = handle->fieldSize();
+			if (ret.Size > 8)
+			{
+				break; // not supported
+			}
 			ret.Int64 = 0;
 			
 			_statics.insert(token, ret);
-			fullVariableReturn = true;
-			return &_statics.at(token);
+			// Need to re-get the reference(!) as the above insert does a copy
+			return _statics.at(token);
 		}
 	}
 	
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls.ClassToken, token);
-	return nullptr;
+	// throw...
+	_statics.insert(token, Variable());
+	return _statics.at(token);
 }
 
 
@@ -1430,6 +1430,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 		ret.Type = VariableKind::AddressOfVariable;
 		ret.Marker = VARIABLE_DEFAULT_MARKER;
 		ret.Size = 4;
+		ret.Object = &temp.Int32;
 		return ret;
 	}
 
@@ -2969,12 +2970,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_LDSFLD:
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
-						stack->push(Ldsfld(token, false));
+						stack->push(Ldsfld(token));
 						break;
 					case CEE_LDSFLDA:
 						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 						PC += 4;
-						stack->push(Ldsfld(token, true));
+						stack->push(Ldsflda(token));
 						break;
 					default:
 						InvalidOpCode(PC, instr);

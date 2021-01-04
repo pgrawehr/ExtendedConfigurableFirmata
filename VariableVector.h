@@ -101,7 +101,7 @@ public:
 			size_t size = start->fieldSize();
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
-			currentField->Size = (uint16_t)MAX(start->fieldSize(), 8);
+			currentField->Size = (uint16_t)MAX(size, 8);
 			currentFieldPtr += sizeof(VariableDescription) + size;
 			currentField = (Variable*)currentFieldPtr;
 		}

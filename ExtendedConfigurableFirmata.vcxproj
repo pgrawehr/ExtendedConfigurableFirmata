@@ -116,7 +116,7 @@
     <ClInclude Include="openum.h" />
     <ClInclude Include="SelfTest.h" />
     <ClInclude Include="Variable.h" />
-    <ClInclude Include="VariableContainer.h" />
+    <ClInclude Include="VariableVector.h" />
     <ClInclude Include="VariableDynamicStack.h" />
     <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h" />
   </ItemGroup>
