@@ -21,6 +21,7 @@ public:
 	{
 		_bytesAllocated = (initialElements * sizeof(Variable)) + sizeof(void*);
 		_begin = (Variable*)malloc(_bytesAllocated);
+		memset(_begin, 0, _bytesAllocated);
 		_revPtr = (int*)AddBytes(_begin, -4); // Points before start, but won't be used until at least one element is on the stack
 		_sp = _begin;
 	}

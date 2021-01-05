@@ -97,13 +97,21 @@ struct Variable
 			return *this;
 		Type = other.Type;
 		Marker = other.Marker;
-		Size = other.Size;
 		Uint64 = other.Uint64;
 		if (other.Size > sizeof(Uint64) && this->Marker != VARIABLE_DECLARATION_MARKER && other.Marker != VARIABLE_DECLARATION_MARKER)
 		{
+			if (other.fieldSize() != Size)
+			{
+				// TODO: Throw. This must not happen
+				return *this;
+			}
 			// Copy the full size to the target.
 			// WARN: This is dangerous, and we must make sure the target has actually allocated memory for this
 			memcpy(&this->Uint32, &other.Uint32, other.fieldSize());
+		}
+		else
+		{
+			Size = other.fieldSize();
 		}
 		return *this;
 	}
