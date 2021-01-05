@@ -99,7 +99,7 @@ struct Variable
 		Marker = other.Marker;
 		Size = other.Size;
 		Uint64 = other.Uint64;
-		if (other.Size > sizeof(Uint64))
+		if (other.Size > sizeof(Uint64) && this->Marker != VARIABLE_DECLARATION_MARKER && other.Marker != VARIABLE_DECLARATION_MARKER)
 		{
 			// Copy the full size to the target.
 			// WARN: This is dangerous, and we must make sure the target has actually allocated memory for this

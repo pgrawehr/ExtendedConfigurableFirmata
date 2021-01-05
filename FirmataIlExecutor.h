@@ -20,8 +20,9 @@
 #include "ObjectMap.h"
 #include "openum.h"
 #include "Variable.h"
-#include "VariableContainer.h"
+#include "VariableVector.h"
 #include "VariableDynamicStack.h"
+#include "VariableList.h"
 
 using namespace stdSimple;
 
@@ -481,7 +482,7 @@ class FirmataIlExecutor: public FirmataFeature
 	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;
 
-	VariableVector _largeStatics;
+	VariableList _largeStatics;
 
 	// Constant data fields (such as array initializers or strings)
 	stdSimple::map<u32, byte*> _constants;

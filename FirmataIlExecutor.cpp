@@ -1374,6 +1374,10 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 		return _statics.at(token);
 	}
 
+	if (_largeStatics.contains(token))
+	{
+		return _largeStatics.at(token);
+	}
 	// We get here if reading an uninitialized static field
 
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
@@ -1400,12 +1404,14 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 			ret.Size = handle->fieldSize();
 			if (ret.Size > 8)
 			{
-				break; // not supported
+				Variable& data = _largeStatics.insert(token, ret);
+				return data;
 			}
 			ret.Int64 = 0;
 			
 			_statics.insert(token, ret);
 			// Need to re-get the reference(!) as the above insert does a copy
+			// TODO: the above insert could directly return the reference
 			return _statics.at(token);
 		}
 	}
@@ -1427,6 +1433,16 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	if (_statics.contains(token))
 	{
 		Variable& temp = _statics.at(token);
+		ret.Type = VariableKind::AddressOfVariable;
+		ret.Marker = VARIABLE_DEFAULT_MARKER;
+		ret.Size = 4;
+		ret.Object = &temp.Int32;
+		return ret;
+	}
+
+	if (_largeStatics.contains(token))
+	{
+		Variable& temp = _largeStatics.at(token);
 		ret.Type = VariableKind::AddressOfVariable;
 		ret.Marker = VARIABLE_DEFAULT_MARKER;
 		ret.Size = 4;
@@ -1459,19 +1475,23 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
 			ret.Size = handle->fieldSize();
 			ret.Int64 = 0;
+			void* addr;
 			if (ret.Size > 8)
 			{
-				return ret; // Not supported
+				addr = &_largeStatics.insert(token, ret).Int32;
+			}
+			else
+			{
+				_statics.insert(token, ret);
+
+				// Get the final address on the static heap (ret above is copied on insert)
+				addr = &_statics.at(token).Int32;
 			}
 			
-			_statics.insert(token, ret);
-			
-			// Get the final address on the static heap (ret above is copied on insert)
-			Variable& temp = _statics.at(token);
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Size = 4;
 			ret.Type = VariableKind::AddressOfVariable;
-			ret.Object = &temp.Int32;
+			ret.Object = addr;
 			return ret;
 		}
 	}
@@ -1491,7 +1511,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 
 	if (value.Type == VariableKind::LargeValueType)
 	{
-		// Not supported
+		_largeStatics.insertOrUpdate(token, value);
 		return;
 	}
 
@@ -1724,20 +1744,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(arguments->at(3));
 		break;
 	case CEE_STLOC_0:
-		intermediate = value1;
-		locals->at(0) = intermediate;
+		locals->at(0) = value1;
 		break;
 	case CEE_STLOC_1:
-		intermediate = value1;
-		locals->at(1) = intermediate;
+		locals->at(1) = value1;
 		break;
 	case CEE_STLOC_2:
-		intermediate = value1;
-		locals->at(2) = intermediate;
+		locals->at(2) = value1;
 		break;
 	case CEE_STLOC_3:
-		intermediate = value1;
-		locals->at(3) = intermediate;
+		locals->at(3) = value1;
 		break;
 	case CEE_LDLOC_0:
 		stack->push(locals->at(0));
@@ -2252,7 +2268,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		else
 		{
-			if (instr == CEE_STELEM_REF && value3.Type != VariableKind::Object)
+			if (instr == CEE_STELEM_REF && (value3.Type != VariableKind::Object && value3.Type != VariableKind::ValueArray))
 			{
 				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
 				// at least it should be a reference
