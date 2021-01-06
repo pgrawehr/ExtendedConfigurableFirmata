@@ -2302,6 +2302,11 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		case VariableKind::Double:
 			intermediate.Int32 = (int32_t)value1.Double;
 			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Int32 = (int32_t)value1.Int32;
+			intermediate.Type = VariableKind::AddressOfVariable;
+			break;
 		default: // The conv statement never throws
 			intermediate.Int32 = (int32_t)value1.Uint64;
 			break;
@@ -2329,6 +2334,11 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 		case VariableKind::Double:
 			intermediate.Uint32 = (uint32_t)value1.Double;
+			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Uint32 = (uint32_t)value1.Uint32;
+			intermediate.Type = VariableKind::AddressOfVariable;
 			break;
 		default: // The conv statement never throws
 			intermediate.Uint32 = (uint32_t)value1.Uint64;
@@ -4239,6 +4249,8 @@ void FirmataIlExecutor::reset()
 	}
 	
 	_constants.clear();
+
+	_largeStatics.clear();
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
 }
