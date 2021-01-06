@@ -59,12 +59,13 @@ inline VariableKind operator ~(VariableKind a)
 
 struct Variable
 {
+public:
 	VariableKind Type;
 	byte Marker; // Actually a padding byte, but may later be helpful for the GC
-	
+private:
 	// This may be unset if the value is smaller than the union below (currently 8 bytes)
-	uint16_t Size;
-
+	uint16_t _size;
+public:
 	// Important: Data must come last (because we sometimes take the address of this, and
 	// the actual data may (for large value types) exceed the size of the union
 	union
@@ -82,7 +83,7 @@ struct Variable
 	Variable(const Variable& other)
 		: Type(other.Type),
 		Marker(other.Marker),
-		Size(other.Size),
+		_size(other._size),
 		Uint64(other.Uint64)
 	{
 		if (other.fieldSize() > sizeof(Uint64))
@@ -98,9 +99,9 @@ struct Variable
 		Type = other.Type;
 		Marker = other.Marker;
 		Uint64 = other.Uint64;
-		if (other.Size > sizeof(Uint64) && this->Marker != VARIABLE_DECLARATION_MARKER && other.Marker != VARIABLE_DECLARATION_MARKER)
+		if (other._size > sizeof(Uint64) && this->Marker != VARIABLE_DECLARATION_MARKER && other.Marker != VARIABLE_DECLARATION_MARKER)
 		{
-			if (other.fieldSize() != Size)
+			if (other.fieldSize() != _size)
 			{
 				// TODO: Throw. This must not happen
 				return *this;
@@ -111,7 +112,7 @@ struct Variable
 		}
 		else
 		{
-			Size = other.fieldSize();
+			_size = other.fieldSize();
 		}
 		return *this;
 	}
@@ -144,7 +145,7 @@ struct Variable
 private: void CommonInit()
 	{
 		Marker = VARIABLE_DEFAULT_MARKER;
-		Size = 0;
+		_size = 0;
 		Uint64 = 0;
 		Type = VariableKind::Void;
 	}
@@ -152,9 +153,13 @@ private: void CommonInit()
 public:
 	uint16_t fieldSize() const
 	{
-		if (Size != 0)
+		if (Type == VariableKind::Object || Type == VariableKind::AddressOfVariable || Type == VariableKind::ReferenceArray || Type == VariableKind::ValueArray)
 		{
-			return Size;
+			return sizeof(void*);
+		}
+		if (_size != 0)
+		{
+			return _size;
 		}
 		// 64 bit types have bit 4 set
 		if (((int)Type & 16) != 0)
@@ -162,6 +167,16 @@ public:
 			return 8;
 		}
 		return 4;
+	}
+
+	uint16_t memberSize() const
+	{
+		
+	}
+
+	void setSize(uint16_t size)
+	{
+		_size = size;
 	}
 
 	static size_t datasize()
@@ -208,6 +223,10 @@ private: void CommonInit()
 public:
 	size_t fieldSize() const
 	{
+		if (Type == VariableKind::Object || Type == VariableKind::AddressOfVariable || Type == VariableKind::ReferenceArray || Type == VariableKind::ValueArray)
+		{
+			return sizeof(void*);
+		}
 		if (Size != 0)
 		{
 			return Size;

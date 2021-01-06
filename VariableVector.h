@@ -46,7 +46,7 @@ public:
 			for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
 			{
 				size_t fieldSize = start->fieldSize();
-				_data[idx].Size = (u16)fieldSize;
+				_data[idx].setSize((u16)fieldSize);
 				_data[idx].Type = start->Type;
 				_data[idx].Marker = start->Marker;
 				idx++;
@@ -101,7 +101,7 @@ public:
 			size_t size = MAX(start->fieldSize(), 8);
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
-			currentField->Size = (uint16_t)size;
+			currentField->setSize((uint16_t)size);
 			currentFieldPtr += Variable::headersize() + size;
 			currentField = (Variable*)currentFieldPtr;
 		}

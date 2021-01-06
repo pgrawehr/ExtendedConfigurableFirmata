@@ -69,7 +69,7 @@ public:
 		}
 
 		// Now we have enough room for the new variable
-		_sp->Size = object.Size; // Tell the operator that it is fine to copy the stuff here
+		_sp->setSize(object.fieldSize()); // Tell the operator that it is fine to copy the stuff here
 		*_sp = object; // call operator =
 		Variable* oldsp = _sp;
 		_sp = AddBytes(_sp, sizeUsed);

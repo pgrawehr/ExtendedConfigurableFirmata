@@ -883,7 +883,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 				break;
 			}
 			memcpy(AddBytes(data, 4), AddBytes(args[0].Object, 4), ty->ClassDynamicSize);
-			result.Size = 4;
+			result.setSize(4);
 			result.Object = data;
 			break;
 		}
@@ -1401,8 +1401,8 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 			Variable ret;
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
-			ret.Size = handle->fieldSize();
-			if (ret.Size > 8)
+			ret.setSize(handle->fieldSize());
+			if (ret.fieldSize() > 8)
 			{
 				Variable& data = _largeStatics.insert(token, ret);
 				return data;
@@ -1435,7 +1435,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 		Variable& temp = _statics.at(token);
 		ret.Type = VariableKind::AddressOfVariable;
 		ret.Marker = VARIABLE_DEFAULT_MARKER;
-		ret.Size = 4;
+		ret.setSize(4);
 		ret.Object = &temp.Int32;
 		return ret;
 	}
@@ -1445,7 +1445,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 		Variable& temp = _largeStatics.at(token);
 		ret.Type = VariableKind::AddressOfVariable;
 		ret.Marker = VARIABLE_DEFAULT_MARKER;
-		ret.Size = 4;
+		ret.setSize(4);
 		ret.Object = &temp.Int32;
 		return ret;
 	}
@@ -1473,10 +1473,10 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 			// Found the member
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
-			ret.Size = handle->fieldSize();
+			ret.setSize(handle->fieldSize());
 			ret.Int64 = 0;
 			void* addr;
-			if (ret.Size > 8)
+			if (ret.fieldSize() > 8)
 			{
 				addr = &_largeStatics.insert(token, ret).Int32;
 			}
@@ -1489,7 +1489,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 			}
 			
 			ret.Marker = VARIABLE_DEFAULT_MARKER;
-			ret.Size = 4;
+			ret.setSize(4);
 			ret.Type = VariableKind::AddressOfVariable;
 			ret.Object = addr;
 			return ret;
@@ -2467,7 +2467,8 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 	{\
 		tempVariable = (Variable*)alloca((size)  + sizeof(Variable)); \
 		sizeOfTemp = size;\
-	}
+	}\
+	tempVariable->Uint64 = 0;
 
 // Preconditions for save execution: 
 // - codeLength is correct
@@ -2958,7 +2959,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 						// Combine the variable again with its metadata, so we can put it back to the stack
 						EnsureStackVarSize(desc.fieldSize());
-						tempVariable->Size = desc.Size;
+						tempVariable->setSize(desc.Size);
 						tempVariable->Marker = 0x37;
 						tempVariable->Type = desc.Type;
 						memcpy(&(tempVariable->Int32), dataPtr, desc.Size);
@@ -3160,7 +3161,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						// Reserve enough memory on the stack, so we can temporarily hold the whole variable
 						EnsureStackVarSize(size);
 						memset(tempVariable, 0, size + sizeof(Variable));
-						tempVariable->Size = (uint16_t)size;
+						tempVariable->setSize((uint16_t)size);
 						tempVariable->Marker = 0x37;
 						tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
 						newObjInstance = tempVariable;
@@ -3301,11 +3302,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					break;
 				case CEE_STELEM:
 					{
-						Variable value3 = stack->top();
+						Variable& value3 = stack->top();
 						stack->pop();
-						Variable value2 = stack->top();
+						Variable& value2 = stack->top();
 						stack->pop();
-						Variable value1 = stack->top();
+						Variable& value1 = stack->top();
 						stack->pop();
 						if (value1.Object == nullptr)
 						{
@@ -3370,9 +3371,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					break;
 				case CEE_LDELEM:
 				{
-					Variable value2 = stack->top();
+					Variable& value2 = stack->top();
 					stack->pop();
-					Variable value1 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
 					if (value1.Object == nullptr)
 					{
@@ -3395,57 +3396,73 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						return MethodState::Aborted;
 					}
 
-					Variable v1;
 					if (value1.Type == VariableKind::ValueArray)
 					{
 						// This should always exist
 						ClassDeclaration& elemTy = _classes.at(token);
+						EnsureStackVarSize(elemTy.ClassDynamicSize);
+						tempVariable->Marker = VARIABLE_DEFAULT_MARKER;
 						switch (elemTy.ClassDynamicSize)
 						{
 						case 1:
 						{
 							byte* dataptr = (byte*)data;
-							v1.Int32 = *(dataptr + 12 + index);
+							tempVariable->Type = VariableKind::Int32;
+							tempVariable->Int32 = *(dataptr + 12 + index);
+							tempVariable->setSize(4);
 							break;
 						}
 						case 2:
 						{
 							short* dataptr = (short*)data;
-							v1.Int32 = *(dataptr + 6 + index);
+							tempVariable->Type = VariableKind::Int32;
+							tempVariable->Int32 = *(dataptr + 6 + index);
+							tempVariable->setSize(4);
 							break;
 						}
 						case 4:
 						{
-							v1.Int32 = *(data + 3 + index);
+							tempVariable->Type = VariableKind::Int32;
+							tempVariable->Int32 = *(data + 3 + index);
+							tempVariable->setSize(4);
 							break;
 						}
 						case 8:
 						{
+							tempVariable->Type = VariableKind::Int64;
 							uint64_t* dataptr = (uint64_t*)data;
-							v1.Int64 = *(AddBytes(dataptr, 12) + index);
+							tempVariable->Int64 = *(AddBytes(dataptr, 12) + index);
+							tempVariable->setSize(8);
 							break;
 						}
 						default:
-							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
-							return MethodState::Aborted;
+							byte* dataptr = (byte*)data;
+							byte* srcPtr = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
+							tempVariable->setSize(elemTy.ClassDynamicSize);
+							tempVariable->Type = elemTy.ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
+							memcpy(&tempVariable->Int32, srcPtr, elemTy.ClassDynamicSize);
+							break;
 						}
-
-						v1.Type = elemTy.ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
+						stack->push(*tempVariable);
+						
 					}
 					else
 					{
 						// can only be an object now
+						Variable v1;
+						v1.Marker = VARIABLE_DEFAULT_MARKER;
 						v1.Object = (void*)*(data + 3 + index);
 						v1.Type = VariableKind::Object;
+						v1.setSize(4);
+						stack->push(v1);
 					}
-					stack->push(v1);
 					break;
 				}
 				case CEE_LDELEMA:
 				{
-					Variable value2 = stack->top();
+					Variable& value2 = stack->top();
 					stack->pop();
-					Variable value1 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
 					if (value1.Object == nullptr)
 					{
@@ -3499,8 +3516,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							break;
 						}
 						default:
-							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
-							return MethodState::Aborted;
+							byte* dataptr = (byte*)data;
+							v1.Object = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
+							break;
 						}
 						
 						v1.Type = VariableKind::AddressOfVariable;
@@ -3544,7 +3562,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							r.Object = ret;
 							r.Type = VariableKind::Object;
 							// Copy the value to the newly allocated boxed instance (just the first member for now)
-							SetField4(ty, value1, r, 0); // Since fieldNo is 0, we can use the size-independent version here
+							memcpy(AddBytes(ret,sizeof(void*)), &value1.Int32, value1.fieldSize());
 						}
 						else
 						{
@@ -3580,7 +3598,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							size = ty.ClassDynamicSize;
 							// Reserve enough memory on the stack, so we can temporarily hold the whole variable
 							EnsureStackVarSize(size);
-							tempVariable->Size = (uint16_t)size;
+							tempVariable->setSize((uint16_t)size);
 							tempVariable->Marker = 0x37;
 							tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
 							memcpy(&(tempVariable->Int32), o + offset, size);
@@ -3725,7 +3743,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						tempVariable->Type = VariableKind::Object;
 					}
-					tempVariable->Size = (u16)size;
+					tempVariable->setSize((u16)size);
 					tempVariable->Marker = 0x37;
 					memcpy(&tempVariable->Int32, value1.Object, size);
 					stack->push(*tempVariable);
@@ -4030,7 +4048,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	i += 6;
 	if (v.Type != VariableKind::Method)
 	{
-		v.Size = DecodePackedUint14(argv + i);
+		v.setSize(DecodePackedUint14(argv + i));
 		decl->fieldTypes.push_back(v);
 		return ExecutionError::None;
 	}
