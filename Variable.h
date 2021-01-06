@@ -168,6 +168,11 @@ public:
 	{
 		return MAX(sizeof(void*), sizeof(uint64_t));
 	}
+
+	static size_t headersize()
+	{
+		return sizeof(Variable) - datasize(); // depending on alignment, this may be 4 or 8
+	}
 };
 
 /// <summary>

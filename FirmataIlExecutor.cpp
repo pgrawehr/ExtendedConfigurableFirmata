@@ -2656,34 +2656,40 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					
 					break;
 				}
-					
-				byte numArgumensToPop = pgm_read_byte(OpcodePops + instr);
-				Variable value1;
-				Variable value2;
-				Variable value3;
-				if (numArgumensToPop == 1)
+
+				MethodState errorState = MethodState::Running;
+				byte numArgumentsToPop = pgm_read_byte(OpcodePops + instr);
+				if (numArgumentsToPop == 0)
 				{
-					value1 = stack->top();
-					stack->pop();
+					Variable unused;
+					errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, unused, unused, unused);
 				}
-				if (numArgumensToPop == 2)
+				else if (numArgumentsToPop == 1)
 				{
-					value2 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
-					value1 = stack->top();
-					stack->pop();
+					// The last two args are unused in this case, so we can provide what we want
+					errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, value1, value1, value1);
 				}
-				if (numArgumensToPop == 3)
+				else if (numArgumentsToPop == 2)
 				{
-					value3 = stack->top();
+					Variable& value2 = stack->top();
 					stack->pop();
-					value2 = stack->top();
+					Variable& value1 = stack->top();
 					stack->pop();
-					value1 = stack->top();
+					errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, value1, value2, value2);
+				}
+				else if (numArgumentsToPop == 3)
+				{
+					Variable& value3 = stack->top();
 					stack->pop();
+					Variable& value2 = stack->top();
+					stack->pop();
+					Variable& value1 = stack->top();
+					stack->pop();
+					errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, value1, value2, value3);
 				}
 
-				MethodState errorState = BasicStackInstructions(currentFrame, PC, stack, locals, arguments, instr, value1, value2, value3);
 				if (errorState != MethodState::Running)
 				{
 					return errorState;

@@ -73,7 +73,7 @@ public:
 			{
 				canUseDefaultSizes = false;
 			}
-			totalSize += MAX(size, sizeof(double)) + 4; // Each variable carries a 4 byte header and holds at least 8 bytes
+			totalSize += MAX(size, sizeof(double)) + Variable::headersize(); // Each variable carries a header and holds at least 8 bytes
 		}
 
 		if (canUseDefaultSizes)
@@ -98,11 +98,11 @@ public:
 		// Now init the data structure: It's a ordered list with "next" pointers in the form of the size fields
 		for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
 		{
-			size_t size = start->fieldSize();
+			size_t size = MAX(start->fieldSize(), 8);
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
-			currentField->Size = (uint16_t)MAX(size, 8);
-			currentFieldPtr += sizeof(VariableDescription) + size;
+			currentField->Size = (uint16_t)size;
+			currentFieldPtr += Variable::headersize() + size;
 			currentField = (Variable*)currentFieldPtr;
 		}
 		// There's room for one last VariableDescription after the now filled data. Leave it empty, so we have a guard when traversing the list.
@@ -118,7 +118,7 @@ public:
 		_data = nullptr;
 	}
 
-	Variable& at(size_t index)
+	Variable& at(size_t index) const
 	{
 		if (_defaultSizesOnly)
 		{
@@ -131,36 +131,7 @@ public:
 			size_t currentIndex = 0;
 			while(currentIndex < index && variablePtr->Marker != 0)
 			{
-				bytePtr += variablePtr->Size + 4;
-				variablePtr = (Variable*)bytePtr;
-				currentIndex++;
-			}
-
-			if (variablePtr->Marker == 0)
-			{
-				// This will blow, stopping the program. We should never get here (means the index was out of bounds)
-				variablePtr = nullptr;
-			}
-
-			// Return a reference to the variable we've found
-			return *variablePtr;
-		}
-	}
-
-	Variable& at(const size_t index) const
-	{
-		if (_defaultSizesOnly)
-		{
-			return _data[index];
-		}
-		else
-		{
-			Variable* variablePtr = _data;
-			byte* bytePtr = (byte*)_data;
-			size_t currentIndex = 0;
-			while (currentIndex < index && variablePtr->Marker != 0)
-			{
-				bytePtr += variablePtr->Size + 4;
+				bytePtr += MAX(variablePtr->fieldSize(), 8) + Variable::headersize();
 				variablePtr = (Variable*)bytePtr;
 				currentIndex++;
 			}

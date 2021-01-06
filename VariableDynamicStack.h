@@ -55,7 +55,7 @@ public:
 	void push(const Variable& object)
 	{
 		// This might be 8, depending on compiler alignment of i64 and double types, therefore it is different from sizeof(VariableDescription)
-		const int variableDescriptionSizeUsed = sizeof(Variable) - sizeof(int64_t);
+		const int variableDescriptionSizeUsed = Variable::headersize();
 		uint32_t sizeUsed = MAX(object.fieldSize(), 8) + variableDescriptionSizeUsed + 4; // + 4 for the tail (the reverse pointer)
 		if (sizeUsed > FreeBytes())
 		{
@@ -69,6 +69,7 @@ public:
 		}
 
 		// Now we have enough room for the new variable
+		_sp->Size = object.Size; // Tell the operator that it is fine to copy the stuff here
 		*_sp = object; // call operator =
 		Variable* oldsp = _sp;
 		_sp = AddBytes(_sp, sizeUsed);
