@@ -39,16 +39,7 @@ public:
 
 	~VariableList()
 	{
-		VariableListEntry* current = _first;;
-		while (current != nullptr)
-		{
-			VariableListEntry* last = current;
-			current = last->Next;
-			free(last);
-		}
-		
-		_first = nullptr;
-		_tail = nullptr;
+		clear();
 	}
 
 	Variable& at(int token)
@@ -139,6 +130,7 @@ public:
 		size_t size = sizeof(Variable) + entry.fieldSize() + sizeof(int) + sizeof(void*);
 		VariableListEntry* newMem = (VariableListEntry*)malloc(size);
 		memset(newMem, 0, size);
+		newMem->Data.setSize(entry.fieldSize()); // so that the copy operator knows it's fine to copy there
 		newMem->Data = entry;// performs a full copy
 		newMem->Token = token;
 		newMem->Next = nullptr;
@@ -154,5 +146,19 @@ public:
 		}
 
 		return newMem->Data;
+	}
+
+	void clear()
+	{
+		VariableListEntry* current = _first;;
+		while (current != nullptr)
+		{
+			VariableListEntry* last = current;
+			current = last->Next;
+			free(last);
+		}
+
+		_first = nullptr;
+		_tail = nullptr;
 	}
 };
