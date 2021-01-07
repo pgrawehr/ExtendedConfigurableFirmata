@@ -193,7 +193,8 @@ enum class NativeMethod
 	MiniBuffer_ZeroMemory,
 	RuntimeTypeHandleValue,
 	MiniRuntimeTypeHandleGetCorElementType,
-	Interop_GlobalizationGetCalendarInfo
+	Interop_GlobalizationGetCalendarInfo,
+	InteropGetRandomBytes
 };
 
 enum class SystemException
