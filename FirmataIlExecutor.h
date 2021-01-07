@@ -364,17 +364,16 @@ class ExecutionState
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
-	u16& ActivateState(VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
+	void ActivateState(u16* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
 	{
 		if (_memoryGuard != 0xCCCCCCCC)
 		{
 			Firmata.sendString(F("FATAL: MEMORY CORRUPTED: (should be 0xCCCCCCCC): "), _memoryGuard);
 		}
-
+		*pc = _pc;
 		*stack = &_executionStack;
 		*locals = &_locals;
 		*arguments = &_arguments;
-		return _pc;
 	}
 	
 	void SetArgumentValue(int argNo, uint32_t value, VariableKind type)
@@ -391,6 +390,16 @@ class ExecutionState
 		_arguments[argNo].Type = type;
 	}
 		
+	void UpdatePc(u16 pc)
+	{
+		if (_memoryGuard != 0xCCCCCCCC)
+		{
+			Firmata.sendString(F("FATAL: MEMORY CORRUPTED2: (should be 0xCCCCCCCC): "), _memoryGuard);
+		}
+		
+		_pc = pc;
+	}
+	
 	int MethodIndex()
 	{
 		return _codeReference;
