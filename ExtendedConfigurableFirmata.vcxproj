@@ -113,6 +113,7 @@
       </SubType>
     </ClInclude>
     <ClInclude Include="FlashMemoryStream.h" />
+    <ClInclude Include="HardwareAccess.h" />
     <ClInclude Include="openum.h" />
     <ClInclude Include="SelfTest.h" />
     <ClInclude Include="Variable.h" />
@@ -128,6 +129,7 @@
       </SubType>
     </ClCompile>
     <ClCompile Include="FlashMemoryStream.cpp" />
+    <ClCompile Include="HardwareAccess.cpp" />
     <ClCompile Include="SelfTest.cpp" />
   </ItemGroup>
   <PropertyGroup>
