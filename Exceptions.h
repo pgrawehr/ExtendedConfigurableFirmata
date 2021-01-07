@@ -10,33 +10,52 @@
 #endif
 
 #include "ConfigurableFirmata.h"
+enum class SystemException;
+
 namespace stdSimple
 {
 	class Exception
 	{
 	private:
-		char* _msg;
-		bool _ownMsg; // true if msg is a dynamically allocated instance
+		char _msg[200];
 	public:
-		Exception(const char* msg);
-		Exception(const char* fmt, int sizeOfArgs, ...);
+		Exception(const char* fmt, ...);
 
-		~Exception()
+		const char* Message() const
 		{
-			if (_ownMsg && _msg)
-			{
-				free(_msg);
-				_msg = nullptr;
-			}
+			return _msg;
 		}
+	};
 
-		const char* Message() const;
+	class ClrException : public Exception
+	{
+	private:
+		int _tokenCausingException;
+		SystemException _exceptionType;
+
+	public:
+		ClrException(const char* msg, SystemException exceptionType, int exceptionToken);
+
+	};
+
+	class OutOfMemoryException : public ClrException
+	{
+	public:
+		OutOfMemoryException();
 
 		/// <summary>
 		/// This one is pre-allocated because we obviously cannot create a new instance when we run into this problem
 		/// </summary>
-		static Exception* OutOfMemoryException;
+		static OutOfMemoryException OutOfMemoryExceptionInstance;
 	};
+
+	class ExecutionEngineException: Exception
+	{
+	public:
+		ExecutionEngineException(const char* msg, ...);
+	};
+
+	
 }
 
 

@@ -1205,9 +1205,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		}
 		break;
 	default:
-		Firmata.sendString(F("Unknown internal method: "), (int)method);
-		ExceptionOccurred(currentFrame, SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
-		return MethodState::Aborted;
+		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
 
 	return state;

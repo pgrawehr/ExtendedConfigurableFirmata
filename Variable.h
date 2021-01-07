@@ -171,7 +171,7 @@ public:
 
 	uint16_t memberSize() const
 	{
-		
+		return _size;
 	}
 
 	void setSize(uint16_t size)

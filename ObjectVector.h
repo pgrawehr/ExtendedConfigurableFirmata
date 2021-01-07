@@ -32,7 +32,7 @@ namespace stdSimple
 				_data = (T*)malloc(initialSize * sizeof(T));
 				if (_data == nullptr)
 				{
-					throw Exception::OutOfMemoryException;
+					throw OutOfMemoryException::OutOfMemoryExceptionInstance;
 				}
 			}
 			else
@@ -67,7 +67,7 @@ namespace stdSimple
 					_data = (T*)malloc(_size * sizeof(T));
 					if (_data == nullptr)
 					{
-						throw Exception::OutOfMemoryException;
+						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
 					}
 				}
 				else
@@ -76,7 +76,7 @@ namespace stdSimple
 					_data = (T*)realloc(_data, _size * sizeof(T));
 					if (_data == nullptr)
 					{
-						throw Exception::OutOfMemoryException;
+						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
 					}
 				}
 				
@@ -96,11 +96,19 @@ namespace stdSimple
 				{
 					_size = 4;
 					_data = (T*)malloc(_size * sizeof(T));
+					if (_data == nullptr)
+					{
+						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+					}
 				}
 				else
 				{
 					_size += 4;
 					_data = (T*)realloc(_data, _size * sizeof(T));
+					if (_data == nullptr)
+					{
+						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+					}
 				}
 				
 				_data[_count++] = object;
