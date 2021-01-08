@@ -34,7 +34,18 @@ namespace stdSimple
 		SystemException _exceptionType;
 
 	public:
+		ClrException(SystemException exceptionType, int exceptionToken);
 		ClrException(const char* msg, SystemException exceptionType, int exceptionToken);
+
+		SystemException ExceptionType()
+		{
+			return _exceptionType;
+		}
+
+		int ExceptionToken()
+		{
+			return _tokenCausingException;
+		}
 
 	};
 
@@ -47,12 +58,17 @@ namespace stdSimple
 		/// This one is pre-allocated because we obviously cannot create a new instance when we run into this problem
 		/// </summary>
 		static OutOfMemoryException OutOfMemoryExceptionInstance;
+
+		static void Throw()
+		{
+			throw OutOfMemoryExceptionInstance;
+		}
 	};
 
-	class ExecutionEngineException: Exception
+	class ExecutionEngineException: public Exception
 	{
 	public:
-		ExecutionEngineException(const char* msg, ...);
+		ExecutionEngineException(const char* msg);
 	};
 
 	

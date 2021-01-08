@@ -213,6 +213,7 @@ enum class SystemException
 	InvalidCast = 11,
 	NotSupported = 12,
 	CustomException = 13,
+	FieldAccess = 14,
 };
 
 struct Method
@@ -427,7 +428,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError ReceiveObjectData(byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 
-	MethodState ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
+	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
 	Variable& Ldsfld(int token);
@@ -450,17 +451,17 @@ class FirmataIlExecutor: public FirmataFeature
     RuntimeException* UnrollExecutionStack();
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
-	MethodState GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
+	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
     Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
     void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
     ClassDeclaration* GetClassDeclaration(Variable& obj);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(ClassDeclaration& cls, SystemException& exception);
-	void* CreateInstanceOfClass(int32_t typeToken, u32 length, SystemException& exception);
-    ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken, SystemException& exception);
-    ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken, SystemException& exception);
+    void* CreateInstance(ClassDeclaration& cls);
+	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
+    ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken);
+    ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken);
     uint16_t SizeOfClass(ClassDeclaration* cls);
     MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);

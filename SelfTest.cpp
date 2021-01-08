@@ -21,6 +21,7 @@ bool SelfTest::PerformSelfTest()
 	// ValidateMemoryManager();
 	ValidateExecutionStack();
 	UnalignedAccessWorks();
+	CompilerBehavior();
 	return _statusFlag;
 }
 
@@ -126,5 +127,18 @@ void SelfTest::UnalignedAccessWorks()
 	volatile int* iPtr = (int*)AddBytes(ptr, 1);
 	*iPtr = 5;
 	ASSERT(*iPtr == 5, "Error in unaligned memory access");
+}
+
+void SelfTest::CompilerBehavior()
+{
+	/*int a = 2;
+	int b = 5;
+	int& ref = a;
+	ref = 3;
+	ASSERT(a == 3, "Reference behavior error");
+	ref = b;
+	ref = 7;
+	ASSERT(a == 3, "Reference behavior error");
+	ASSERT(b == 7, "Reference behavior error");*/
 }
 

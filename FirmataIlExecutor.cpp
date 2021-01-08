@@ -53,10 +53,13 @@ const byte OpcodePops[] PROGMEM =
 #undef OPDEF
 };
 
-#define ASSERT(x) if (!(x)) {\
-	ExceptionOccurred(currentFrame, SystemException::MissingMethod, currentFrame->_executingMethod->methodToken); \
-	return MethodState::Aborted; \
+void ASSERT(bool x)
+{
+	if (!x)
+	{
+		throw ExecutionEngineException("Assertion failed");
 	}
+}
 
 OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen);
 
@@ -653,16 +656,10 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 	ExceptionOccurred(_methodCurrentlyExecuting, SystemException::InvalidOpCode, opCode);
 }
 
-MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type)
+void FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type)
 {
-	SystemException ex = SystemException::None;
 	// Create an instance of "System.Type"
-	void* newObjInstance = CreateInstanceOfClass(2, 0, ex);
-	if (newObjInstance == nullptr)
-	{
-		ExceptionOccurred(currentFrame, ex, 0);
-		return MethodState::Aborted;
-	}
+	void* newObjInstance = CreateInstanceOfClass(2, 0);
 
 	ClassDeclaration* cls = (ClassDeclaration*)(*(int32_t*)newObjInstance);
 			
@@ -671,7 +668,6 @@ MethodState FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, V
 	result.Object = newObjInstance;
 	// Set the "_internalType" member to point to the class declaration
 	SetField4(*cls, type, result, 0);
-	return MethodState::Running;
 }
 
 int FirmataIlExecutor::GetHandleFromType(Variable& object) const
@@ -716,11 +712,10 @@ int TrailingZeroCount(uint32_t value)
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
-MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
+void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
 	u32 mil = 0;
 	int mode;
-	MethodState state = MethodState::Running;
 	switch (method)
 	{
 	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
@@ -780,19 +775,19 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		}
 		break;
 	case NativeMethod::GetPinCount:
-		ASSERT(args.size() == 1) // unused this pointer
+		ASSERT(args.size() == 1); // unused this pointer
 		result.Int32 = TOTAL_PINS;
 		result.Type = VariableKind::Int32;
 		break;
 	case NativeMethod::IsPinModeSupported:
-		ASSERT(args.size() == 3)
+		ASSERT(args.size() == 3);
 			// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
 			// We support Output, Input and PullUp
 			result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
 			result.Type = VariableKind::Boolean;
 			break;
 	case NativeMethod::GetPinMode:
-		ASSERT(args.size() == 2)
+		ASSERT(args.size() == 2);
 			mode = Firmata.getPinMode((byte)args[1].Int32);
 			if (mode == INPUT)
 			{
@@ -809,9 +804,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			else
 			{
 				// This is invalid for this method. GpioDriver.GetPinMode is only valid if the pin is in one of the GPIO modes
-				ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 			}
 			result.Type = VariableKind::Int32;
 			break;
@@ -835,17 +828,17 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		{
 			Variable type = args[0]; // type handle
 			ASSERT(type.Type == VariableKind::RuntimeTypeHandle);
-			state = GetTypeFromHandle(currentFrame, result, type);
+			GetTypeFromHandle(currentFrame, result, type);
 		}
 		break;
 	case NativeMethod::ObjectEquals: // this is an instance method with 1 argument
 	case NativeMethod::ObjectReferenceEquals: // This is a static method with 2 arguments, but implicitly the same as the above
-		ASSERT(args.size() == 2)
+		ASSERT(args.size() == 2);
 			result.Type = VariableKind::Boolean;
 			result.Boolean = args[0].Object == args[1].Object; // This implements reference equality (or binary equality for value types)
 		break;
 	case NativeMethod::ObjectMemberwiseClone:
-		ASSERT(args.size() == 1) // just the "this" pointer
+		ASSERT(args.size() == 1); // just the "this" pointer
 		{
 			Variable& self = args[0];
 			ClassDeclaration* ty = GetClassDeclaration(self);
@@ -870,18 +863,10 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			// TODO: Validate this operation on value types
 			if (ty->ValueType)
 			{
-				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
-			SystemException exception;
-			void* data = CreateInstanceOfClass(ty->ClassToken, 0, exception);
-			if (data == nullptr)
-			{
-				ExceptionOccurred(currentFrame, SystemException::OutOfMemory, currentFrame->_executingMethod->methodToken);
-				state = MethodState::Aborted;
-				break;
-			}
+
+			void* data = CreateInstanceOfClass(ty->ClassToken, 0);
 			memcpy(AddBytes(data, 4), AddBytes(args[0].Object, 4), ty->ClassDynamicSize);
 			result.setSize(4);
 			result.Object = data;
@@ -898,9 +883,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			ClassDeclaration& typeOfType = _classes.at(2);
 			if (size != 1)
 			{
-				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
 			uint32_t parameter = *(data + 3); // First element of array
 			Variable argumentTypeInstance;
@@ -923,15 +906,13 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			}
 			else
 			{
-				ExceptionOccurred(currentFrame, SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
 
 			// The sum of a generic type and its only type argument will yield the token for the combination
 			type.Int32 = genericToken + argumentType.Int32;
 			type.Type = VariableKind::RuntimeTypeHandle;
-			state = GetTypeFromHandle(currentFrame, result, type);
+			GetTypeFromHandle(currentFrame, result, type);
 			// result is returning the newly constructed type instance
 		}
 		break;
@@ -949,20 +930,12 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			token = token & GENERIC_TOKEN_MASK;
 			token = token + tok2.Int32;
 			
-			SystemException exception;
 			if (!_classes.contains(token))
 			{
-				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::ClassNotFound, token);
 			}
-			void* ptr = CreateInstanceOfClass(token, 0, exception);
-			if (ptr == nullptr)
-			{
-				ExceptionOccurred(currentFrame, exception, token);
-				state = MethodState::Aborted;
-				break;
-			}
+			void* ptr = CreateInstanceOfClass(token, 0);
+
 			// TODO: We still have to execute the newly created instance's ctor
 			result.Object = ptr;
 			result.Type = VariableKind::Object;
@@ -995,9 +968,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
 			if (!_classes.contains(otherToken.Int32))
 			{
-				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, otherToken.Int32);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::ClassNotFound, otherToken.Int32);
 			}
 			
 			ClassDeclaration& t2 = _classes.at(otherToken.Int32);
@@ -1051,9 +1022,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		ClassDeclaration& t1 = _classes.at(ownToken.Int32);
 		if (!_classes.contains(otherToken.Int32))
 		{
-			ExceptionOccurred(currentFrame, SystemException::ClassNotFound, otherToken.Int32);
-			state = MethodState::Aborted;
-			break;
+			throw ClrException(SystemException::ClassNotFound, otherToken.Int32);
 		}
 
 		ClassDeclaration& t2 = _classes.at(otherToken.Int32);
@@ -1092,25 +1061,15 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 			if (token == 0)
 			{
 				// Type was not generic -> throw InvalidOperationException
-				ExceptionOccurred(currentFrame, SystemException::InvalidOperation, token);
-				state = MethodState::Aborted;
+				throw ClrException(SystemException::InvalidOperation, token);
 			}
 
-			SystemException exception;
 			if (!_classes.contains(token))
 			{
-				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::ClassNotFound, token);
 			}
 			
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, exception);
-			if (ptr == nullptr)
-			{
-				ExceptionOccurred(currentFrame, exception, token);
-				state = MethodState::Aborted;
-				break;
-			}
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
 			
 			result.Object = ptr;
 			result.Type = VariableKind::Object;
@@ -1121,7 +1080,7 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		}
 		break;
 	case NativeMethod::TypeIsEnum:
-		ASSERT(args.size() == 1)
+		ASSERT(args.size() == 1);
 	{
 		// Find out whether the current type inherits (directly) from System.Enum
 			Variable ownTypeInstance = args[0]; // A type instance
@@ -1157,19 +1116,10 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 
 			if (!_classes.contains(token))
 			{
-				ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-				state = MethodState::Aborted;
-				break;
+				throw ClrException(SystemException::ClassNotFound, token);
 			}
 
-			SystemException exception;
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0, exception);
-			if (ptr == nullptr)
-			{
-				ExceptionOccurred(currentFrame, exception, token);
-				state = MethodState::Aborted;
-				break;
-			}
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
 
 			Variable t1;
 			t1.Object = ptr;
@@ -1185,14 +1135,14 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		break;
 	case NativeMethod::BitOperationsLog2SoftwareFallback:
 		{
-		ASSERT(args.size() == 1)
+		ASSERT(args.size() == 1);
 		result.Int32 = Log2_32(args[0].Uint32);
 		result.Type = VariableKind::Int32;
 		}
 		break;
 	case NativeMethod::BitOperationsTrailingZeroCount:
 		{
-		ASSERT(args.size() == 1)
+		ASSERT(args.size() == 1);
 		result.Int32 = TrailingZeroCount(args[0].Uint32);
 		result.Type = VariableKind::Int32;
 		}
@@ -1208,7 +1158,6 @@ MethodState FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
 
-	return state;
 }
 
 Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo)
@@ -1243,11 +1192,11 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 		if ((uint32_t)offset >= (SizeOfClass(&type)))
 		{
 			// Something is wrong.
-			Firmata.sendString(F("Member offset exceeds class size"));
+			throw ExecutionEngineException("Member offset exceeds class size");
 		}
 	}
 	
-	return Variable();
+	throw ExecutionEngineException("Field not found in class.");
 }
 
 
@@ -1296,8 +1245,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	int offset;
 	if (obj.Type == VariableKind::AddressOfVariable)
 	{
-		SystemException ex;
-		vtable = &ResolveClassFromFieldToken(token, ex);
+		vtable = &ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)obj.Object; // Data being pointed to
 	}
@@ -1306,8 +1254,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		// Ldfld from a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
 		// TODO: This is slow, not what one expects from accessing a value type
-		SystemException ex;
-		vtable = &ResolveClassFromFieldToken(token, ex);
+		vtable = &ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)&obj.Int32; // Data is right there
 	}
@@ -1380,8 +1327,7 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
 	// Create an instance of the value type with the default zero value but the correct type
-	SystemException exception = SystemException::None;
-	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
+	ClassDeclaration& cls = ResolveClassFromFieldToken(token);
 
 	vector<Variable*> allfields;
 	CollectFields(&cls, allfields);
@@ -1414,10 +1360,7 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 		}
 	}
 	
-	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls.ClassToken, token);
-	// throw...
-	_statics.insert(token, Variable());
-	return _statics.at(token);
+	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
 }
 
 
@@ -1453,8 +1396,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
 	// Create an instance of the value type with the default zero value but the correct type
 
-	SystemException exception = SystemException::None;
-	ClassDeclaration& cls = ResolveClassFromFieldToken(token, exception);
+	ClassDeclaration& cls = ResolveClassFromFieldToken(token);
 
 	vector<Variable*> allfields;
 	CollectFields(&cls, allfields);
@@ -1494,8 +1436,7 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 		}
 	}
 
-	Firmata.sendStringf(F("Class %lx has no static member %lx"), 8, cls.ClassToken, token);
-	return ret;
+	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
 }
 
 
@@ -1513,7 +1454,6 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 		return;
 	}
 
-	// TODO: Allocate enough memory if the type of token is a large value type
 	_statics.insert(token, value);
 }
 
@@ -1534,8 +1474,7 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 	int offset;
 	if (obj.Type == VariableKind::AddressOfVariable)
 	{
-		SystemException ex;
-		cls = &ResolveClassFromFieldToken(token, ex);
+		cls = &ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)obj.Object; // Data being pointed to
 	}
@@ -1544,8 +1483,8 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 		// Stfld to a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
 		// TODO: This is slow, not what one expects from accessing a value type
-		SystemException ex;
-		cls = &ResolveClassFromFieldToken(token, ex);
+
+		cls = &ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)&obj.Int32; // Data is right there
 	}
@@ -1594,13 +1533,13 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 		offset += handle->fieldSize();
 	}
 
-	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, cls->ClassToken, token);
-	return nullptr;
+	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
 }
 
 void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken)
 {
-	state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
+	throw ClrException("", error, errorLocationToken);
+	// state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
 }
 
 #define BinaryOperation(op) \
@@ -1791,8 +1730,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_DIV:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 		}
 		
 		BinaryOperation(/ );
@@ -1801,8 +1739,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_REM:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 		}
 		switch (value1.Type)
 		{
@@ -1839,8 +1776,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_DIV_UN:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 		}
 		if (value1.fieldSize() <= 4)
 		{
@@ -1856,8 +1792,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_REM_UN:
 		if (value2.Uint64 == 0)
 		{
-			ExceptionOccurred(currentFrame, SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 		}
 		// Operation is not directly allowed on floating point variables by the CLR
 		if (value1.Type == VariableKind::Int32 || value1.Type == VariableKind::Uint32)
@@ -2066,8 +2001,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			uint32_t* pTarget = (uint32_t*)value1.Object;
 			if (pTarget == nullptr)
 			{
-				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			}
 			*pTarget = value2.Uint32;
 		}
@@ -2077,8 +2011,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			// Get the address of the array and push the array size (at index 0)
 			if (value1.Object == nullptr)
 			{
-				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			}
 			uint32_t* data = (uint32_t*)value1.Object;
 			intermediate.Uint32 = *(data + 1);
@@ -2092,8 +2025,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 		}
 		// The instruction suffix (here .i2) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
@@ -2125,8 +2057,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 		}
 		// The instruction suffix (here .i2) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
@@ -2149,8 +2080,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 		}
 		// The instruction suffix (here .i1) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
@@ -2182,8 +2112,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 		}
 		// The instruction suffix (here .i4) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
@@ -2206,8 +2135,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		{
 			if (value1.Object == nullptr)
 			{
-				ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 			}
 			// The instruction suffix (here .i4) indicates the element size
 			uint32_t* data = (uint32_t*)value1.Object;
@@ -2247,8 +2175,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	{
 		if (value1.Object == nullptr)
 		{
-			ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 		}
 		// The instruction suffix (here .i4) indicates the element size
 		uint32_t* data = (uint32_t*)value1.Object;
@@ -2510,6 +2437,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	byte* pCode = currentMethod->methodIl;
 	TRACE(u32 startTime = micros());
+	try
+	{
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
@@ -2532,13 +2461,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 			TRACE(Firmata.sendString(F("Executing special method "), (int)specialMethod));
 			Variable retVal;
-			MethodState internalResult = ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
-    		if (internalResult != MethodState::Running)
-    		{
-				return internalResult;
-    		}
-			
-			// We're called into a "special" (built-in) method. 
+			ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
+
+    		// We're called into a "special" (built-in) method. 
 			// Perform a method return
 			ExecutionState* frame = rootState; // start at root
 			while (frame->_next != currentFrame)
@@ -3154,13 +3079,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				if (instr == CEE_NEWOBJ)
 				{
-					SystemException ex = SystemException::None;
-					cls = &ResolveClassFromCtorToken(newMethod->methodToken, ex);
-					if (ex != SystemException::None)
-					{
-						ExceptionOccurred(currentFrame, ex, newMethod->methodToken);
-						return MethodState::Aborted;
-					}
+					cls = &ResolveClassFromCtorToken(newMethod->methodToken);
+
 					if (cls->ValueType)
 					{
 						// If a value type is being created using a newobj instruction, an unboxed value is created and pushed as #0 on the stack
@@ -3176,12 +3096,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					else
 					{
-						newObjInstance = CreateInstance(*cls, ex);
-						if (ex != SystemException::None)
-						{
-							ExceptionOccurred(currentFrame, ex, newMethod->methodToken);
-							return MethodState::Aborted;
-						}
+						newObjInstance = CreateInstance(*cls);
 					}
 				}
 
@@ -3318,8 +3233,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->pop();
 						if (value1.Object == nullptr)
 						{
-							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-							return MethodState::Aborted;
+							throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 						}
 						
 						uint32_t* data = (uint32_t*)value1.Object;
@@ -3385,8 +3299,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					stack->pop();
 					if (value1.Object == nullptr)
 					{
-						ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 					// The instruction suffix (here .i4) indicates the element size
 					uint32_t* data = (uint32_t*)value1.Object;
@@ -3474,8 +3387,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					stack->pop();
 					if (value1.Object == nullptr)
 					{
-						ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 
 					uint32_t* data = (uint32_t*)value1.Object;
@@ -3642,8 +3554,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						// According to docs, this shouldn't happen, but better be safe
 					if (value1.Object == nullptr)
 					{
-						ExceptionOccurred(currentFrame, SystemException::NullReference, token);
-						return MethodState::Aborted;
+						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 					ClassDeclaration& ty = _classes.at(token);
 					if (ty.ValueType)
@@ -3731,8 +3642,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					stack->pop();
 					if (value1.Object == nullptr)
 					{
-						ExceptionOccurred(currentFrame, SystemException::NullReference, token);
-						return MethodState::Aborted;
+						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 					if (value1.Type != VariableKind::AddressOfVariable)
 					{
@@ -3813,16 +3723,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							data = _constants.at(token);
 						}
-						SystemException ex;
-						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2, ex); // *2, because length is in chars here
+						
+						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2); // *2, because length is in chars here
 						// The string data is stored inline in the class data junk
 						memcpy(classInstance + 8, data, length * 2);
 						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
-						if (classInstance == nullptr)
-						{
-							ExceptionOccurred(currentFrame, ex, token);
-							return MethodState::Aborted;
-						}
+						
 						// Length
 						Variable v(length, VariableKind::Int32);
 						intermediate.Type = VariableKind::Object;
@@ -3843,6 +3749,28 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
         }
 	}
 
+	}
+	catch(OutOfMemoryException& ox)
+	{
+		currentFrame->UpdatePc(PC);
+		Firmata.sendString(STRING_DATA, ox.Message());
+		currentFrame->_runtimeException = nullptr; // Can't allocate memory right now
+		return MethodState::Aborted;
+	}
+	catch(ClrException& ex)
+	{
+		currentFrame->UpdatePc(PC);
+		Firmata.sendString(STRING_DATA, ex.Message());
+		// TODO: Replace with correct exception handling/stack unwinding later
+		currentFrame->_runtimeException = new RuntimeException(ex.ExceptionType(), Variable((int32_t)ex.ExceptionToken(), VariableKind::Int32));
+		return MethodState::Aborted;
+	}
+	catch(ExecutionEngineException& ee)
+	{
+		currentFrame->UpdatePc(PC);
+		Firmata.sendString(STRING_DATA, ee.Message());
+		return MethodState::Aborted;
+	}
 	currentFrame->UpdatePc(PC);
 
 	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
@@ -3901,7 +3829,7 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 /// <summary>
 /// Creates a class directly by its type (used i.e. to create instances of System::Type)
 /// </summary>
-void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */, SystemException& exception)
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */)
 {
 	ClassDeclaration& cls = _classes.at(typeToken);
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
@@ -3916,9 +3844,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	void* ret = AllocGcInstance(sizeOfClass);
 	if (ret == nullptr)
 	{
-		exception = SystemException::OutOfMemory;
-		Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
-		return nullptr;
+		OutOfMemoryException::Throw();
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.
@@ -3928,7 +3854,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	return ret;
 }
 
-ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken, SystemException& exception)
+ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
@@ -3946,12 +3872,10 @@ ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken
 		}
 	}
 
-	exception = SystemException::MissingMethod;
-	Firmata.sendString(F("No class found with that .ctor"));
-	return *(ClassDeclaration*)nullptr;;
+	throw ClrException(SystemException::MissingMethod, ctorToken);
 }
 
-ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken, SystemException& exception)
+ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
@@ -3967,16 +3891,14 @@ ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 		}
 	}
 
-	exception = SystemException::ClassNotFound;
-	Firmata.sendString(F("No class found with that field"));
-	return *(ClassDeclaration*)nullptr;;
+	throw ClrException(SystemException::FieldAccess, fieldToken);
 }
 
 /// <summary>
 /// Creates an instance of the given type.
 /// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
 /// </summary>
-void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls, SystemException& exception)
+void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls)
 {
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 	// The constructor that was called belongs to this class
@@ -3987,9 +3909,7 @@ void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls, SystemException& 
 	void* ret = AllocGcInstance(sizeOfClass);
 	if (ret == nullptr)
 	{
-		exception = SystemException::OutOfMemory;
-		Firmata.sendString(F("Not enough memory for allocating an instance of 0x"), cls.ClassToken);
-		return nullptr;
+		OutOfMemoryException::Throw();
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.

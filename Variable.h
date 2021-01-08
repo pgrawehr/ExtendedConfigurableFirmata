@@ -2,7 +2,7 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
-
+#include "Exceptions.h"
 #include "openum.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -88,7 +88,7 @@ public:
 	{
 		if (other.fieldSize() > sizeof(Uint64))
 		{
-			Firmata.sendString(F("FATAL: Copy ctor not allowed on this instance"));
+			throw stdSimple::ExecutionEngineException("Copy ctor not allowed on this instance");
 		}
 	}
 
@@ -103,8 +103,7 @@ public:
 		{
 			if (other.fieldSize() != _size)
 			{
-				// TODO: Throw. This must not happen
-				return *this;
+				throw stdSimple::ExecutionEngineException("Insufficient space to copy instance. Internal memory management error.");
 			}
 			// Copy the full size to the target.
 			// WARN: This is dangerous, and we must make sure the target has actually allocated memory for this

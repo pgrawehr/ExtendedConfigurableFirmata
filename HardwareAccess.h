@@ -14,7 +14,7 @@
 
 class HardwareAccess
 {
-	MethodState ExecuteHardwareAccess(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result);
+	static bool ExecuteHardwareAccess(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result);
 };
 
 

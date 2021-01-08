@@ -27,6 +27,7 @@ private:
 	void ValidateExecutionStack();
 
 	void UnalignedAccessWorks();
+	void CompilerBehavior();
 };
 #endif
 

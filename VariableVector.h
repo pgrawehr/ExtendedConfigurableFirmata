@@ -37,7 +37,7 @@ public:
 			_data = (Variable*)malloc(size * sizeof(Variable));
 			if (_data == nullptr)
 			{
-				return false;
+				throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
 			}
 			
 			memset(_data, 0, size * sizeof(Variable));
@@ -88,7 +88,7 @@ public:
 		_data = (Variable*)malloc(totalSize);
 		if (_data == nullptr)
 		{
-			return false;
+			throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
 		}
 		
 		memset(_data, 0, totalSize);
@@ -139,7 +139,7 @@ public:
 			if (variablePtr->Marker == 0)
 			{
 				// This will blow, stopping the program. We should never get here (means the index was out of bounds)
-				variablePtr = nullptr;
+				throw stdSimple::ExecutionEngineException("Variable vector subscript out of range");
 			}
 
 			// Return a reference to the variable we've found
