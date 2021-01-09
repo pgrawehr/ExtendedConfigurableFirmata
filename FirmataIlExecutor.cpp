@@ -19,6 +19,7 @@
 #include "ObjectStack.h"
 #include "Encoder7Bit.h"
 #include "SelfTest.h"
+#include "HardwareAccess.h"
 #include <stdint.h>
 
 typedef byte BYTE;
@@ -52,14 +53,6 @@ const byte OpcodePops[] PROGMEM =
 #include "opcode.def.h"
 #undef OPDEF
 };
-
-void ASSERT(bool x)
-{
-	if (!x)
-	{
-		throw ExecutionEngineException("Assertion failed");
-	}
-}
 
 OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen);
 
@@ -714,53 +707,13 @@ int TrailingZeroCount(uint32_t value)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	u32 mil = 0;
-	int mode;
+	if (HardwareAccess::ExecuteHardwareAccess(currentFrame, method, args, result))
+	{
+		return;
+	}
 	switch (method)
 	{
-	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
-	{
-		byte pin = (byte)args[1].Int32;
-		
-		if (args[2].Int32 == 0)
-		{
-			// Input
-			Firmata.setPinMode(pin, INPUT);
-			Firmata.setPinState(pin, 0);
-		}
-		if (args[2].Int32 == 1) // Must match PullMode enum on C# side
-		{
-			Firmata.setPinMode(pin, OUTPUT);
-		}
-		if (args[2].Int32 == 3)
-		{
-			Firmata.setPinMode(pin, INPUT);
-			Firmata.setPinState(pin, 1);
-		}
-		
-		break;
-	}
-	case NativeMethod::WritePin: // Write(int pin, int value)
-			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
-		digitalWrite(args[1].Int32, args[2].Int32 != 0);
-		break;
-	case NativeMethod::ReadPin:
-		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
-		break;
-	case NativeMethod::EnvironmentTickCount: // TickCount
-		mil = millis();
-		// this one returns signed, because it replaces a standard library function
-		result = { (int32_t)mil, VariableKind::Int32 };
-		break;
-	case NativeMethod::SleepMicroseconds:
-		delayMicroseconds(args[0].Uint32);
-		break;
-	case NativeMethod::GetMicroseconds:
-		result = { (uint32_t)micros(), VariableKind::Uint32 };
-		break;
-	case NativeMethod::Debug:
-		Firmata.sendString(F("Debug "), args[1].Uint32);
-		break;
+	
 	case NativeMethod::TypeEquals:
 		ASSERT(args.size() == 2);
 		{
@@ -774,40 +727,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result.Boolean = tok1.Int32 == tok2.Int32;
 		}
 		break;
-	case NativeMethod::GetPinCount:
-		ASSERT(args.size() == 1); // unused this pointer
-		result.Int32 = TOTAL_PINS;
-		result.Type = VariableKind::Int32;
-		break;
-	case NativeMethod::IsPinModeSupported:
-		ASSERT(args.size() == 3);
-			// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
-			// We support Output, Input and PullUp
-			result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
-			result.Type = VariableKind::Boolean;
-			break;
-	case NativeMethod::GetPinMode:
-		ASSERT(args.size() == 2);
-			mode = Firmata.getPinMode((byte)args[1].Int32);
-			if (mode == INPUT)
-			{
-				result.Int32 = 0;
-				if (Firmata.getPinState((byte)args[1].Int32) == 1)
-				{
-					result.Int32 = 3; // INPUT_PULLUP instead of input
-				}
-			}
-			else if (mode == OUTPUT)
-			{
-				result.Int32 = 1;
-			}
-			else
-			{
-				// This is invalid for this method. GpioDriver.GetPinMode is only valid if the pin is in one of the GPIO modes
-				throw ClrException(SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
-			}
-			result.Type = VariableKind::Int32;
-			break;
+	
 	case NativeMethod::RuntimeHelpersInitializeArray:
 		ASSERT(args.size() == 2);
 		{
@@ -1942,45 +1862,55 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_POP:
 		// Nothing to do, already popped
 		break;
-		/* Commented out because untested - enable when use case known and test case defined
 	case CEE_LDIND_I1:
-		// TODO: Fix type of stack (must support dynamic typing)
 		{
 			int8_t b = *((int8_t*)value1.Object);
-			stack->push({ (int32_t)b, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = b;
+			stack->push(intermediate);
 		}
 		break;
 	case CEE_LDIND_I2:
 		{
 			int16_t s = *((int16_t*)value1.Object);
-			stack->push({ (int32_t)s, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = s;
+			stack->push(intermediate);
 		}
 		break;
 	case CEE_LDIND_I4:
 		{
 			int32_t i = *((int32_t*)value1.Object);
-			stack->push({ (int32_t)i, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = i;
+			stack->push(intermediate);
 		}
 		break;
 	case CEE_LDIND_U1:
 		{
-			// Weird: The definition says that this loads as Int32 as well
+			// Weird: The definition says that this loads as Int32 as well (and therefore does a sign-extension)
 			byte b = *((byte*)value1.Object);
-			stack->push({ (int32_t)b, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = b;
+			stack->push(intermediate);
 		}
 		break;
 	case CEE_LDIND_U2:
 		{
 			uint16_t s = *((uint16_t*)value1.Object);
-			stack->push({ (int32_t)s, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = s;
+			stack->push(intermediate);
 		}
 		break;
 	case CEE_LDIND_U4:
 		{
 			uint32_t i = *((uint32_t*)value1.Object);
-			stack->push({ (int32_t)i, VariableKind::Int32 });
+			intermediate.Type = VariableKind::Int32;
+			intermediate.Int32 = i;
+			stack->push(intermediate);
 		}
-		break; */
+		break;
 	case CEE_LDIND_REF:
 		{
 			uint32_t* pTarget = (uint32_t*)value1.Object;
@@ -2317,6 +2247,62 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 		default: // The conv statement never throws
 			intermediate.Uint64 = value1.Uint64;
+			break;
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_CONV_R8:
+		intermediate.Type = VariableKind::Double;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Double = value1.Int32;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Double = value1.Uint32;
+			break;
+		case VariableKind::Int64:
+			intermediate.Double = (double)value1.Int64;
+			break;
+		case VariableKind::Uint64:
+			intermediate.Double = (double)value1.Uint64;
+			break;
+		case VariableKind::Float:
+			intermediate.Double = (double)value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Double = value1.Double;
+			break;
+		default: // The conv statement never throws
+			intermediate.Double = value1.Double;
+			break;
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_CONV_R4:
+		intermediate.Type = VariableKind::Float;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Float = (float)value1.Int32;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Float = (float)value1.Uint32;
+			break;
+		case VariableKind::Int64:
+			intermediate.Float = (float)value1.Int64;
+			break;
+		case VariableKind::Uint64:
+			intermediate.Float = (float)value1.Uint64;
+			break;
+		case VariableKind::Float:
+			intermediate.Float = value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Double = (float)value1.Double;
+			break;
+		default: // The conv statement never throws
+			intermediate.Float = value1.Float;
 			break;
 		}
 		stack->push(intermediate);

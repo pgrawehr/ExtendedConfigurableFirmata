@@ -14,6 +14,7 @@
 
 class HardwareAccess
 {
+public:
 	static bool ExecuteHardwareAccess(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result);
 };
 

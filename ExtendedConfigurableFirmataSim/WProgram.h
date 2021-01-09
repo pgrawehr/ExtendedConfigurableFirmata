@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #define SIM 1
 // Simulate an Arduino due. This has sizeof(int)=4, which is the same than for a 32bit windows exe
@@ -45,6 +45,9 @@ byte* portOutputRegister(int port);
 #define PROGMEM
 
 #define B01111111 0x7F
+
+#define A0 54
+#define A1 55
 
 class Stream
 {

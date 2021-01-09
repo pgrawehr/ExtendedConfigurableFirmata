@@ -224,6 +224,14 @@ struct Method
 	vector<int> declarationTokens;
 };
 
+static void ASSERT(bool x)
+{
+	if (!x)
+	{
+		throw ExecutionEngineException("Assertion failed");
+	}
+}
+
 class RuntimeException
 {
 public:

@@ -88,6 +88,9 @@
     <ClCompile Include="..\Exceptions.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\HardwareAccess.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -193,6 +196,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\Exceptions.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\HardwareAccess.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>
