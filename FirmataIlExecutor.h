@@ -445,6 +445,7 @@ class FirmataIlExecutor: public FirmataFeature
     void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
 
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
+	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
@@ -465,6 +466,7 @@ class FirmataIlExecutor: public FirmataFeature
     Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
     void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
     ClassDeclaration* GetClassDeclaration(Variable& obj);
+    Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(ClassDeclaration& cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);

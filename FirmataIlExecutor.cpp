@@ -600,7 +600,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 {
 	Variable result;
 	MethodBody* method = GetMethodByCodeReference(codeReference);
-	Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack);
+	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxStack, method);
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
@@ -629,7 +629,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 		return;
 	}
 
-	Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference);
+	TRACE(Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference));
 	auto ex = UnrollExecutionStack();
 	SendExecutionResult(codeReference, ex, result, execResult);
 	
@@ -783,6 +783,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 
 			void* data = CreateInstanceOfClass(ty->ClassToken, 0);
 			memcpy(AddBytes(data, 4), AddBytes(args[0].Object, 4), ty->ClassDynamicSize);
+			result.Type = self.Type;
 			result.setSize(4);
 			result.Object = data;
 			break;
@@ -1129,6 +1130,32 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 	return vtable;
 }
 
+/// <summary>
+/// Gets the variable description for a field (of type Variable, because it includes the token as value)
+/// </summary>
+Variable FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int32_t token)
+{
+	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
+	{
+		ClassDeclaration* parent = &_classes.at(vtable->ParentToken);
+		Variable v = GetVariableDescription(parent, token);
+		if (v.Type != VariableKind::Void)
+		{
+			return v;
+		}
+	}
+
+	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
+	{
+		if (handle->Int32 == token)
+		{
+			return *handle;
+		}
+	}
+
+	return Variable(); // Not found
+}
+
 void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector)
 {
 	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
@@ -1178,7 +1205,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		o = (byte*)obj.Object;
 		if (o == nullptr)
 		{
-			return o;
+			throw ClrException(SystemException::NullReference, token);
 		}
 		
 		vtable = GetClassDeclaration(obj);
@@ -1192,7 +1219,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	// Early abort. Offsetting to a null ptr does not give a valid field
 	if (o == nullptr)
 	{
-		return nullptr;
+		throw ClrException(SystemException::NullReference, token);
 	}
 	
 	vector<Variable*> allfields;
@@ -1220,7 +1247,86 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	}
 
 	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
-	return nullptr;
+	throw ClrException("Token not found in class", SystemException::FieldAccess, token);
+}
+
+
+/// <summary>
+/// Load a value from field "token" of instance "obj". Returns the pointer to the location of the value (which might have arbitrary size)
+/// </summary>
+/// <param name="obj">The instance which contains the field (can be an object, a reference to an object or a value type)</param>
+/// <param name="token">The field token</param>
+/// <returns>The return value (of type AddressOfVariable, managed pointer)</returns>
+Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
+{
+	byte* o;
+	ClassDeclaration* vtable;
+	int offset;
+	if (obj.Type == VariableKind::AddressOfVariable)
+	{
+		vtable = &ResolveClassFromFieldToken(token);
+		offset = 0; // No extra header
+		o = (byte*)obj.Object; // Data being pointed to
+	}
+	else if (obj.Type != VariableKind::Object)
+	{
+		// Ldfld from a value type needs one less indirection, but we need to get the type first.
+		// The value type does not carry the type information. Lets derive it from the field token.
+		// TODO: This is slow, not what one expects from accessing a value type
+		vtable = &ResolveClassFromFieldToken(token);
+		offset = 0; // No extra header
+		o = (byte*)&obj.Int32; // Data is right there
+	}
+	else
+	{
+		o = (byte*)obj.Object;
+		if (o == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, token);
+		}
+
+		vtable = GetClassDeclaration(obj);
+
+		// Assuming sizeof(void*) == sizeof(any pointer type)
+		// and sizeof(void*) >= sizeof(int)
+		// Our members start here
+		offset = sizeof(void*);
+	}
+
+	// Early abort. Offsetting to a null ptr does not give a valid field
+	if (o == nullptr)
+	{
+		throw ClrException(SystemException::NullReference, token);
+	}
+
+	vector<Variable*> allfields;
+	CollectFields(vtable, allfields);
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	{
+		// The type of handle1 is Variable**, because we must make sure not to use copy operations above
+		Variable* handle = (*handle1);
+		// Ignore static member here
+		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
+		{
+			continue;
+		}
+
+		if (handle->Int32 == token)
+		{
+			// Found the member
+			Variable ret;
+			ret.Marker = VARIABLE_DEFAULT_MARKER;
+			ret.Type = VariableKind::AddressOfVariable;
+			ret.setSize(4);
+			ret.Object = o + offset;
+			return ret;
+		}
+
+		offset += handle->fieldSize();
+	}
+
+	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
+	throw ClrException(SystemException::FieldAccess, token);
 }
 
 /// <summary>
@@ -2853,24 +2959,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineField:
 	            {
-				int32_t token = 0;
+				int32_t token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+				PC += 4;
 		            switch(instr)
 		            {
 		            	// The ldfld instruction loads a field value of an object to the stack
 					case CEE_LDFLD:
 						{
-						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-						PC += 4;
 						Variable& obj = stack->top();
 						stack->pop();
 						
 						VariableDescription desc;
 						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
-						if (dataPtr == nullptr)
-						{
-							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-							return MethodState::Aborted;
-						}
+
 						// Combine the variable again with its metadata, so we can put it back to the stack
 						EnsureStackVarSize(desc.fieldSize());
 						tempVariable->setSize(desc.Size);
@@ -2883,8 +2984,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		            	// Store a value to a field
 					case CEE_STFLD:
 					{
-						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-						PC += 4;
 						Variable& var = stack->top();
 						stack->pop();
 						Variable& obj = stack->top();
@@ -2899,19 +2998,35 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 		            	// Store a static field value on the stack
 					case CEE_STSFLD:
-						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-						PC += 4;
 						Stsfld(token, stack->top());
 						stack->pop();
 						break;
 					case CEE_LDSFLD:
-						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-						PC += 4;
 						stack->push(Ldsfld(token));
 						break;
+					case CEE_LDFLDA:
+					// This one is tricky, because it can load both instance and static fields
+					{
+						Variable& obj = stack->top();
+						stack->pop();
+						ClassDeclaration& ty = ResolveClassFromFieldToken(token);
+						Variable desc = GetVariableDescription(&ty, token);
+						if (desc.Type == VariableKind::Void)
+						{
+							throw ClrException(SystemException::FieldAccess, token);
+						}
+						if ((int)(desc.Type & VariableKind::StaticMember) != 0)
+						{
+							// Obj can be ignored in this case (but needs popping nevertheless)
+							stack->push(Ldsflda(token));
+						}
+						else
+						{
+							stack->push(Ldflda(obj, token));
+						}
+					}
+					break;
 					case CEE_LDSFLDA:
-						token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
-						PC += 4;
 						stack->push(Ldsflda(token));
 						break;
 					default:
