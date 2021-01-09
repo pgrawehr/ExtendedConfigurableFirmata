@@ -295,7 +295,10 @@ int NetworkConnection::available()
 			acceptNew();
 		}
 
-		Sleep(10);
+		if (error != WSAEWOULDBLOCK)
+		{
+			Sleep(10);
+		}
 		return 0;
 	}
 
