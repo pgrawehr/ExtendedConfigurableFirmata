@@ -4264,6 +4264,8 @@ void FirmataIlExecutor::reset()
 	
 	_constants.clear();
 
+	_statics.clear();
+
 	_largeStatics.clear();
 
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
