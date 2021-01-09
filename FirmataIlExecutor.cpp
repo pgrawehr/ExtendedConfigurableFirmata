@@ -3913,8 +3913,14 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 		parent = &_classes.at(parent->ParentToken);
 	}
 
-	// Note: List is not filled yet.
+	// If the assignment target implements the source interface, that's fine
 	if (typeToAssignTo.interfaceTokens.contains(sourceType->ClassToken))
+	{
+		return MethodState::Running;
+	}
+
+	// if the assignment target is an interface implemented by source, that's fine
+	if (sourceType->interfaceTokens.contains(typeToAssignTo.ClassToken))
 	{
 		return MethodState::Running;
 	}
