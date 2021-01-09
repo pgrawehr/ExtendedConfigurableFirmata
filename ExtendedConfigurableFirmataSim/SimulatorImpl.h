@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "WProgram.h"
 #include "HardwareSerial.h"
 
@@ -8,9 +8,13 @@
 class NetworkConnection : public Serial
 {
 private:
+	static const int DATA_BUF_SIZE = 256;
 	SOCKET _listen;
 	SOCKET _client;
 	WSADATA _data;
+	byte _dataBuf[DATA_BUF_SIZE];
+	int _writeOffset;
+	int _readOffset;
 public:
 	NetworkConnection();
 	

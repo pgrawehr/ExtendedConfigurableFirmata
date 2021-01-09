@@ -1,4 +1,4 @@
-#include "WProgram.h"
+﻿#include "WProgram.h"
 #include <utility/Boards.h>
 
 #include "SimulatorImpl.h"
@@ -112,6 +112,9 @@ NetworkConnection::NetworkConnection()
 {
 	_listen = INVALID_SOCKET;
 	_client = INVALID_SOCKET;
+	memset(_dataBuf, 0, DATA_BUF_SIZE);
+	_readOffset = 0;
+	_writeOffset = 0;
 }
 
 NetworkConnection::~NetworkConnection()
@@ -121,6 +124,7 @@ NetworkConnection::~NetworkConnection()
 
 void NetworkConnection::begin(int baudRate)
 {
+	_readOffset = _writeOffset = 0;
 	int iResult = WSAStartup(MAKEWORD(2, 2), &_data);
 	if (iResult != NO_ERROR) {
 		wprintf(L"Error at WSAStartup()\n");
@@ -207,6 +211,8 @@ void NetworkConnection::acceptNew()
 		auto error = WSAGetLastError();
 		wprintf(L"Socket error when setting to non-blocking mode: %d\n", error);
 	}
+	
+	_readOffset = _writeOffset = 0;
 }
 
 void NetworkConnection::end()
@@ -219,13 +225,21 @@ void NetworkConnection::end()
 
 int NetworkConnection::read()
 {
-	// Receive single bytes only
-	char buf[1];
-	int ret = recv(_client, buf, 1, 0);
+	if (_readOffset != _writeOffset)
+	{
+		int valueToReturn = _dataBuf[_readOffset] & 0xFF; // Otherwise, this is sign-extended here
+		_readOffset = (_readOffset + 1) % DATA_BUF_SIZE;
+		return valueToReturn;
+	}
+	
+	char buf[DATA_BUF_SIZE];
+	int ret = recv(_client, buf, DATA_BUF_SIZE - _writeOffset, 0);
 	
 	if (ret > 0)
 	{
-		return buf[0] & 0xFF; // Otherwise, this is sign-extended here
+		memcpy(_dataBuf + _writeOffset, buf, ret);
+		_writeOffset = (_writeOffset + ret) % DATA_BUF_SIZE;
+		return read(); // Recurse (should exit trough the case above now)
 	}
 
 	if (ret < 0)
@@ -259,6 +273,11 @@ int NetworkConnection::available()
 	{
 		acceptNew();
 		return 0;
+	}
+
+	if (_writeOffset != _readOffset)
+	{
+		return 1;
 	}
 	
 	char buf[1];
