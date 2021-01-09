@@ -403,7 +403,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	method->numArgs = argCount; // Argument count
 	method->methodToken = token;
 
-	Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags);
+	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags));
 	return ExecutionError::None;
 }
 
@@ -476,22 +476,17 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLe
 			Firmata.sendString(F("Not enough memory. "), codeLength);
 			return ExecutionError::OutOfMemory;
 		}
-		int j = 0;
-		for (byte i = 0; i < argc; i += 2) 
-		{
-			  decodedIl[j++] = argv[i] + (argv[i + 1] << 7);
-		}
+
+		int numToDecode = num7BitOutbytes(argc);
+		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
 		method->methodLength = codeLength;
 		method->methodIl = decodedIl;
 	}
 	else 
 	{
 		byte* decodedIl = method->methodIl + offset;
-		int j = 0;
-		for (byte i = 0; i < argc; i += 2) 
-		{
-			  decodedIl[j++] = argv[i] + (argv[i + 1] << 7);
-		}
+		int numToDecode = num7BitOutbytes(argc);
+		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
 	}
 
 	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset));
