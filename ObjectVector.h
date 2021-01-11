@@ -63,7 +63,7 @@ namespace stdSimple
 			{
 				if (_size == 0)
 				{
-					_size = 10;
+					_size = 4;
 					_data = (T*)malloc(_size * sizeof(T));
 					if (_data == nullptr)
 					{
@@ -72,7 +72,7 @@ namespace stdSimple
 				}
 				else
 				{
-					_size *= 2;
+					_size += 4;
 					_data = (T*)realloc(_data, _size * sizeof(T));
 					if (_data == nullptr)
 					{
@@ -113,6 +113,15 @@ namespace stdSimple
 				
 				_data[_count++] = object;
 			}
+		}
+
+		/// <summary>
+		/// Releases excess memory that was previously reserved
+		/// </summary>
+		void truncate()
+		{
+			_size = _count;
+			_data = (T*)realloc(_data, _size * sizeof(T));
 		}
 
 		void pop_back()

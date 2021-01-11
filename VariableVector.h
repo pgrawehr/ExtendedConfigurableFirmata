@@ -30,6 +30,7 @@ public:
 		if (_data != nullptr)
 		{
 			free(_data);
+			_data = nullptr;
 		}
 
 		if (size > 0)

@@ -100,94 +100,111 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			return true;
 		}
 
-		switch (subCommand)
+		try
 		{
-		case ExecutorCommand::LoadIl:
-			if (argc < 8)
+			switch (subCommand)
 			{
-				Firmata.sendString(F("Not enough IL data parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-				return true;
-			}
-			// 14-bit values transmitted for length and offset
-			SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 8));
-			break;
-		case ExecutorCommand::StartTask:
-			DecodeParametersAndExecute(DecodePackedUint14(argv + 2), argc - 4, argv + 4);
-			SendAckOrNack(subCommand, ExecutionError::None);
-			break;
-		case ExecutorCommand::DeclareMethod:
-			if (argc < 6)
-			{
-				Firmata.sendString(F("Not enough IL data parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-				return true;
-			}
-			SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], argv[6],
-				(NativeMethod)DecodePackedUint32(argv + 7), DecodePackedUint32(argv + 7 + 5)));
-			break;
-		case ExecutorCommand::MethodSignature:
-			if (argc < 4)
-			{
-				Firmata.sendString(F("Not enough IL data parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-				return true;
-			}
-			SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
-			break;
-		case ExecutorCommand::ClassDeclaration:
-			if (argc < 19)
-			{
-				Firmata.sendString(F("Not enough IL data parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-			}
+			case ExecutorCommand::LoadIl:
+				if (argc < 8)
+				{
+					Firmata.sendString(F("Not enough IL data parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					return true;
+				}
+				// 14-bit values transmitted for length and offset
+				SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 8));
+				break;
+			case ExecutorCommand::StartTask:
+				DecodeParametersAndExecute(DecodePackedUint14(argv + 2), argc - 4, argv + 4);
+				SendAckOrNack(subCommand, ExecutionError::None);
+				break;
+			case ExecutorCommand::DeclareMethod:
+				if (argc < 6)
+				{
+					Firmata.sendString(F("Not enough IL data parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					return true;
+				}
+				SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], argv[6],
+					(NativeMethod)DecodePackedUint32(argv + 7), DecodePackedUint32(argv + 7 + 5)));
+				break;
+			case ExecutorCommand::MethodSignature:
+				if (argc < 4)
+				{
+					Firmata.sendString(F("Not enough IL data parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					return true;
+				}
+				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
+				break;
+			case ExecutorCommand::ClassDeclaration:
+				if (argc < 19)
+				{
+					Firmata.sendString(F("Not enough IL data parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+				}
 
-			SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
-				DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
-				DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
-			break;
-		case ExecutorCommand::Interfaces:
-			if (argc < 6)
-			{
-				Firmata.sendString(F("Not enough parameters"));
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-			}
-			SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
-			break;
-		case ExecutorCommand::SendObject:
-			// Not implemented
-			ReceiveObjectData(argc, argv);
-			SendAckOrNack(subCommand, ExecutionError::None);
-			break;
-		case ExecutorCommand::ConstantData:
-			SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), 
-				DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
-			break;
-		case ExecutorCommand::ResetExecutor:
-			if (argv[2] == 1)
+				SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
+					DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
+					DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
+				break;
+			case ExecutorCommand::Interfaces:
+				if (argc < 6)
+				{
+					Firmata.sendString(F("Not enough parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+				}
+				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
+				break;
+			case ExecutorCommand::SendObject:
+				// Not implemented
+				ReceiveObjectData(argc, argv);
+				SendAckOrNack(subCommand, ExecutionError::None);
+				break;
+			case ExecutorCommand::ConstantData:
+				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
+					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
+				break;
+			case ExecutorCommand::ResetExecutor:
+				if (argv[2] == 1)
+				{
+					KillCurrentTask();
+					reset();
+					SendAckOrNack(subCommand, ExecutionError::None);
+				}
+				else
+				{
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+				}
+				break;
+			case ExecutorCommand::KillTask:
 			{
 				KillCurrentTask();
-				reset();
 				SendAckOrNack(subCommand, ExecutionError::None);
+				break;
 			}
-			else
-			{
+			default:
+				// Unknown command
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-			}
-			break;
-		case ExecutorCommand::KillTask:
-		{
-			KillCurrentTask();
-			SendAckOrNack(subCommand, ExecutionError::None);
-			break;
+				break;
+
+			} // End of switch
 		}
-		default:
-			// Unknown command
-			SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
-			break;
-
-		} // End of switch
-
+		catch(ExecutionEngineException& ex)
+		{
+			Firmata.sendString(STRING_DATA, ex.Message());
+			SendAckOrNack(subCommand, ExecutionError::InternalError);
+		}
+		catch(OutOfMemoryException& ox)
+		{
+			Firmata.sendString(STRING_DATA, "Out of memory loading data");
+			SendAckOrNack(subCommand, ExecutionError::OutOfMemory);
+		}
+		catch(Exception& ex)
+		{
+			Firmata.sendString(STRING_DATA, ex.Message());
+			SendAckOrNack(subCommand, ExecutionError::InternalError);
+		}
 		return true;
 	}
 	return false;
@@ -392,6 +409,10 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	else
 	{
 		method = new MethodBody();
+		if (method == nullptr)
+		{
+			return ExecutionError::OutOfMemory;
+		}
 		method->codeReference = codeReference;
 		// And immediately attach to the list
 		AttachToMethodList(method);
@@ -602,6 +623,10 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	MethodBody* method = GetMethodByCodeReference(codeReference);
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
 	ExecutionState* rootState = new ExecutionState(codeReference, method->maxStack, method);
+	if (rootState == nullptr)
+	{
+		OutOfMemoryException::Throw();
+	}
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
 	for (int i = 0; i < method->numArgs; i++)
@@ -2594,7 +2619,7 @@ bool ImplementsMethodDirectly(ClassDeclaration& cls, int32_t methodToken)
 			return true;
 		}
 
-		for (auto k = m->declarationTokens.begin(); m->declarationTokens.end(); ++k)
+		for (auto k = m->declarationTokens.begin(); k != m->declarationTokens.end(); ++k)
 		{
 			if (*k == methodToken)
 			{
@@ -3339,6 +3364,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
 				// to calculate on void types)
 				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxStack, newMethod);
+				if (newState == nullptr)
+				{
+					// Could also send a stack overflow exception here, but the reason is the same
+					OutOfMemoryException::Throw();
+				}
 				currentFrame->_next = newState;
 				
 				VariableDynamicStack* oldStack = stack;
@@ -4143,7 +4173,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
-	Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize);
+	TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
 	bool alreadyExists = _classes.contains(classToken);
 
 	ClassDeclaration* decl;

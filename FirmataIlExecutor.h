@@ -71,6 +71,7 @@ enum class ExecutionError : byte
 	EngineBusy = 1,
 	InvalidArguments = 2,
 	OutOfMemory = 3,
+	InternalError = 4,
 };
 
 enum class KnownTypeTokens
@@ -324,8 +325,9 @@ public:
 	u16 methodLength;
 	u16 codeReference;
 	byte maxStack;
-	vector<VariableDescription> localTypes;
 	byte numArgs;
+	
+	vector<VariableDescription> localTypes;
 	vector<VariableDescription> argumentTypes;
 	byte* methodIl;
 	// Native method number
