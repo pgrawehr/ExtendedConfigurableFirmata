@@ -39,7 +39,7 @@ enum class ExecutorCommand : byte
 	KillTask = 6,
 	MethodSignature = 7,
 	ClassDeclaration = 8,
-	SendObject = 9,
+	ClassDeclarationEnd = 9,
 	ConstantData = 10,
 	Interfaces = 11,
 	
@@ -435,8 +435,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
-	ExecutionError LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
-	ExecutionError ReceiveObjectData(byte argc, byte* argv);
+	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);

@@ -137,16 +137,21 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
 				break;
+			case ExecutorCommand::ClassDeclarationEnd:
 			case ExecutorCommand::ClassDeclaration:
+			{
 				if (argc < 19)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
 					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 				}
 
-				SendAckOrNack(subCommand, LoadClassSignature(DecodePackedUint32(argv + 2),
+				bool isLastPart = subCommand == ExecutorCommand::ClassDeclarationEnd;
+				SendAckOrNack(subCommand, LoadClassSignature(isLastPart,
+					DecodePackedUint32(argv + 2),
 					DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
 					DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
+			}
 				break;
 			case ExecutorCommand::Interfaces:
 				if (argc < 6)
@@ -156,11 +161,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
 				break;
-			case ExecutorCommand::SendObject:
-				// Not implemented
-				ReceiveObjectData(argc, argv);
-				SendAckOrNack(subCommand, ExecutionError::None);
-				break;
+			
 			case ExecutorCommand::ConstantData:
 				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
@@ -195,7 +196,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			Firmata.sendString(STRING_DATA, ex.Message());
 			SendAckOrNack(subCommand, ExecutionError::InternalError);
 		}
-		catch(OutOfMemoryException& ox)
+		catch(OutOfMemoryException&)
 		{
 			Firmata.sendString(STRING_DATA, "Out of memory loading data");
 			SendAckOrNack(subCommand, ExecutionError::OutOfMemory);
@@ -226,18 +227,6 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command,
 	data = _constants.at(constantToken);
 	Encoder7Bit.readBinary(numToDecode, argv, data + offset);
 	
-	return ExecutionError::None;
-}
-
-ExecutionError FirmataIlExecutor::ReceiveObjectData(byte argc, byte* argv)
-{
-	// Parameters are (all of type int32)
-	// 1 - Class type of target
-	// 2 - Member of target
-	// 3 - Instance or null for static members
-	// 4 - Operation flags (i.e. newobj
-	// 5 - Index if target is an array
-	// 6 - value
 	return ExecutionError::None;
 }
 
@@ -4171,7 +4160,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 	return cls->ClassDynamicSize + sizeof(void*);
 }
 
-ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
 	TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
 	bool alreadyExists = _classes.contains(classToken);
@@ -4220,6 +4209,11 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 	{
 		v.setSize(DecodePackedUint14(argv + i));
 		decl->fieldTypes.push_back(v);
+		if (isLastPart)
+		{
+			decl->fieldTypes.truncate();
+			decl->methodTypes.truncate();
+		}
 		return ExecutionError::None;
 	}
 
@@ -4235,6 +4229,11 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(u32 classToken, u32 parent,
 		me2.declarationTokens.push_back(DecodePackedUint32(argv + i));
 	}
 
+	if (isLastPart)
+	{
+		decl->fieldTypes.truncate();
+		decl->methodTypes.truncate();
+	}
 	return ExecutionError::None;
 }
 
