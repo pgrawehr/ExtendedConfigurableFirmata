@@ -268,7 +268,7 @@ byte* AllocGcInstance(size_t bytes)
 	byte* ret = (byte*)malloc(bytes);
 	if (ret == nullptr)
 	{
-		return nullptr;
+		OutOfMemoryException::Throw();
 	}
 	
 	memset(ret, 0, bytes);
@@ -1007,6 +1007,16 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// IsEnum returns true for enum types, but not if the type itself is "System.Enum".
 			result.Boolean = t1.ParentToken == (int)KnownTypeTokens::Enum;
 	}
+	case NativeMethod::TypeIsValueType:
+		{
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
+			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			result.Type = VariableKind::Boolean;
+			result.Boolean = t1.ValueType;
+		}
 		break;
 	case NativeMethod::TypeGetGenericArguments:
 		ASSERT(args.size() == 1);
@@ -1068,6 +1078,22 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// This just returns a null pointer
 		result.Object = nullptr;
 		result.Type = VariableKind::AddressOfVariable;
+		}
+		break;
+	case NativeMethod::StringCompareTo:
+		{
+			ASSERT(args.size() == 2);
+			result.Type = VariableKind::Int32;
+			result.setSize(4);
+			Variable& other = args[1];
+			if (other.Object == nullptr)
+			{
+				result.Int32 = 1; // by definition, this returns >0 for comparing to null
+			}
+			else
+			{
+				result.Int32 = strcmp(AddBytes((char*)args[0].Object, 8), AddBytes((char*)args[1].Object, 8));
+			}
 		}
 		break;
 	default:
@@ -2027,6 +2053,41 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			*pTarget = (byte)value2.Uint32;
 		}
 		break;
+	case CEE_STIND_I2:
+	{
+		// Store a byte (i.e. a bool) to the place where value1 points to
+		int16_t* pTarget = (int16_t*)value1.Object;
+		*pTarget = (int16_t)value2.Uint32;
+	}
+	break;
+	case CEE_STIND_I4:
+	{
+		// Store a byte (i.e. a bool) to the place where value1 points to
+		int32_t* pTarget = (int32_t*)value1.Object;
+		*pTarget = value2.Int32;
+	}
+	break;
+	case CEE_STIND_R4:
+	{
+		// Store a byte (i.e. a bool) to the place where value1 points to
+		float* pTarget = (float*)value1.Object;
+		*pTarget = value2.Float;
+	}
+	break;
+	case CEE_STIND_R8:
+	{
+		// Store a byte (i.e. a bool) to the place where value1 points to
+		double* pTarget = (double*)value1.Object;
+		*pTarget = value2.Double;
+	}
+	break;
+	case CEE_STIND_I8:
+	{
+		// Store a byte (i.e. a bool) to the place where value1 points to
+		int64_t* pTarget = (int64_t*)value1.Object;
+		*pTarget = value2.Int64;
+	}
+	break;
 	case CEE_STIND_REF:
 		{
 			uint32_t* pTarget = (uint32_t*)value1.Object;
@@ -2492,6 +2553,59 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 	}\
 	tempVariable->Uint64 = 0;
 
+/// <summary>
+/// Boxes a value type
+/// </summary>
+/// <param name="value">Instance of value type to be boxed</param>
+/// <param name="ty">Type of value and type of boxed object</param>
+/// <returns>An object that represents the boxed variable (of type object)</returns>
+Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration& ty)
+{
+	// TODO: This requires special handling for types derived from Nullable<T>
+
+	// Here, the boxed size is expected
+	size_t sizeOfClass = SizeOfClass(&ty);
+	TRACE(Firmata.sendString(F("Boxed class size is 0x"), sizeOfClass));
+	void* ret = AllocGcInstance(sizeOfClass);
+
+	// Save a reference to the class declaration in the first entry of the newly created instance.
+	// this will serve as vtable.
+	ClassDeclaration** vtable = (ClassDeclaration**)ret;
+	*vtable = &ty;
+	Variable r;
+	r.Marker = VARIABLE_DEFAULT_MARKER;
+	r.setSize(4);
+	r.Object = ret;
+	r.Type = VariableKind::Object;
+	// Copy the value to the newly allocated boxed instance
+	memcpy(AddBytes(ret, sizeof(void*)), &value.Int32, value.fieldSize());
+	return r;
+}
+
+/// <summary>
+/// Returns true if the class directly implements the given method. Only returns correct results for value types so far. 
+/// </summary>
+bool ImplementsMethodDirectly(ClassDeclaration& cls, int32_t methodToken)
+{
+	for(auto m = cls.methodTypes.begin(); m != cls.methodTypes.end(); ++m)
+	{
+		if (m->token == methodToken)
+		{
+			return true;
+		}
+
+		for (auto k = m->declarationTokens.begin(); m->declarationTokens.end(); ++k)
+		{
+			if (*k == methodToken)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -2531,6 +2645,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	// and check for other tasks (i.e. serial input data)
     while (instructionsExecuted < NUM_INSTRUCTIONS_AT_ONCE)
     {
+    	immediatellyContinue: // Label used by prefix codes, to prevent interruption
 		instructionsExecuted++;
 		
 		u16   len;
@@ -3075,9 +3190,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						if (cls->ValueType)
 						{
 							// This will be the this pointer for a method call on a value type (we'll have to do a real boxing if the
-							// callee is virtual (can only be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
-							// System.Object, System.Enum or System.ValueType)
-							if (newMethod->methodFlags & (int)MethodFlags::Virtual)
+							// callee is virtual (can be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
+							// System.Object, System.Enum or System.ValueType OR a method implementing an interface)
+							if (!ImplementsMethodDirectly(*cls, newMethod->methodToken))
+							{
+								// Box. Actually a rare case.
+								instance = Box(instance, *cls);
+							}
+							// otherwise just passes the reference unmodified as this pointer (the this pointer on a value type method call is 
+							
+							/* if (newMethod->methodFlags & (int)MethodFlags::Virtual)
 							{
 								size_t sizeOfClass = SizeOfClass(cls);
 								void* ret = AllocGcInstance(sizeOfClass);
@@ -3102,7 +3224,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								// TODO: Untested case - test!!
 								ExceptionOccurred(currentFrame, SystemException::InvalidOperation, constrainedTypeToken);
 								return MethodState::Aborted;
-							}
+							}*/
 						}
 						else
 						{
@@ -3112,12 +3234,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 					}
 					
-					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray && instance.Type != VariableKind::ReferenceArray)
-					{
-						Firmata.sendString(F("Virtual function call on something that is not an object"));
-						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
-						return MethodState::Aborted;
-					}
 					if (instance.Object == nullptr)
 					{
 						if (newMethod->nativeMethod != NativeMethod::None)
@@ -3136,6 +3252,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						byte* o = (byte*)instance.Object;
 						// Get the first data element of where the object points to
 						cls = ((ClassDeclaration*)(*(int*)o));
+					}
+
+					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray &&
+						instance.Type != VariableKind::ReferenceArray && instance.Type != VariableKind::AddressOfVariable)
+					{
+						Firmata.sendString(F("Virtual function call on something that is not an object"));
+						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
+						return MethodState::Aborted;
 					}
 					for (Method* met = cls->methodTypes.begin(); met != cls->methodTypes.end(); ++met)
 					{
@@ -3555,38 +3679,22 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (_classes.contains(token))
 					{
 						ClassDeclaration& ty = _classes.at(token);
-						Variable r;
 						if (ty.ValueType)
 						{
-							// TODO: This requires special handling for types derived from Nullable<T>
-
-							// Here, the boxed size is expected
-							size_t sizeOfClass = SizeOfClass(&ty);
-							TRACE(Firmata.sendString(F("Boxed class size is 0x"), sizeOfClass));
-							void* ret = AllocGcInstance(sizeOfClass);
-							if (ret == nullptr)
-							{
-								ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
-								return MethodState::Aborted;
-							}
-
-							// Save a reference to the class declaration in the first entry of the newly created instance.
-							// this will serve as vtable.
-							ClassDeclaration** vtable = (ClassDeclaration**)ret;
-							*vtable = &ty;
-							
-							r.Object = ret;
-							r.Type = VariableKind::Object;
-							// Copy the value to the newly allocated boxed instance (just the first member for now)
-							memcpy(AddBytes(ret,sizeof(void*)), &value1.Int32, value1.fieldSize());
+							Variable r = Box(value1, ty);
+							stack->push(r);
 						}
 						else
 						{
 							// If ty is a reference type, box does nothing
+							Variable r;
+							r.Marker = VARIABLE_DEFAULT_MARKER;
+							r.setSize(4);
 							r.Object = value1.Object;
 							r.Type = value1.Type;
+							stack->push(r);
 						}
-						stack->push(r);
+						
 					}
 					else
 					{
@@ -3730,7 +3838,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				case CEE_CONSTRAINED_:
 					constrainedTypeToken = token; // This is always immediately followed by a callvirt
-					break;
+					goto immediatellyContinue;
 
 				case CEE_LDOBJ:
 				{
@@ -3819,10 +3927,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							data = _constants.at(token);
 						}
-						
-						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length * 2); // *2, because length is in chars here
+
+						// TODO: Check string behavior, because we have only ASCII strings here.
+						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); 
 						// The string data is stored inline in the class data junk
-						memcpy(classInstance + 8, data, length * 2);
+						memcpy(classInstance + 8, data, length);
+						*AddBytes(classInstance, 8 + length) = 0; // Add terminating 0 (the constant array does not include these)
 						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
 						
 						// Length

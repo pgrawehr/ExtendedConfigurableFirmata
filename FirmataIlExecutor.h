@@ -194,7 +194,8 @@ enum class NativeMethod
 	RuntimeTypeHandleValue,
 	MiniRuntimeTypeHandleGetCorElementType,
 	Interop_GlobalizationGetCalendarInfo,
-	InteropGetRandomBytes
+	InteropGetRandomBytes,
+	StringCompareTo
 };
 
 enum class SystemException
@@ -447,6 +448,7 @@ class FirmataIlExecutor: public FirmataFeature
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
+	Variable Box(Variable& value1, ClassDeclaration& ty);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
