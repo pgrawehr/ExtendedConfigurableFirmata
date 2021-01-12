@@ -3,6 +3,8 @@
 #ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict
 extern "C" char* sbrk(int incr);
+#elsif defined (ESP32)
+extern "C" char* sbrk(ptrdiff_t incr);
 #else  // __ARM__
 extern char *__brkval;
 #endif  // __arm__
@@ -20,7 +22,7 @@ static int freeMemory()
 static int freeMemory() 
 {
   char top;
-#ifdef __arm__
+#if defined(__arm__) || defined(ESP32)
   return &top - reinterpret_cast<char*>(sbrk(0));
 #elif defined(CORE_TEENSY) || (ARDUINO > 103 && ARDUINO != 151)
   return &top - __brkval;
