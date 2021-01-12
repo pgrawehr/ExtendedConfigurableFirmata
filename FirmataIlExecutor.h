@@ -23,6 +23,10 @@
 #include "VariableVector.h"
 #include "VariableDynamicStack.h"
 #include "VariableList.h"
+#include "NativeMethod.h"
+#include "SystemException.h"
+#include "MethodFlags.h"
+#include "KnownTypeTokens.h"
 
 using namespace stdSimple;
 
@@ -47,16 +51,6 @@ enum class ExecutorCommand : byte
 	Ack = 0x7f,
 };
 
-enum class MethodFlags
-{
-	Static = 1,
-	Virtual = 2,
-	Special = 4,
-	Void = 8,
-	Ctor = 16,
-	Abstract = 32
-};
-
 enum class MethodState
 {
 	Stopped = 0,
@@ -74,149 +68,9 @@ enum class ExecutionError : byte
 	InternalError = 4,
 };
 
-enum class KnownTypeTokens
-{
-	None = 0,
-	Object = 1,
-	Type = 2,
-	ValueType = 3,
-	String = 4,
-	TypeInfo = 5,
-	RuntimeType = 6,
-	Nullable = 7,
-	Enum = 8,
-	Array = 9,
-	LargestKnownTypeToken = 20,
-};
-
 #define GENERIC_TOKEN_MASK 0xFF800000
 #define NULLABLE_TOKEN_MASK 0x00800000
 
-
-enum class NativeMethod
-{
-	None = 0,
-	SetPinMode,
-	WritePin,
-	ReadPin,
-	EnvironmentTickCount,
-	SleepMicroseconds,
-	GetMicroseconds,
-	Debug,
-	ObjectEquals,
-	ObjectGetHashCode,
-	ObjectReferenceEquals,
-	ObjectToString,
-	GetType,
-	GetHashCode,
-	ArrayCopy5,
-	StringCtor0,
-	StringLength,
-	MonitorEnter1,
-	MonitorEnter2,
-	MonitorExit,
-	StringIndexer,
-	StringFormat2,
-	StringFormat2b,
-	DefaultEqualityComparer,
-	ArrayCopy3,
-	StringFormat3,
-	ArrayClone,
-	GetPinMode,
-	IsPinModeSupported,
-	GetPinCount,
-	RuntimeHelpersInitializeArray,
-	RuntimeHelpersRunClassConstructor,
-	FailFast1,
-	FailFast2,
-
-	TypeGetTypeFromHandle,
-	TypeEquals,
-	TypeIsAssignableTo,
-	TypeIsEnum,
-	TypeTypeHandle,
-	TypeIsValueType,
-	TypeIsSubclassOf,
-	TypeIsAssignableFrom,
-	TypeCtor,
-	TypeMakeGenericType,
-	TypeGetHashCode,
-	TypeGetGenericTypeDefinition,
-	TypeGetGenericArguments,
-
-	CreateInstanceForAnotherGenericParameter,
-	ValueTypeGetHashCode,
-	ValueTypeEquals,
-	ValueTypeToString,
-	ArrayClear,
-	StringEquals,
-	StringToString,
-	StringGetHashCode,
-	StringConcat2,
-	StringConcat3,
-	StringConcat4,
-	StringCtor2,
-	StringSetElem,
-	StringGetElem,
-	StringGetPinnableReference,
-	BitConverterSingleToInt32Bits,
-	StringEqualsStatic,
-	BitOperationsLog2SoftwareFallback,
-	BitOperationsTrailingZeroCount,
-	StringFastAllocateString,
-	EnumGetHashCode,
-	EumToUInt64,
-	UnsafeNullRef,
-	UnsafeAs2,
-	UnsafeAddByteOffset,
-	UnsafeSizeOfType,
-	StringGetRawStringData,
-	RuntimeHelpersIsReferenceOrContainsReferencesCore,
-	StringCtor1,
-	UnsafeAsPointer,
-	StringEqualsStringComparison,
-	StringInternalAllocateString,
-	ArrayResize,
-	UnsafeByteOffset,
-	UnsafeAreSame,
-	BufferMemmove,
-	BufferMemmoveRefArgs,
-	StringMiniStringConversion,
-	StringUnEqualsStatic,
-	RuntimeHelpersGetHashCode,
-	RuntimeHelpersIsBitwiseEquatable,
-	RuntimeHelpersGetMethodTable,
-	RuntimeHelpersGetRawArrayData,
-	UnsafeIsAddressGreaterThan,
-	UnsafeIsAddressLessThan,
-	ObjectMemberwiseClone,
-	MiniBuffer_BulkMoveWithWriteBarrier,
-	MiniBuffer_ZeroMemory,
-	RuntimeTypeHandleValue,
-	MiniRuntimeTypeHandleGetCorElementType,
-	Interop_GlobalizationGetCalendarInfo,
-	InteropGetRandomBytes,
-	StringCompareTo
-};
-
-enum class SystemException
-{
-	None = 0,
-	StackOverflow = 1,
-	NullReference = 2,
-	MissingMethod = 3,
-	InvalidOpCode = 4,
-	DivideByZero = 5,
-	IndexOutOfRange = 6,
-	OutOfMemory = 7,
-	ArrayTypeMismatch = 8,
-	InvalidOperation = 9,
-	ClassNotFound = 10,
-	InvalidCast = 11,
-	NotSupported = 12,
-	CustomException = 13,
-	FieldAccess = 14,
-};
 
 struct Method
 {
@@ -439,7 +293,9 @@ class FirmataIlExecutor: public FirmataFeature
     
     boolean handleSysex(byte command, byte argc, byte* argv) override;
     void reset() override;
-	void report(bool elapsed);
+	void report(bool elapsed) override;
+
+	void Init();
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);

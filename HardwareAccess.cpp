@@ -21,7 +21,7 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 {
 	switch(method)
 	{
-	case NativeMethod::SetPinMode: // PinMode(int pin, PinMode mode)
+	case NativeMethod::HardwareLevelAccessSetPinMode: // PinMode(int pin, PinMode mode)
 	{
 		byte pin = (byte)args[1].Int32;
 
@@ -43,11 +43,11 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 
 		break;
 	}
-	case NativeMethod::WritePin: // Write(int pin, int value)
+	case NativeMethod::HardwareLevelAccessWritePin: // Write(int pin, int value)
 			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
 		digitalWrite(args[1].Int32, args[2].Int32 != 0);
 		break;
-	case NativeMethod::ReadPin:
+	case NativeMethod::HardwareLevelAccessReadPin:
 		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
 		break;
 	case NativeMethod::EnvironmentTickCount: // TickCount
@@ -57,28 +57,25 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 		result = { (int32_t)mil, VariableKind::Int32 };
 		break;
 	}
-	case NativeMethod::SleepMicroseconds:
+	case NativeMethod::ArduinoNativeHelpersSleepMicroseconds:
 		delayMicroseconds(args[0].Uint32);
 		break;
-	case NativeMethod::GetMicroseconds:
+	case NativeMethod::ArduinoNativeHelpersGetMicroseconds:
 		result = { (uint32_t)micros(), VariableKind::Uint32 };
 		break;
-	case NativeMethod::Debug:
-		Firmata.sendString(F("Debug "), args[1].Uint32);
-		break;
-	case NativeMethod::GetPinCount:
+	case NativeMethod::HardwareLevelAccessGetPinCount:
 		ASSERT(args.size() == 1); // unused this pointer
 		result.Int32 = TOTAL_PINS;
 		result.Type = VariableKind::Int32;
 		break;
-	case NativeMethod::IsPinModeSupported:
+	case NativeMethod::HardwareLevelAccessIsPinModeSupported:
 		ASSERT(args.size() == 3);
 		// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
 		// We support Output, Input and PullUp
 		result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
 		result.Type = VariableKind::Boolean;
 		break;
-	case NativeMethod::GetPinMode:
+	case NativeMethod::HardwareLevelAccessGetPinMode:
 	{
 		ASSERT(args.size() == 2);
 		byte mode = Firmata.getPinMode((byte)args[1].Int32);

@@ -66,6 +66,11 @@ FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
 	_firstMethod = nullptr;
+}
+
+void FirmataIlExecutor::Init()
+{
+	// This method is expected to be called at least once on startup
 	SelfTest test;
 	test.PerformSelfTest();
 }
@@ -842,7 +847,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		}
 		break;
 
-	case NativeMethod::CreateInstanceForAnotherGenericParameter:
+	case NativeMethod::TypeCreateInstanceForAnotherGenericParameter:
 		{
 			// The definition of this (private) function isn't 100% clear, but
 			// "CreateInstanceForAnotherGenericType(typeof(List<int>), typeof(bool))" should return an instance(!) of List<bool>.
@@ -2666,7 +2671,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
     	}*/
     	
-    	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Special))
+    	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::SpecialMethod))
 		{
 			NativeMethod specialMethod = currentMethod->nativeMethod;
 

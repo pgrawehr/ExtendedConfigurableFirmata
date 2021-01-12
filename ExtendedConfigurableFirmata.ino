@@ -304,6 +304,10 @@ void setup()
 
 	Firmata.parse(SYSTEM_RESET);
 
+#ifdef ENABLE_IL_EXECUTOR
+	ilExecutor.Init();
+#endif
+
 	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
 

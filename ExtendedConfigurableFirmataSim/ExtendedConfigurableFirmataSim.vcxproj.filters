@@ -201,5 +201,14 @@
     <ClInclude Include="..\HardwareAccess.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="..\KnownTypeTokens.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\MethodFlags.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\NativeMethod.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

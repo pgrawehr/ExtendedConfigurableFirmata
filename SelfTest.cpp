@@ -90,7 +90,9 @@ void SelfTest::ValidateMemoryManager()
 		idx--;
 	}
 
-	ASSERT(totalAllocsSucceeded > 64, "Not enough free memory after init");
+	Firmata.sendStringf(F("Total memory available after init: %dkb"), 4, totalAllocsSucceeded);
+	
+	ASSERT(totalAllocsSucceeded > 90, "Not enough free memory after init");
 }
 
 void SelfTest::ValidateExecutionStack()
