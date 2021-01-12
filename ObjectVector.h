@@ -4,12 +4,12 @@
 
 namespace stdSimple
 {
-	template<class T>
+	template<class T, class TSize = size_t>
 	class vector
 	{
 	private:
-		size_t _size;
-		size_t _count;
+		TSize _size;
+		TSize _count;
 		T* _data;
 	public:
 		typedef T* iterator;
@@ -126,7 +126,7 @@ namespace stdSimple
 
 		void pop_back()
 		{
-			_count--;
+			--_count;
 		}
 
 		T& at(size_t index)

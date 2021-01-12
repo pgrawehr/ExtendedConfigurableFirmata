@@ -24,7 +24,7 @@ public:
 		_size = 0;
 	}
 
-	bool InitDefault(int size, stdSimple::vector<VariableDescription>& variableDescriptions)
+	bool InitDefault(int size, stdSimple::vector<VariableDescription, byte>& variableDescriptions)
 	{
 		_defaultSizesOnly = true;
 		if (_data != nullptr)
@@ -61,7 +61,7 @@ public:
 		return true;
 	}
 
-	bool InitFrom(stdSimple::vector<VariableDescription> &variableDescriptions)
+	bool InitFrom(stdSimple::vector<VariableDescription, byte> &variableDescriptions)
 	{
 		bool canUseDefaultSizes = true;
 		int totalSize = 0;
