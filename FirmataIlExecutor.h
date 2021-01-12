@@ -286,14 +286,14 @@ public:
 class MethodBody
 {
 public:
-	MethodBody()
+	MethodBody(byte flags, byte numArgs, byte maxStack)
 	{
 		methodToken = 0;
-		methodFlags = 0;
+		_methodFlags = flags;
 		methodLength = 0;
 		methodIl = nullptr;
-		maxStack = 0;
-		numArgs = 0;
+		_numArgs = numArgs;
+		_maxStack = maxStack;
 		next = nullptr;
 		codeReference = -1;
 		nativeMethod = NativeMethod::None;
@@ -304,6 +304,7 @@ public:
 		Clear();
 	}
 
+private:
 	/// <summary>
 	/// Clear the current entry, so it can be reused.
 	/// </summary>
@@ -320,19 +321,37 @@ public:
 		codeReference = -1;
 	}
 
+public:
+	byte NumberOfArguments() const
+	{
+		return _numArgs;
+	}
+
+	byte MaxExecutionStack() const
+	{
+		return _maxStack;
+	}
+
+	byte MethodFlags() const
+	{
+		return _methodFlags;
+	}
+
 	int32_t methodToken; // Primary method token (a methodDef token)
-	byte methodFlags;
 	u16 methodLength;
 	u16 codeReference;
-	byte maxStack;
-	byte numArgs;
 	
-	vector<VariableDescription> localTypes;
-	vector<VariableDescription> argumentTypes;
+	vector<VariableDescription, byte> localTypes;
+	vector<VariableDescription, byte> argumentTypes;
 	byte* methodIl;
 	// Native method number
 	NativeMethod nativeMethod;
 	MethodBody* next;
+
+private:
+	byte _numArgs;
+	byte _maxStack;
+	byte _methodFlags;
 };
 
 class ExecutionState

@@ -392,25 +392,20 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	MethodBody* method = GetMethodByCodeReference(codeReference);
 	if (method != nullptr)
 	{
-		method->Clear();
-		method->codeReference = codeReference;
-	}
-	else
-	{
-		method = new MethodBody();
-		if (method == nullptr)
-		{
-			return ExecutionError::OutOfMemory;
-		}
-		method->codeReference = codeReference;
-		// And immediately attach to the list
-		AttachToMethodList(method);
+		Firmata.sendString(F("Error: Method already defined"));
+		return ExecutionError::InvalidArguments;
 	}
 
-	method->methodFlags = (byte)flags;
-	method->maxStack = maxStack;
+	method = new MethodBody((byte) flags, (byte)argCount, (byte)maxStack);
+	if (method == nullptr)
+	{
+		return ExecutionError::OutOfMemory;
+	}
+	method->codeReference = codeReference;
+	// And immediately attach to the list
+	AttachToMethodList(method);
+
 	method->nativeMethod = nativeMethod;
-	method->numArgs = argCount; // Argument count
 	method->methodToken = token;
 
 	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags));
@@ -611,14 +606,14 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	Variable result;
 	MethodBody* method = GetMethodByCodeReference(codeReference);
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
-	ExecutionState* rootState = new ExecutionState(codeReference, method->maxStack, method);
+	ExecutionState* rootState = new ExecutionState(codeReference, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
 	{
 		OutOfMemoryException::Throw();
 	}
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
-	for (int i = 0; i < method->numArgs; i++)
+	for (int i = 0; i < method->NumberOfArguments(); i++)
 	{
 		VariableDescription desc = method->argumentTypes[i];
 		VariableKind k = desc.Type;
@@ -2671,7 +2666,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
     	}*/
     	
-    	if (PC == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Special))
+    	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Special))
 		{
 			NativeMethod specialMethod = currentMethod->nativeMethod;
 
@@ -2694,7 +2689,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			
 			// If the method we just terminated is not of type void, we push the result to the 
 			// stack of the calling method
-    		if ((currentMethod->methodFlags & (byte)MethodFlags::Ctor) != 0)
+    		if ((currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) != 0)
     		{
     			// If the method was a ctor, we pick its first argument from the stack
     			// and push it back to the caller. This might be a value type
@@ -2703,7 +2698,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 				stack->push(newInstance);
     		}
-			else if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0)
+			else if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0)
 			{
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 				stack->push(retVal);
@@ -2789,7 +2784,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 					// If the method we just terminated is not of type void, we push the result to the 
 					// stack of the calling method
-					if ((currentMethod->methodFlags & (byte)MethodFlags::Void) == 0 && (currentMethod->methodFlags & (byte)MethodFlags::Ctor) == 0)
+					if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
 					{
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 						stack->push(*var);
@@ -3192,7 +3187,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// For a virtual call, we need to grab the instance we operate on from the stack.
 					// The this pointer for the new method is the object that is last on the stack, so we need to use
 					// the argument count. Fortunately, this also works if so far we only have the abstract base.
-					Variable& instance = stack->nth(newMethod->numArgs - 1); // numArgs includes the this pointer
+					Variable& instance = stack->nth(newMethod->NumberOfArguments() - 1); // numArgs includes the this pointer
 
 					// The constrained prefix just means that it may be a reference. We'll have to check its type
 					// TODO: Add test that checks the different cases
@@ -3304,7 +3299,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				// Call to an abstract base class or an interface method - if this happens,
 				// we've probably not done the virtual function resolution correctly
-				if ((int)newMethod->methodFlags & (int)MethodFlags::Abstract)
+				if ((int)newMethod->MethodFlags() & (int)MethodFlags::Abstract)
 				{
 					Firmata.sendString(F("Call to abstract method 0x"), tk);
 					ExceptionOccurred(currentFrame, SystemException::MissingMethod, tk);
@@ -3349,10 +3344,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	// Save return PC
                 currentFrame->UpdatePc(PC);
 				
-				u16 argumentCount = newMethod->numArgs;
+				u16 argumentCount = newMethod->NumberOfArguments();
 				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
 				// to calculate on void types)
-				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->maxStack, newMethod);
+				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->MaxExecutionStack(), newMethod);
 				if (newState == nullptr)
 				{
 					// Could also send a stack overflow exception here, but the reason is the same
