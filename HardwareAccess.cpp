@@ -3,6 +3,7 @@
 // 
 #include "ConfigurableFirmata.h"
 #include "HardwareAccess.h"
+#include "SelfTest.h"
 
 // this pin is used as input for the random number generator
 const int OPEN_ANALOG_PIN = A0;

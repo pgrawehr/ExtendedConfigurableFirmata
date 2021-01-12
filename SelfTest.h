@@ -9,6 +9,8 @@
 	#include "WProgram.h"
 #endif
 
+#include "Exceptions.h"
+
 class SelfTest
 {
 	bool _statusFlag;
@@ -31,3 +33,5 @@ private:
 };
 #endif
 
+void ASSERT(bool x);
+void ASSERT(bool condition, const char* message);

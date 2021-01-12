@@ -4,12 +4,21 @@
 #include "VariableVector.h"
 #include "VariableDynamicStack.h"
 
-#define ASSERT(x, msg) if (!(x))\
-	{\
-		Firmata.sendString(F(msg));\
-		_statusFlag = false;\
-		return;\
+void ASSERT(bool x)
+{
+	if (!x)
+	{
+		throw stdSimple::ExecutionEngineException("Assertion failed");
 	}
+}
+
+void ASSERT(bool condition, const char* message)
+{
+	if (!condition)
+	{
+		throw stdSimple::ExecutionEngineException(message);
+	}
+}
 
 bool SelfTest::PerformSelfTest()
 {
