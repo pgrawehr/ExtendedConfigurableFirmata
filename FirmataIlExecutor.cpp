@@ -44,9 +44,9 @@ const byte OpcodeInfo[] PROGMEM =
 #define Pop0 0
 #define PopRef 1
 #define PopI 1
-#define PopI8 2
+#define PopI8 1
 #define PopR4 1
-#define PopR8 2
+#define PopR8 1
 const byte OpcodePops[] PROGMEM =
 {
 #define OPDEF(c,s,pop,push,type,args,l,s1,s2,ctrl) pop,
@@ -203,7 +203,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		}
 		catch(OutOfMemoryException&)
 		{
-			Firmata.sendString(STRING_DATA, "Out of memory loading data");
+			Firmata.sendString(F("Out of memory loading data"));
 			SendAckOrNack(subCommand, ExecutionError::OutOfMemory);
 		}
 		catch(Exception& ex)

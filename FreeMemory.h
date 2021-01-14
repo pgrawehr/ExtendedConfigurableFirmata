@@ -3,7 +3,7 @@
 #ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict
 extern "C" char* sbrk(int incr);
-#elsif defined (ESP32)
+#elif defined (ESP32)
 extern "C" char* sbrk(ptrdiff_t incr);
 #else  // __ARM__
 extern char *__brkval;
