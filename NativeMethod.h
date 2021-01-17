@@ -100,4 +100,9 @@ enum class NativeMethod
     InteropGetRandomBytes = 94,
     MiniBuffer_BulkMoveWithWriteBarrier = 95,
     MiniBuffer_ZeroMemory = 96,
+    ArduinoNativeI2cDeviceReadByte = 97,
+    ArduinoNativeI2cDeviceWriteByte = 98,
+    ArduinoNativeI2cDeviceInit = 99,
+    ByReferenceCtor = 100,
+    ByReferenceValue = 101,
 };

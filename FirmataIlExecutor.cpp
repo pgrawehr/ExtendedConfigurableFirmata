@@ -109,6 +109,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		{
 			switch (subCommand)
 			{
+				
 			case ExecutorCommand::LoadIl:
 				if (argc < 8)
 				{
@@ -752,6 +753,27 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			memcpy(targetPtr, field.Object, size * ty.ClassDynamicSize);
 		}
 		break;
+	case NativeMethod::RuntimeHelpersIsReferenceOrContainsReferencesCore:
+		{
+			ASSERT(args.size() == 1);
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			ClassDeclaration& ty = _classes.at(ownToken.Int32);
+			// This is a shortcut for now
+			result.Type = VariableKind::Boolean;
+			if (ty.ValueType)
+			{
+				result.Boolean = false;
+			}
+			else
+			{
+				// result.Boolean = true;
+				// TODO: The above is better, but let's find about a bug first
+				throw ClrException(SystemException::InvalidCast, ownToken.Int32);
+			}
+		}
+		break;
 	case NativeMethod::TypeGetTypeFromHandle:
 		ASSERT(args.size() == 1);
 		{
@@ -1108,6 +1130,16 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			{
 				result.Int32 = strcmp(AddBytes((char*)args[0].Object, 8), AddBytes((char*)args[1].Object, 8));
 			}
+		}
+		break;
+	case NativeMethod::UnsafeAs2:
+		{
+		ASSERT(args.size() == 1);
+			if (args[0].fieldSize() > 8)
+			{
+				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+			}
+			result = args[0];
 		}
 		break;
 	default:
@@ -1617,6 +1649,10 @@ case VariableKind::Uint32:\
 case VariableKind::Uint64:\
 	intermediate.Uint64 = value1.Uint64 op value2.Uint64;\
 	intermediate.Type = VariableKind::Uint64;\
+	break;\
+case VariableKind::AddressOfVariable:\
+	intermediate.Uint32 = value1.Uint32 op value2.Uint32;\
+	intermediate.Type = VariableKind::AddressOfVariable;\
 	break;\
 case VariableKind::Int64:\
 	intermediate.Int64 = value1.Int64 op value2.Int64;\
@@ -2314,7 +2350,6 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		// Luckily, the C++ compiler takes over the actual magic happening in these conversions
 	case CEE_CONV_I:
 	case CEE_CONV_I4:
-	case CEE_CONV_I2:
 		intermediate.Type = VariableKind::Int32;
 		switch (value1.Type)
 		{
@@ -2344,10 +2379,152 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
+	case CEE_CONV_I1:
+	{
+		intermediate.Type = VariableKind::Int32;
+		// This first truncates to 16 bit and then sign-extends
+		int64_t v = (value1.Int64 & 0x00FF);
+		if (v >= 0x80)
+		{
+			v |= ~0x00FF;
+		}
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Int32 = (int)v;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Int32 = (int)v;
+			break;
+		case VariableKind::Int64:
+			intermediate.Int32 = (int)v;
+			break;
+		case VariableKind::Float:
+			intermediate.Int32 = (byte)value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Int32 = (byte)value1.Double;
+			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Int32 = (int32_t)v;
+			intermediate.Type = VariableKind::AddressOfVariable;
+			break;
+		default: // The conv statement never throws
+			intermediate.Int32 = (int32_t)v;
+			break;
+		}
+	}
+		stack->push(intermediate);
 		break;
+	case CEE_CONV_U1:
+	{
+		intermediate.Type = VariableKind::Int32;
+		// This first truncates to 16 bit and then sign-extends
+		uint64_t v = (value1.Uint64 & 0x00FF);
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Uint32 = (unsigned int)v;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Int32 = (unsigned int)v;
+			break;
+		case VariableKind::Int64:
+			intermediate.Int32 = (unsigned int)v;
+			break;
+		case VariableKind::Float:
+			intermediate.Int32 = (uint8_t)value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Int32 = (uint8_t)value1.Double;
+			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Int32 = (int32_t)v;
+			intermediate.Type = VariableKind::AddressOfVariable;
+			break;
+		default: // The conv statement never throws
+			intermediate.Uint32 = (uint8_t)v;
+			break;
+		}
+	}
+		stack->push(intermediate);
+		break;
+	case CEE_CONV_I2:
+		{
+			intermediate.Type = VariableKind::Int32;
+			// This first truncates to 16 bit and then sign-extends
+			int64_t v = (value1.Int64 & 0xFFFF);
+			if (v >= 0x8000)
+			{
+				v |= ~0xFFFF;
+			}
+			switch (value1.Type)
+			{
+			case VariableKind::Int32:
+				intermediate.Int32 = (int)v;
+				break;
+			case VariableKind::Uint32:
+				intermediate.Int32 = (int)v;
+				break;
+			case VariableKind::Int64:
+				intermediate.Int32 = (int)v;
+				break;
+			case VariableKind::Float:
+				intermediate.Int32 = (short)value1.Float;
+				break;
+			case VariableKind::Double:
+				intermediate.Int32 = (short)value1.Double;
+				break;
+			case VariableKind::AddressOfVariable:
+				// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+				intermediate.Int32 = (int32_t)v;
+				intermediate.Type = VariableKind::AddressOfVariable;
+				break;
+			default: // The conv statement never throws
+				intermediate.Int32 = (int32_t)v;
+				break;
+			}
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_CONV_U2:
+	{
+		intermediate.Type = VariableKind::Int32;
+		// This first truncates to 16 bit and then sign-extends
+		uint64_t v = (value1.Uint64 & 0xFFFF);
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Uint32 = (unsigned int)v;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Int32 = (unsigned int)v;
+			break;
+		case VariableKind::Int64:
+			intermediate.Int32 = (unsigned int)v;
+			break;
+		case VariableKind::Float:
+			intermediate.Int32 = (uint16_t)value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Int32 = (uint16_t)value1.Double;
+			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Int32 = (int32_t)v;
+			intermediate.Type = VariableKind::AddressOfVariable;
+			break;
+		default: // The conv statement never throws
+			intermediate.Uint32 = (uint16_t)v;
+			break;
+		}
+	}
+	stack->push(intermediate);
+	break;
 	case CEE_CONV_U:
 	case CEE_CONV_U4:
-	case CEE_CONV_U2:
 		intermediate.Type = VariableKind::Uint32;
 		switch (value1.Type)
 		{
@@ -2485,6 +2662,20 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_VOLATILE_:
 		// Nothing to do really, we're not optimizing anything
+		break;
+	case CEE_LOCALLOC:
+		{
+		Variable temp;
+		temp.Marker = VARIABLE_DECLARATION_MARKER;
+		temp.Type = VariableKind::LargeValueType;
+		temp.setSize((uint16_t)value1.Int32);
+		Variable& newStuff = currentFrame->_localStorage.insert(0, temp);
+		intermediate.Type = VariableKind::AddressOfVariable; // Unmanaged pointer
+		intermediate.Object = &newStuff.Int32;
+		intermediate.Marker = VARIABLE_DEFAULT_MARKER;
+		intermediate.setSize(4);
+		stack->push(intermediate);
+		}
 		break;
 	default:
 		InvalidOpCode(PC, instr);
@@ -3965,6 +4156,21 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						ExceptionOccurred(currentFrame, SystemException::NotSupported, token);
 						return MethodState::Aborted;
+					}
+				}
+				break;
+			case InlineSwitch:
+				{
+					Variable& targetIndex = stack->top();
+					stack->pop();
+					uint32_t size = static_cast<uint32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					int* targets = (int*)AddBytes(pCode, PC + 4);
+					PC += (u16)(4 * (size + 1)); // Point to instruction beyond end of switch
+					if (targetIndex.Uint32 < size) // If the index is out of bounds, we fall trough
+					{
+						int offset = targets[targetIndex.Uint32];
+						int temp = offset + PC;
+						PC = (uint16_t)temp;
 					}
 				}
 				break;

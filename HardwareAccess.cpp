@@ -1,9 +1,12 @@
-﻿// 
-// 
-// 
-#include "ConfigurableFirmata.h"
+﻿
+#include <ConfigurableFirmata.h>
 #include "HardwareAccess.h"
 #include "SelfTest.h"
+#include "I2CFirmata.h"
+#include <Wire.h>
+
+// Reference the instance of the firmata i2c driver
+extern I2CFirmata i2c;
 
 // this pin is used as input for the random number generator
 const int OPEN_ANALOG_PIN = A0;
@@ -28,7 +31,7 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 		if (args[2].Int32 == 0)
 		{
 			// Input
-			Firmata.setPinMode(pin, INPUT);
+			Firmata.setPinMode(pin, MODE_INPUT);
 			Firmata.setPinState(pin, 0);
 		}
 		if (args[2].Int32 == 1) // Must match PullMode enum on C# side
@@ -37,7 +40,7 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 		}
 		if (args[2].Int32 == 3)
 		{
-			Firmata.setPinMode(pin, INPUT);
+			Firmata.setPinMode(pin, MODE_INPUT);
 			Firmata.setPinState(pin, 1);
 		}
 
@@ -79,7 +82,7 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 	{
 		ASSERT(args.size() == 2);
 		byte mode = Firmata.getPinMode((byte)args[1].Int32);
-		if (mode == INPUT)
+		if (mode == MODE_INPUT)
 		{
 			result.Int32 = 0;
 			if (Firmata.getPinState((byte)args[1].Int32) == 1)
@@ -111,6 +114,28 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 		}
 		result.Type = VariableKind::Void;
 	}
+		break;
+
+	case NativeMethod::ArduinoNativeI2cDeviceInit:
+		ASSERT(args.size() == 3); // 0: this, 1: bus id, 2: device address
+	{
+		byte zero[2] = { 0, 0 }; // Delay (0)
+		i2c.handleSysex(I2C_CONFIG, 2, zero); // Configure and enable the bus
+	}
+	break;
+	case NativeMethod::ArduinoNativeI2cDeviceWriteByte:
+		{
+		ASSERT(args.size() == 2);
+		Variable& self = args.at(0);
+		Variable& data = args.at(1);
+		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
+		Variable address = FirmataIlExecutor::GetField(*cls, self, 0);
+		// Since the implementation of I2CFirmata::handleI2CRequest is stateless, we can as well directly call the wire library. It's easier here.
+		// Note that this works only after an init
+		Wire.beginTransmission((byte)address.Int32);
+		Wire.write((byte)data.Int32);
+		Wire.endTransmission();
+		}
 		break;
 	default:
 		return false;

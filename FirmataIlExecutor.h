@@ -214,6 +214,7 @@ class ExecutionState
 	ExecutionState* _next;
 	MethodBody* _executingMethod;
 	RuntimeException* _runtimeException;
+	VariableList _localStorage; // Memory allocated by localloc
 
 	u32 _memoryGuard;
 	
@@ -296,6 +297,11 @@ class FirmataIlExecutor: public FirmataFeature
 	void report(bool elapsed) override;
 
 	void Init();
+public:
+
+	// These are used by HardwareAccess methods
+	static ClassDeclaration* GetClassDeclaration(Variable& obj);
+	static Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
@@ -304,6 +310,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
+	ExecutionError ReserveMemory(uint32_t classes, uint32_t methods, uint32_t constants);
 
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
@@ -333,16 +340,14 @@ class FirmataIlExecutor: public FirmataFeature
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
-    Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
     void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
-    ClassDeclaration* GetClassDeclaration(Variable& obj);
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void* CreateInstance(ClassDeclaration& cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
     ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken);
     ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken);
-    uint16_t SizeOfClass(ClassDeclaration* cls);
+    static uint16_t SizeOfClass(ClassDeclaration* cls);
     MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
