@@ -1116,6 +1116,26 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::AddressOfVariable;
 		}
 		break;
+	case NativeMethod::UnsafeSizeOfType:
+		{
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
+			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			result.Type = VariableKind::Int32;
+			result.Int32 = t1.ClassDynamicSize;
+			result.setSize(4);
+		}
+		break;
+	case NativeMethod::UnsafeAddByteOffset:
+		{
+		ASSERT(args.size() == 2);
+		result.Type = VariableKind::AddressOfVariable;
+		result.Object = AddBytes(args[0].Object, args[1].Int32);
+		result.setSize(4);
+		}
+		break;
 	case NativeMethod::StringCompareTo:
 		{
 			ASSERT(args.size() == 2);
@@ -1137,9 +1157,37 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		ASSERT(args.size() == 1);
 			if (args[0].fieldSize() > 8)
 			{
+				// LargeValueStructs not supported here (TODO)
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
 			result = args[0];
+		}
+		break;
+	case NativeMethod::ByReferenceCtor:
+		{
+		ASSERT(args.size() == 2); // this + object
+		Variable ptr = args[1];
+		Variable& self = args[0]; // ByReference<T> is a struct, therefore the "this" pointer is a reference
+		// *((int*)self.Object) = ptr.Uint32;
+		void** thisPtr = reinterpret_cast<void**>(self.Object);
+		void* val = ptr.Object;
+		*thisPtr = val;
+		// ClassDeclaration* ty = GetClassDeclaration(args[0]);
+		// Variable data(ptr.Uint32, VariableKind::AddressOfVariable);
+		// SetField4(*ty, data, args[0], 0);
+		}
+		break;
+	case NativeMethod::ByReferenceValue:
+		{
+		ASSERT(args.size() == 1); // property getter
+		Variable& self = args[0]; // ByReference<T> is a struct, therefore the "this" pointer is a reference
+		//result.Uint32 = *((int*)self.Object);
+		//result.Type = VariableKind::AddressOfVariable;
+		void** thisPtr = reinterpret_cast<void**>(self.Object);
+		void* value = *thisPtr;
+		result.Type = VariableKind::AddressOfVariable;
+		result.Object = value;
+		result.setSize(4);
 		}
 		break;
 	default:
@@ -2884,17 +2932,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			currentFrame = frame;
 			
 			// If the method we just terminated is not of type void, we push the result to the 
-			// stack of the calling method
-    		if ((currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) != 0)
-    		{
-    			// If the method was a ctor, we pick its first argument from the stack
-    			// and push it back to the caller. This might be a value type
-    			// Note: Rare case here - native ctors are special, but see below
-				Variable& newInstance = arguments->at(0); // reference to the terminating method's arglist
-				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-				stack->push(newInstance);
-    		}
-			else if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0)
+			// stack of the calling method.
+			if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
 			{
 				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
 				stack->push(retVal);
@@ -2979,7 +3018,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					currentFrame = frame;
 
 					// If the method we just terminated is not of type void, we push the result to the 
-					// stack of the calling method
+					// stack of the calling method. If it was a ctor, we have already pushed the return value.
 					if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
 					{
 						currentFrame->ActivateState(&PC, &stack, &locals, &arguments);

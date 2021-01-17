@@ -13,5 +13,6 @@ enum class KnownTypeTokens
     Nullable = 7,
     Enum = 8,
     Array = 9,
+    ByReferenceByte = 10,
     LargestKnownTypeToken = 20,
 };
