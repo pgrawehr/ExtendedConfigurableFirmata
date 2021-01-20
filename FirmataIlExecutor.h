@@ -332,6 +332,7 @@ public:
     void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
+	byte* AllocGcInstance(size_t bytes);
 	bool IsExecutingCode();
 	void KillCurrentTask();
     RuntimeException* UnrollExecutionStack();
@@ -358,6 +359,8 @@ public:
 	void AttachToMethodList(MethodBody* newCode);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
+
+	stdSimple::vector<void*> _gcData;
 	MethodBody* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running

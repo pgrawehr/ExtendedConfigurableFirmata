@@ -92,7 +92,7 @@ void SelfTest::ValidateMemoryManager()
 
 	Firmata.sendStringf(F("Total memory available after init: %dkb"), 4, totalAllocsSucceeded);
 	
-	ASSERT(totalAllocsSucceeded > 90, "Not enough free memory after init");
+	ASSERT(totalAllocsSucceeded >= 82, "Not enough free memory after init");
 }
 
 void SelfTest::ValidateExecutionStack()
@@ -126,9 +126,10 @@ void SelfTest::ValidateExecutionStack()
 
 void SelfTest::UnalignedAccessWorks()
 {
-	int64_t* ptr = (int64_t*)malloc(20);
+	int64_t* ptrStart = (int64_t*)malloc(20);
+	volatile int64_t* ptr = ptrStart;
 	*ptr = -1;
-	int64_t* ptr2 = ptr;
+	volatile int64_t* ptr2 = ptr;
 	ASSERT(*ptr2 == *ptr, "Pointer access error");
 	ptr = AddBytes(ptr, 4);
 	*ptr = 10;
@@ -138,6 +139,14 @@ void SelfTest::UnalignedAccessWorks()
 	volatile int* iPtr = (int*)AddBytes(ptr, 1);
 	*iPtr = 5;
 	ASSERT(*iPtr == 5, "Error in unaligned memory access");
+
+	// 64 bit values can only be read from 4-byte aligned addresses on the Cortex-M3 (Arduino due) it seems. Changing the constant below to 1 or 2 crashes the CPU
+	ptr = AddBytes(ptrStart, 4);
+	*ptr = 10;
+
+	ASSERT(*ptr == 10, "64 Bit memory access error");
+	
+	free(ptrStart);
 }
 
 void SelfTest::CompilerBehavior()

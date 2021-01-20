@@ -275,7 +275,7 @@ bool FirmataIlExecutor::IsExecutingCode()
 }
 
 // TODO: Keep track, implement GC, etc...
-byte* AllocGcInstance(size_t bytes)
+byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
 	byte* ret = (byte*)malloc(bytes);
 	if (ret == nullptr)
@@ -284,6 +284,7 @@ byte* AllocGcInstance(size_t bytes)
 	}
 	
 	memset(ret, 0, bytes);
+	_gcData.push_back(ret);
 	return ret;
 }
 
@@ -1190,6 +1191,16 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.setSize(4);
 		}
 		break;
+	case NativeMethod::StringGetElem:
+		ASSERT(args.size() == 2); // indexer
+	{
+			Variable& self = args[0];
+			byte b = *AddBytes((byte*)self.Object, 8 + args[1].Int32); // String elements are only byte??
+			result.Int32 = b;
+			result.Type = VariableKind::Uint32;
+			result.setSize(2);
+	}
+	break;
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -2904,7 +2915,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		u16   len;
         OPCODE  instr;
 		
-		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
+		Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken);
     	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
@@ -3146,13 +3157,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 			case InlineI8: // LDC.i8 instruction
 			{
-				uint64_t* hlpCodePtr8 = (uint64_t*)(pCode + PC);
-				uint64_t v = *hlpCodePtr8;
+				uint32_t* hlpCodePtr8 = (uint32_t*)(pCode + PC);
+
+				// We need to read the 64 bit value as two 32-bit values, since the CPU crashes on unaligned reads of 64 bit values otherwise
+				int64_t data = ((int64_t)(*hlpCodePtr8)) | ((uint64_t) * (hlpCodePtr8 + 1)) << 32; // Little endian!
 				PC += 8;
 				if (instr == CEE_LDC_I8)
 				{
 					intermediate.Type = VariableKind::Int64;
-					intermediate.Int64 = v;
+					intermediate.Int64 = data;
 					stack->push(intermediate);
 				}
 				else
@@ -3164,13 +3177,20 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			}
 			case InlineR: // LDC.r8 instruction
 			{
-				double* hlpCodePtr8 = (double*)(pCode + PC);
-				double v = *hlpCodePtr8;
+				uint32_t* hlpCodePtr8 = (uint32_t*)(pCode + PC);
+				// Firmata.sendString(F("Before 64 bit access"));
+
+            	// We need to read the 64 bit value as two 32-bit values, since the CPU crashes on unaligned reads of 64 bit values otherwise
+				int64_t data = ((int64_t)(*hlpCodePtr8)) | ((uint64_t)*(hlpCodePtr8 + 1)) << 32; // Little endian!
+				// Firmata.sendString(F("After 64 bit access"));
+				double v = *reinterpret_cast<double*>(&data);
+				Firmata.sendString(F("after conversion access"));
 				PC += 8;
 				if (instr == CEE_LDC_R8)
 				{
 					intermediate.Type = VariableKind::Double;
 					intermediate.Double = v;
+					Firmata.sendString(F("Before push"));
 					stack->push(intermediate);
 				}
 				else
@@ -3185,7 +3205,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				float* hlpCodePtr4 = (float*)(pCode + PC);
 				float v = *hlpCodePtr4;
 				PC += 4;
-				if (instr == CEE_LDC_R8)
+				if (instr == CEE_LDC_R4)
 				{
 					intermediate.Type = VariableKind::Float;
 					intermediate.Float = v;
@@ -3223,6 +3243,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					case CEE_BR:
 					case CEE_BR_S:
+					case CEE_LEAVE: // TODO: That's a very bad shortcut (we're just skipping the finally clauses)
+					case CEE_LEAVE_S:
 						intermediate.Boolean = true;
 						break;
 					case CEE_BEQ:
@@ -4658,5 +4680,17 @@ void FirmataIlExecutor::reset()
 
 	_largeStatics.clear();
 
+	for (int idx = 0; idx < _gcData.size(); idx++)
+	{
+		void* ptr = _gcData[idx];
+		if (ptr != nullptr)
+		{
+			free(ptr);
+		}
+		_gcData[idx] = nullptr;
+	}
+
+	_gcData.clear();
+	
 	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
 }
