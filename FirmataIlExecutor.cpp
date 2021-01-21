@@ -2915,7 +2915,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		u16   len;
         OPCODE  instr;
 		
-		Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken);
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
     	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
@@ -3184,13 +3184,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				int64_t data = ((int64_t)(*hlpCodePtr8)) | ((uint64_t)*(hlpCodePtr8 + 1)) << 32; // Little endian!
 				// Firmata.sendString(F("After 64 bit access"));
 				double v = *reinterpret_cast<double*>(&data);
-				Firmata.sendString(F("after conversion access"));
+				// Firmata.sendString(F("after conversion access"));
 				PC += 8;
 				if (instr == CEE_LDC_R8)
 				{
 					intermediate.Type = VariableKind::Double;
 					intermediate.Double = v;
-					Firmata.sendString(F("Before push"));
 					stack->push(intermediate);
 				}
 				else
@@ -4680,7 +4679,7 @@ void FirmataIlExecutor::reset()
 
 	_largeStatics.clear();
 
-	for (int idx = 0; idx < _gcData.size(); idx++)
+	for (size_t idx = 0; idx < _gcData.size(); idx++)
 	{
 		void* ptr = _gcData[idx];
 		if (ptr != nullptr)
