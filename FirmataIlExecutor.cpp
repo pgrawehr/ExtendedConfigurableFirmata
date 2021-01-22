@@ -732,7 +732,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result.Type = VariableKind::Boolean;
 			Variable type1 = args[0]; // type1.
 			Variable type2 = args[1]; // type2.
-			ClassDeclaration& ty = _classes.at(2);
+			ClassDeclaration* ty = _classes.GetClassWithToken(2);
 			Variable tok1 = GetField(ty, type1, 0);
 			Variable tok2 = GetField(ty, type2, 0);
 			result.Boolean = tok1.Int32 == tok2.Int32;
@@ -748,10 +748,10 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
 			uint32_t* data = (uint32_t*)array.Object;
 			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
-			ClassDeclaration& ty = _classes.at(*(data + 2));
+			ClassDeclaration* ty = _classes.GetClassWithToken(*(data + 2));
 			int32_t size = *(data + 1);
 			byte* targetPtr = (byte*)(data + 3);
-			memcpy(targetPtr, field.Object, size * ty.ClassDynamicSize);
+			memcpy(targetPtr, field.Object, size * ty->ClassDynamicSize);
 		}
 		break;
 	case NativeMethod::RuntimeHelpersIsReferenceOrContainsReferencesCore:
@@ -759,11 +759,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ASSERT(args.size() == 1);
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
-			ClassDeclaration& ty = _classes.at(ownToken.Int32);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+			ClassDeclaration* ty = _classes.GetClassWithToken(ownToken.Int32);
 			// This is a shortcut for now
 			result.Type = VariableKind::Boolean;
-			if (ty.ValueType)
+			if (ty->ValueType)
 			{
 				result.Boolean = false;
 			}
@@ -833,7 +833,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ASSERT(arguments.Type == VariableKind::ReferenceArray);
 			uint32_t* data = (uint32_t*)arguments.Object;
 			int32_t size = *(data + 1);
-			ClassDeclaration& typeOfType = _classes.at(2);
+			ClassDeclaration* typeOfType = _classes.GetClassWithToken(2);
 			if (size != 1)
 			{
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
@@ -876,17 +876,13 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// "CreateInstanceForAnotherGenericType(typeof(List<int>), typeof(bool))" should return an instance(!) of List<bool>.
 			Variable type1 = args[0]; // type1. An instantiated generic type
 			Variable type2 = args[1]; // type2. a type parameter
-			ClassDeclaration& ty = _classes.at(2);
+			ClassDeclaration* ty = _classes.GetClassWithToken(2);
 			Variable tok1 = GetField(ty, type1, 0);
 			Variable tok2 = GetField(ty, type2, 0);
 			int token = tok1.Int32;
 			token = token & GENERIC_TOKEN_MASK;
 			token = token + tok2.Int32;
 			
-			if (!_classes.contains(token))
-			{
-				throw ClrException(SystemException::ClassNotFound, token);
-			}
 			void* ptr = CreateInstanceOfClass(token, 0);
 
 			// TODO: We still have to execute the newly created instance's ctor
@@ -901,8 +897,8 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			Variable ownTypeInstance = args[0]; // A type instance
 			Variable otherTypeInstance = args[1]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
-			Variable otherToken = GetField(*typeClassDeclaration, otherTypeInstance, 0);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+			Variable otherToken = GetField(typeClassDeclaration, otherTypeInstance, 0);
 			result.Type = VariableKind::Boolean;
 			
 			if (ownToken.Int32 == otherToken.Int32)
@@ -918,27 +914,23 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				break;
 			}
 			
-			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
-			if (!_classes.contains(otherToken.Int32))
-			{
-				throw ClrException(SystemException::ClassNotFound, otherToken.Int32);
-			}
+			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			
-			ClassDeclaration& t2 = _classes.at(otherToken.Int32);
+			ClassDeclaration* t2 = _classes.GetClassWithToken(otherToken.Int32);
 			
-			ClassDeclaration* parent = &_classes.at(t1.ParentToken);
+			ClassDeclaration* parent = _classes.GetClassWithToken(t1->ParentToken, false);
 			while (parent != nullptr)
 			{
-				if (parent->ClassToken == t2.ClassToken)
+				if (parent->ClassToken == t2->ClassToken)
 				{
 					result.Boolean = true;
 					break;
 				}
 
-				parent = &_classes.at(parent->ParentToken);
+				parent = _classes.GetClassWithToken(parent->ParentToken, false);
 			}
 
-			if (t1.interfaceTokens.contains(t2.ClassToken))
+			if (t1->ImplementsInterface(t2->ClassToken))
 			{
 				result.Boolean = true;
 				break;
@@ -955,8 +947,8 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		Variable ownTypeInstance = args[0]; // A type instance
 		Variable otherTypeInstance = args[1]; // A type instance
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-		Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
-		Variable otherToken = GetField(*typeClassDeclaration, otherTypeInstance, 0);
+		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+		Variable otherToken = GetField(typeClassDeclaration, otherTypeInstance, 0);
 		result.Type = VariableKind::Boolean;
 
 		if (ownToken.Int32 == otherToken.Int32)
@@ -1207,7 +1199,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 
 }
 
-Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo)
+Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo)
 {
 	int idx = 0;
 	uint32_t offset = sizeof(void*);
@@ -1215,7 +1207,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 	// offset += Variable::datasize() * fieldNo;
 	// but we still need the field handle for the type
 	byte* o = (byte*)instancePtr.Object;
-	for (auto handle = type.fieldTypes.begin(); handle != type.fieldTypes.end(); ++handle)
+	for (auto handle = type->GetFieldByIndex(idx); handle != nullptr; ++idx)
 	{
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
@@ -1235,8 +1227,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration& type, const Variable& ins
 		}
 
 		offset += handle->fieldSize();
-		idx++;
-		if ((uint32_t)offset >= (SizeOfClass(&type)))
+		if ((uint32_t)offset >= (SizeOfClass(type)))
 		{
 			// Something is wrong.
 			throw ExecutionEngineException("Member offset exceeds class size");
@@ -4328,11 +4319,11 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo
 /// </summary>
 void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */)
 {
-	ClassDeclaration& cls = _classes.at(typeToken);
+	ClassDeclaration* cls = _classes.GetClassWithToken(typeToken);
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
 	// Compute sizeof(class)
-	size_t sizeOfClass = SizeOfClass(&cls);
-	if (cls.ClassToken == (int)KnownTypeTokens::String)
+	size_t sizeOfClass = SizeOfClass(cls);
+	if (cls->ClassToken == (int)KnownTypeTokens::String)
 	{
 		sizeOfClass = sizeof(void*) + 4 + length + 2;
 	}

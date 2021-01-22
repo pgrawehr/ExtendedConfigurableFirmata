@@ -27,6 +27,7 @@
 #include "SystemException.h"
 #include "MethodFlags.h"
 #include "KnownTypeTokens.h"
+#include "ClassDeclaration.h"
 
 using namespace stdSimple;
 
@@ -72,14 +73,6 @@ enum class ExecutionError : byte
 #define NULLABLE_TOKEN_MASK 0x00800000
 
 
-struct Method
-{
-	// Our own token
-	int32_t token;
-	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
-	vector<int> declarationTokens;
-};
-
 class RuntimeException
 {
 public:
@@ -97,37 +90,6 @@ public:
 	vector<int> StackTokens;
 };
 
-class ClassDeclaration
-{
-public:
-	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
-	{
-		ClassToken = token;
-		ParentToken = parent;
-		ClassDynamicSize = dynamicSize;
-		ClassStaticSize = staticSize;
-		ValueType = valueType;
-	}
-
-	~ClassDeclaration()
-	{
-		fieldTypes.clear();
-		methodTypes.clear();
-	}
-
-	bool ValueType;
-	int32_t ClassToken;
-	int32_t ParentToken;
-	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
-	uint16_t ClassStaticSize; // Size of static members 
-
-	// Here, the value is the metadata token
-	vector<Variable> fieldTypes;
-	// List of indirectly callable methods of this class (ctors, virtual methods and interface implementations)
-	vector<Method> methodTypes;
-	// List of interfaces implemented by this class
-	vector<int> interfaceTokens;
-};
 
 class MethodBody
 {
@@ -301,7 +263,7 @@ public:
 
 	// These are used by HardwareAccess methods
 	static ClassDeclaration* GetClassDeclaration(Variable& obj);
-	static Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
+	static Variable GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo);
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
@@ -367,7 +329,7 @@ public:
 	// and everything will be disposed afterwards.
 	ExecutionState* _methodCurrentlyExecuting;
 
-	stdSimple::map<u32, ClassDeclaration> _classes;
+	SortedClassList _classes;
 
 	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;
