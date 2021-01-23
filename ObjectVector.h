@@ -176,12 +176,12 @@ namespace stdSimple
 			return at(index);
 		}
 
-		iterator begin()
+		iterator begin() const
 		{
 			return _data;
 		}
 
-		iterator end()
+		iterator end() const
 		{
 			return _data + _count;
 		}

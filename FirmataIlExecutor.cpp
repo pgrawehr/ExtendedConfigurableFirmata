@@ -12,7 +12,6 @@
 
 
 #include <ConfigurableFirmata.h>
-#include "FreeMemory.h"
 #include "FirmataIlExecutor.h"
 #include "openum.h"
 #include "ObjectVector.h"
@@ -671,7 +670,7 @@ void FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, Variable
 	result.Type = VariableKind::Object;
 	result.Object = newObjInstance;
 	// Set the "_internalType" member to point to the class declaration
-	SetField4(*cls, type, result, 0);
+	SetField4(cls, type, result, 0);
 }
 
 int FirmataIlExecutor::GetHandleFromType(Variable& object) const
@@ -964,29 +963,25 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			break;
 		}
 
-		ClassDeclaration& t1 = _classes.at(ownToken.Int32);
-		if (!_classes.contains(otherToken.Int32))
-		{
-			throw ClrException(SystemException::ClassNotFound, otherToken.Int32);
-		}
+		ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 
-		ClassDeclaration& t2 = _classes.at(otherToken.Int32);
+		ClassDeclaration* t2 = _classes.GetClassWithToken(otherToken.Int32);
 
 		// Am I a base class of the other?
-		ClassDeclaration* parent = &_classes.at(t2.ParentToken);
+		ClassDeclaration* parent = _classes.GetClassWithToken(t2->ParentToken, false);
 		while (parent != nullptr)
 		{
-			if (parent->ClassToken == t1.ClassToken)
+			if (parent->ClassToken == t1->ClassToken)
 			{
 				result.Boolean = true;
 				break;
 			}
 
-			parent = &_classes.at(parent->ParentToken);
+			parent = _classes.GetClassWithToken(parent->ParentToken, false);
 		}
 
 		// Am I an interface the other implements?
-		if (t2.interfaceTokens.contains(t1.ClassToken))
+		if (t2->ImplementsInterface(t1->ClassToken))
 		{
 			result.Boolean = true;
 			break;
@@ -998,7 +993,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
-			ClassDeclaration& ty = _classes.at((int)KnownTypeTokens::Type);
+			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
 			int token = tok1.Int32;
 			token = token & GENERIC_TOKEN_MASK;
@@ -1009,11 +1004,6 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				throw ClrException(SystemException::InvalidOperation, token);
 			}
 
-			if (!_classes.contains(token))
-			{
-				throw ClrException(SystemException::ClassNotFound, token);
-			}
-			
 			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
 			
 			result.Object = ptr;
@@ -1030,21 +1020,21 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		// Find out whether the current type inherits (directly) from System.Enum
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			result.Type = VariableKind::Boolean;
-			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			// IsEnum returns true for enum types, but not if the type itself is "System.Enum".
-			result.Boolean = t1.ParentToken == (int)KnownTypeTokens::Enum;
+			result.Boolean = t1->ParentToken == (int)KnownTypeTokens::Enum;
 	}
 	case NativeMethod::TypeIsValueType:
 		{
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
-			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			result.Type = VariableKind::Boolean;
-			result.Boolean = t1.ValueType;
+			result.Boolean = t1->ValueType;
 		}
 		break;
 	case NativeMethod::TypeGetGenericArguments:
@@ -1055,7 +1045,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// In particular, we only support the case for one element
 			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
-			ClassDeclaration& ty = _classes.at((int)KnownTypeTokens::Type);
+			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
 			int token = tok1.Int32;
 			// If the token is a generic (open) type, we return "type"
@@ -1069,7 +1059,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				token = token & ~GENERIC_TOKEN_MASK;
 			}
 
-			if (!_classes.contains(token))
+			if (_classes.GetClassWithToken(token) == nullptr)
 			{
 				throw ClrException(SystemException::ClassNotFound, token);
 			}
@@ -1113,11 +1103,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(*typeClassDeclaration, ownTypeInstance, 0);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
-			ClassDeclaration& t1 = _classes.at(ownToken.Int32);
+			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			result.Type = VariableKind::Int32;
-			result.Int32 = t1.ClassDynamicSize;
+			result.Int32 = t1->ClassDynamicSize;
 			result.setSize(4);
 		}
 		break;
@@ -1207,7 +1197,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 	// offset += Variable::datasize() * fieldNo;
 	// but we still need the field handle for the type
 	byte* o = (byte*)instancePtr.Object;
-	for (auto handle = type->GetFieldByIndex(idx); handle != nullptr; ++idx)
+	for (auto handle = type->GetFieldByIndex(idx); handle != nullptr; handle = type->GetFieldByIndex(++idx))
 	{
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
@@ -1238,7 +1228,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 }
 
 
-void FirmataIlExecutor::SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo)
+void FirmataIlExecutor::SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo)
 {
 	uint32_t offset = sizeof(void*);
 	offset += Variable::datasize() * fieldNo;
@@ -1259,7 +1249,7 @@ Variable FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int
 {
 	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
 	{
-		ClassDeclaration* parent = &_classes.at(vtable->ParentToken);
+		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
 		Variable v = GetVariableDescription(parent, token);
 		if (v.Type != VariableKind::Void)
 		{
@@ -1267,7 +1257,8 @@ Variable FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int
 		}
 	}
 
-	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
+	int idx = 0;
+	for (auto handle = vtable->GetFieldByIndex(idx); handle != nullptr; handle = vtable->GetFieldByIndex(++idx))
 	{
 		if (handle->Int32 == token)
 		{
@@ -1284,11 +1275,12 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*
 	// vector must be sorted base-class members first
 	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
 	{
-		ClassDeclaration* parent = &_classes.at(vtable->ParentToken);
+		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
 		CollectFields(parent, vector);
 	}
 
-	for (auto handle = vtable->fieldTypes.begin(); handle != vtable->fieldTypes.end(); ++handle)
+	int idx = 0;
+	for (auto handle = vtable->GetFieldByIndex(idx); handle != nullptr; handle = vtable->GetFieldByIndex(++idx))
 	{
 		vector.push_back(handle);
 	}
@@ -1309,7 +1301,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 	int offset;
 	if (obj.Type == VariableKind::AddressOfVariable)
 	{
-		vtable = &ResolveClassFromFieldToken(token);
+		vtable = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)obj.Object; // Data being pointed to
 	}
@@ -1318,7 +1310,7 @@ byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t
 		// Ldfld from a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
 		// TODO: This is slow, not what one expects from accessing a value type
-		vtable = &ResolveClassFromFieldToken(token);
+		vtable = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)&obj.Int32; // Data is right there
 	}
@@ -1386,7 +1378,7 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 	int offset;
 	if (obj.Type == VariableKind::AddressOfVariable)
 	{
-		vtable = &ResolveClassFromFieldToken(token);
+		vtable = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)obj.Object; // Data being pointed to
 	}
@@ -1395,7 +1387,7 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 		// Ldfld from a value type needs one less indirection, but we need to get the type first.
 		// The value type does not carry the type information. Lets derive it from the field token.
 		// TODO: This is slow, not what one expects from accessing a value type
-		vtable = &ResolveClassFromFieldToken(token);
+		vtable = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)&obj.Int32; // Data is right there
 	}
@@ -1470,10 +1462,10 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
 	// Create an instance of the value type with the default zero value but the correct type
-	ClassDeclaration& cls = ResolveClassFromFieldToken(token);
+	ClassDeclaration* cls = ResolveClassFromFieldToken(token);
 
 	vector<Variable*> allfields;
-	CollectFields(&cls, allfields);
+	CollectFields(cls, allfields);
 	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
 		Variable* handle = (*handle1);
@@ -1539,10 +1531,10 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
 	// Create an instance of the value type with the default zero value but the correct type
 
-	ClassDeclaration& cls = ResolveClassFromFieldToken(token);
+	ClassDeclaration* cls = ResolveClassFromFieldToken(token);
 
 	vector<Variable*> allfields;
-	CollectFields(&cls, allfields);
+	CollectFields(cls, allfields);
 	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
 		Variable* handle = (*handle1);
@@ -1617,7 +1609,7 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 	int offset;
 	if (obj.Type == VariableKind::AddressOfVariable)
 	{
-		cls = &ResolveClassFromFieldToken(token);
+		cls = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)obj.Object; // Data being pointed to
 	}
@@ -1627,7 +1619,7 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 		// The value type does not carry the type information. Lets derive it from the field token.
 		// TODO: This is slow, not what one expects from accessing a value type
 
-		cls = &ResolveClassFromFieldToken(token);
+		cls = ResolveClassFromFieldToken(token);
 		offset = 0; // No extra header
 		o = (byte*)&obj.Int32; // Data is right there
 	}
@@ -2748,16 +2740,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 /// </returns>
 int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result)
 {
-	ClassDeclaration& ty = _classes.at(tokenOfArrayType);
+	ClassDeclaration* ty = _classes.GetClassWithToken(tokenOfArrayType);
 	uint32_t* data;
 	uint64_t sizeToAllocate;
-	if (ty.ValueType)
+	if (ty->ValueType)
 	{
 		
 		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array type token (since arrays are also objects), index 1 the array length,
-		// Element 1 is the array content type token
+		// Index 2 is the array content type token
 		// For value types, ClassDynamicSize may be smaller than a memory slot, because we don't want to store char[] or byte[] with 64 bits per element
-		sizeToAllocate = (uint64_t)ty.ClassDynamicSize * numberOfElements;
+		sizeToAllocate = (uint64_t)ty->ClassDynamicSize * numberOfElements;
 		if (sizeToAllocate > INT32_MAX - 64 * 1024)
 		{
 			result = Variable();
@@ -2785,9 +2777,9 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 		return 0;
 	}
 
-	ClassDeclaration& arrType = _classes.at((int)KnownTypeTokens::Array);
+	ClassDeclaration* arrType = _classes.GetClassWithToken(KnownTypeTokens::Array);
 	
-	*data = (uint32_t)&arrType;
+	*data = (uint32_t)arrType;
 	*(data + 1)= numberOfElements;
 	*(data + 2) = tokenOfArrayType;
 	result.Object = data;
@@ -2814,19 +2806,19 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 /// <param name="value">Instance of value type to be boxed</param>
 /// <param name="ty">Type of value and type of boxed object</param>
 /// <returns>An object that represents the boxed variable (of type object)</returns>
-Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration& ty)
+Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration* ty)
 {
 	// TODO: This requires special handling for types derived from Nullable<T>
 
 	// Here, the boxed size is expected
-	size_t sizeOfClass = SizeOfClass(&ty);
+	size_t sizeOfClass = SizeOfClass(ty);
 	TRACE(Firmata.sendString(F("Boxed class size is 0x"), sizeOfClass));
 	void* ret = AllocGcInstance(sizeOfClass);
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.
 	// this will serve as vtable.
 	ClassDeclaration** vtable = (ClassDeclaration**)ret;
-	*vtable = &ty;
+	*vtable = ty;
 	Variable r;
 	r.Marker = VARIABLE_DEFAULT_MARKER;
 	r.setSize(4);
@@ -2840,16 +2832,17 @@ Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration& ty)
 /// <summary>
 /// Returns true if the class directly implements the given method. Only returns correct results for value types so far. 
 /// </summary>
-bool ImplementsMethodDirectly(ClassDeclaration& cls, int32_t methodToken)
+bool ImplementsMethodDirectly(ClassDeclaration* cls, int32_t methodToken)
 {
-	for(auto m = cls.methodTypes.begin(); m != cls.methodTypes.end(); ++m)
+	int idx = 0;
+	for (auto handle = cls->GetMethodByIndex(idx); handle != nullptr; handle = cls->GetMethodByIndex(++idx))
 	{
-		if (m->token == methodToken)
+		if (handle->token == methodToken)
 		{
 			return true;
 		}
 
-		for (auto k = m->declarationTokens.begin(); k != m->declarationTokens.end(); ++k)
+		for (auto k = handle->declarationTokens.begin(); k != handle->declarationTokens.end(); ++k)
 		{
 			if (*k == methodToken)
 			{
@@ -3380,8 +3373,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						Variable& obj = stack->top();
 						stack->pop();
-						ClassDeclaration& ty = ResolveClassFromFieldToken(token);
-						Variable desc = GetVariableDescription(&ty, token);
+						ClassDeclaration* ty = ResolveClassFromFieldToken(token);
+						Variable desc = GetVariableDescription(ty, token);
 						if (desc.Type == VariableKind::Void)
 						{
 							throw ClrException(SystemException::FieldAccess, token);
@@ -3442,16 +3435,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						ASSERT(instance.Type == VariableKind::AddressOfVariable);
 						// The reference points to an instance of type constrainedTypeToken
-						cls = &_classes.at(constrainedTypeToken);
+						cls = _classes.GetClassWithToken(constrainedTypeToken);
 						if (cls->ValueType)
 						{
 							// This will be the this pointer for a method call on a value type (we'll have to do a real boxing if the
 							// callee is virtual (can be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
 							// System.Object, System.Enum or System.ValueType OR a method implementing an interface)
-							if (!ImplementsMethodDirectly(*cls, newMethod->methodToken))
+							if (!ImplementsMethodDirectly(cls, newMethod->methodToken))
 							{
 								// Box. Actually a rare case.
-								instance = Box(instance, *cls);
+								instance = Box(instance, cls);
 							}
 							// otherwise just passes the reference unmodified as this pointer (the this pointer on a value type method call is 
 							
@@ -3517,7 +3510,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
 						return MethodState::Aborted;
 					}
-					for (Method* met = cls->methodTypes.begin(); met != cls->methodTypes.end(); ++met)
+
+					int idx = 0;
+					for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
 					{
 						// The method is being called using the static type of the target
 						if (met->token == newMethod->methodToken)
@@ -3555,7 +3550,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				if (instr == CEE_NEWOBJ)
 				{
-					cls = &ResolveClassFromCtorToken(newMethod->methodToken);
+					cls = ResolveClassFromCtorToken(newMethod->methodToken);
 
 					if (cls->ValueType)
 					{
@@ -3572,7 +3567,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					else
 					{
-						newObjInstance = CreateInstance(*cls);
+						newObjInstance = CreateInstance(cls);
 					}
 				}
 
@@ -3683,26 +3678,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				switch(instr)
 				{
 				case CEE_NEWARR:
+				{
 					size = stack->top().Int32;
 					stack->pop();
-					if (!_classes.contains(token))
+
+					Variable v1;
+					AllocateArrayInstance(token, size, v1);
+					if (v1.Type == VariableKind::Void)
 					{
-						Firmata.sendStringf(F("Unknown class token in NEWARR instruction: %lx"), 4, token);
-						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
+						ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
 						return MethodState::Aborted;
 					}
-					else
-					{
-						Variable v1;
-						AllocateArrayInstance(token, size, v1);
-						if (v1.Type == VariableKind::Void)
-						{
-							ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
-							return MethodState::Aborted;
-						}
-						stack->push(v1);
-					}
-					
+					stack->push(v1);
+				}
 					break;
 				case CEE_STELEM:
 					{
@@ -3725,7 +3713,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 							return MethodState::Aborted;
 						}
-						ClassDeclaration& elemTy = _classes.at(token);
+						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 						int32_t index = value2.Int32;
 						if (index < 0 || index >= arraysize)
 						{
@@ -3733,7 +3721,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							return MethodState::Aborted;
 						}
 
-						switch(elemTy.ClassDynamicSize)
+						switch(elemTy->ClassDynamicSize)
 						{
 						case 1:
 						{
@@ -3761,8 +3749,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						default: // Arbitrary size of the elements in the array
 						{
 							byte* dataptr = (byte*)data;
-							byte* targetPtr = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
-							memcpy(targetPtr, &value3.Int32, elemTy.ClassDynamicSize);
+							byte* targetPtr = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
+							memcpy(targetPtr, &value3.Int32, elemTy->ClassDynamicSize);
 							break;
 						}
 						case 0: // That's fishy
@@ -3801,10 +3789,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (value1.Type == VariableKind::ValueArray)
 					{
 						// This should always exist
-						ClassDeclaration& elemTy = _classes.at(token);
-						EnsureStackVarSize(elemTy.ClassDynamicSize);
+						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
+						EnsureStackVarSize(elemTy->ClassDynamicSize);
 						tempVariable->Marker = VARIABLE_DEFAULT_MARKER;
-						switch (elemTy.ClassDynamicSize)
+						switch (elemTy->ClassDynamicSize)
 						{
 						case 1:
 						{
@@ -3839,10 +3827,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 						default:
 							byte* dataptr = (byte*)data;
-							byte* srcPtr = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
-							tempVariable->setSize(elemTy.ClassDynamicSize);
-							tempVariable->Type = elemTy.ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
-							memcpy(&tempVariable->Int32, srcPtr, elemTy.ClassDynamicSize);
+							byte* srcPtr = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
+							tempVariable->setSize(elemTy->ClassDynamicSize);
+							tempVariable->Type = elemTy->ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
+							memcpy(&tempVariable->Int32, srcPtr, elemTy->ClassDynamicSize);
 							break;
 						}
 						stack->push(*tempVariable);
@@ -3890,8 +3878,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (value1.Type == VariableKind::ValueArray)
 					{
 						// This should always exist
-						ClassDeclaration& elemTy = _classes.at(token);
-						switch (elemTy.ClassDynamicSize)
+						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
+						switch (elemTy->ClassDynamicSize)
 						{
 						case 1:
 						{
@@ -3918,7 +3906,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 						default:
 							byte* dataptr = (byte*)data;
-							v1.Object = AddBytes(dataptr, 12 + (elemTy.ClassDynamicSize * index));
+							v1.Object = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
 							break;
 						}
 						
@@ -3937,32 +3925,23 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					Variable& value1 = stack->top();
 					stack->pop();
-					if (_classes.contains(token))
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+					if (ty->ValueType)
 					{
-						ClassDeclaration& ty = _classes.at(token);
-						if (ty.ValueType)
-						{
-							Variable r = Box(value1, ty);
-							stack->push(r);
-						}
-						else
-						{
-							// If ty is a reference type, box does nothing
-							Variable r;
-							r.Marker = VARIABLE_DEFAULT_MARKER;
-							r.setSize(4);
-							r.Object = value1.Object;
-							r.Type = value1.Type;
-							stack->push(r);
-						}
-						
+						Variable r = Box(value1, ty);
+						stack->push(r);
 					}
 					else
 					{
-						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
-						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-						return MethodState::Aborted;
+						// If ty is a reference type, box does nothing
+						Variable r;
+						r.Marker = VARIABLE_DEFAULT_MARKER;
+						r.setSize(4);
+						r.Object = value1.Object;
+						r.Type = value1.Type;
+						stack->push(r);
 					}
+						
 					break;
 				}
 				case CEE_UNBOX_ANY:
@@ -3970,45 +3949,35 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// Note: UNBOX and UNBOX.any are quite different
 					Variable& value1 = stack->top();
 					stack->pop();
-					if (_classes.contains(token))
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+					if (ty->ValueType)
 					{
-						ClassDeclaration& ty = _classes.at(token);
-						if (ty.ValueType)
-						{
-							// TODO: This requires special handling for types derived from Nullable<T>
+						// TODO: This requires special handling for types derived from Nullable<T>
 
-							uint32_t offset = sizeof(void*);
-							// Get the beginning of the data part of the object
-							byte* o = (byte*)value1.Object;
-							size = ty.ClassDynamicSize;
-							// Reserve enough memory on the stack, so we can temporarily hold the whole variable
-							EnsureStackVarSize(size);
-							tempVariable->setSize((uint16_t)size);
-							tempVariable->Marker = 0x37;
-							tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
-							memcpy(&(tempVariable->Int32), o + offset, size);
-							stack->push(*tempVariable);
-						}
-						else
-						{
-							// If ty is a reference type, unbox.any does nothing fancy, except a type test
-							MethodState result = IsAssignableFrom(ty, value1);
-							if (result != MethodState::Running)
-							{
-								return result;
-							}
-							Variable r;
-							r.Object = value1.Object;
-							r.Type = value1.Type;
-							stack->push(r);
-						}
-						
+						uint32_t offset = sizeof(void*);
+						// Get the beginning of the data part of the object
+						byte* o = (byte*)value1.Object;
+						size = ty->ClassDynamicSize;
+						// Reserve enough memory on the stack, so we can temporarily hold the whole variable
+						EnsureStackVarSize(size);
+						tempVariable->setSize((uint16_t)size);
+						tempVariable->Marker = 0x37;
+						tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Uint64;
+						memcpy(&(tempVariable->Int32), o + offset, size);
+						stack->push(*tempVariable);
 					}
 					else
 					{
-						Firmata.sendStringf(F("Unknown type token in BOX instruction: %lx"), 4, token);
-						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-						return MethodState::Aborted;
+						// If ty is a reference type, unbox.any does nothing fancy, except a type test
+						MethodState result = IsAssignableFrom(ty, value1);
+						if (result != MethodState::Running)
+						{
+							return result;
+						}
+						Variable r;
+						r.Object = value1.Object;
+						r.Type = value1.Type;
+						stack->push(r);
 					}
 					break;
 				}
@@ -4021,10 +3990,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
-					ClassDeclaration& ty = _classes.at(token);
-					if (ty.ValueType)
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+					if (ty->ValueType)
 					{
-						size = ty.ClassDynamicSize;
+						size = ty->ClassDynamicSize;
 						memset(value1.Object, 0, size);
 					}
 					else
@@ -4044,13 +4013,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->push(value1);
 						break;
 					}
-					if (!_classes.contains(token))
-					{
-						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-						return MethodState::Aborted;
-					}
 
-					ClassDeclaration& ty = _classes.at(token);
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
 					if (IsAssignableFrom(ty, value1) == MethodState::Running)
 					{
 						// if the cast is fine, just return the original object
@@ -4080,13 +4044,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->push(value1);
 						break;
 					}
-					if (!_classes.contains(token))
-					{
-						ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-						return MethodState::Aborted;
-					}
-
-					ClassDeclaration& ty = _classes.at(token);
+					
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
 					if (IsAssignableFrom(ty, value1) == MethodState::Running)
 					{
 						// if the cast is fine, just return the original object
@@ -4094,7 +4053,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					}
 					// The cast fails. Throw a InvalidCastException
-					ExceptionOccurred(currentFrame, SystemException::InvalidCast, ty.ClassToken);
+					ExceptionOccurred(currentFrame, SystemException::InvalidCast, ty->ClassToken);
 					return MethodState::Aborted;
 				}
 				case CEE_CONSTRAINED_:
@@ -4115,10 +4074,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						return MethodState::Aborted;
 					}
 					
-					ClassDeclaration& ty = _classes.at(token);
-					size = ty.ClassDynamicSize;
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+					size = ty->ClassDynamicSize;
 					EnsureStackVarSize(size);
-					if (ty.ValueType)
+					if (ty->ValueType)
 					{
 						tempVariable->Type = (size > 8 ? VariableKind::LargeValueType : VariableKind::Int64);
 					}
@@ -4154,7 +4113,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								intermediate.Type = VariableKind::RuntimeFieldHandle;
 								stack->push(intermediate);
 							}
-							else if (_classes.contains(token))
+							else if (_classes.GetClassWithToken(token, false))
 							{
 								intermediate.Int32 = token;
 								intermediate.Type = VariableKind::RuntimeTypeHandle;
@@ -4194,7 +4153,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						// The string data is stored inline in the class data junk
 						memcpy(classInstance + 8, data, length);
 						*AddBytes(classInstance, 8 + length) = 0; // Add terminating 0 (the constant array does not include these)
-						ClassDeclaration& string = _classes.at((int)KnownTypeTokens::String);
+						ClassDeclaration* string = _classes.GetClassWithToken(KnownTypeTokens::String);
 						
 						// Length
 						Variable v(length, VariableKind::Int32);
@@ -4270,43 +4229,43 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 /// <param name="typeToAssignTo">The type that should be the assignment target</param>
 /// <param name="object">The value that should be assigned</param>
 /// <returns>See above</returns>
-MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object)
+MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object)
 {
 	byte* o = (byte*)object.Object;
 	ClassDeclaration* sourceType = (ClassDeclaration*)(*(int32_t*)o);
 	// If the types are the same, they're assignable
-	if (sourceType->ClassToken == typeToAssignTo.ClassToken)
+	if (sourceType->ClassToken == typeToAssignTo->ClassToken)
 	{
 		return MethodState::Running;
 	}
 
 	// Special handling for types derived from "System.Type", because this runtime implements a subset of the type library only
-	if (sourceType->ClassToken == 2 && (typeToAssignTo.ClassToken == 5 || typeToAssignTo.ClassToken == 6))
+	if (sourceType->ClassToken == 2 && (typeToAssignTo->ClassToken == 5 || typeToAssignTo->ClassToken == 6))
 	{
 		// Casting System.Type to System.RuntimeType or System.Reflection.TypeInfo is fine
 		return MethodState::Running;
 	}
 
 	// If sourceType derives from typeToAssign, that works as well
-	ClassDeclaration* parent = &_classes.at(sourceType->ParentToken);
+	ClassDeclaration* parent = _classes.GetClassWithToken(sourceType->ParentToken, false);
 	while (parent != nullptr)
 	{
-		if (parent->ClassToken == typeToAssignTo.ClassToken)
+		if (parent->ClassToken == typeToAssignTo->ClassToken)
 		{
 			return MethodState::Running;
 		}
 		
-		parent = &_classes.at(parent->ParentToken);
+		parent = _classes.GetClassWithToken(parent->ParentToken, false);
 	}
 
 	// If the assignment target implements the source interface, that's fine
-	if (typeToAssignTo.interfaceTokens.contains(sourceType->ClassToken))
+	if (typeToAssignTo->ImplementsInterface(sourceType->ClassToken))
 	{
 		return MethodState::Running;
 	}
 
 	// if the assignment target is an interface implemented by source, that's fine
-	if (sourceType->interfaceTokens.contains(typeToAssignTo.ClassToken))
+	if (sourceType->ImplementsInterface(typeToAssignTo->ClassToken))
 	{
 		return MethodState::Running;
 	}
@@ -4338,24 +4297,24 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	// Save a reference to the class declaration in the first entry of the newly created instance.
 	// this will serve as vtable.
 	ClassDeclaration** vtable = (ClassDeclaration**)ret;
-	*vtable = &cls;
+	*vtable = cls;
 	return ret;
 }
 
-ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken)
+ClassDeclaration* FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken)
 {
 	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
-	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
+	for (auto iterator = _classes.GetIterator(); iterator.Next();)
 	{
-		ClassDeclaration& cls = iterator.second();
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
-		for (size_t j = 0; j < cls.methodTypes.size(); j++)
+		int idx = 0;
+		ClassDeclaration* current = iterator.Current();
+		for (auto method = current->GetMethodByIndex(idx); method != nullptr; method = current->GetMethodByIndex(++idx))
 		{
-			Method& member = cls.methodTypes.at(j);
 			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
-			if (member.token == ctorToken)
+			if (method->token == ctorToken)
 			{
-				return cls;
+				return current;
 			}
 		}
 	}
@@ -4363,18 +4322,19 @@ ClassDeclaration& FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken
 	throw ClrException(SystemException::MissingMethod, ctorToken);
 }
 
-ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken)
+ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken)
 {
-	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
-	for (auto iterator = _classes.begin(); iterator != _classes.end(); ++iterator)
+	for (auto iterator = _classes.GetIterator(); iterator.Next();)
 	{
-		ClassDeclaration& cls = iterator.second();
-		for (size_t j = 0; j < cls.fieldTypes.size(); j++)
+		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
+		int idx = 0;
+		ClassDeclaration* current = iterator.Current();
+		for (auto field = current->GetFieldByIndex(idx); field != nullptr; field = current->GetFieldByIndex(++idx))
 		{
-			Variable& member = cls.fieldTypes.at(j);
-			if (member.Int32 == fieldToken)
+			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
+			if (field->Int32 == fieldToken)
 			{
-				return cls;
+				return current;
 			}
 		}
 	}
@@ -4386,12 +4346,12 @@ ClassDeclaration& FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 /// Creates an instance of the given type.
 /// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
 /// </summary>
-void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls)
+void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 {
-	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
+	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
 	// The constructor that was called belongs to this class
 	// Compute sizeof(class)
-	size_t sizeOfClass = SizeOfClass(&cls);
+	size_t sizeOfClass = SizeOfClass(cls);
 
 	TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
 	void* ret = AllocGcInstance(sizeOfClass);
@@ -4403,7 +4363,7 @@ void* FirmataIlExecutor::CreateInstance(ClassDeclaration& cls)
 	// Save a reference to the class declaration in the first entry of the newly created instance.
 	// this will serve as vtable.
 	ClassDeclaration** vtable = (ClassDeclaration**)ret;
-	*vtable = &cls;
+	*vtable = cls;
 	return ret;
 }
 
@@ -4420,12 +4380,19 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
 	TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
-	bool alreadyExists = _classes.contains(classToken);
+	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
-	ClassDeclaration* decl;
-	if (alreadyExists)
+	ClassDeclarationDynamic* decl;
+	if (elem != nullptr)
 	{
-		decl = &_classes.at(classToken);
+		if (elem->GetType() == ClassDeclarationType::Dynamic)
+		{
+			decl = (ClassDeclarationDynamic*)(_classes.GetClassWithToken(classToken));
+		}
+		else
+		{
+			throw ExecutionEngineException("Internal error: Unknown class type");
+		}
 	}
 	else
 	{
@@ -4437,9 +4404,9 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 			// Value types are not expected to exceed more than a few words
 			dynamicSize = dynamicSize << 2;
 		}
-		ClassDeclaration newC(classToken, parent, dynamicSize, staticSize, isValueType);
-		_classes.insert(classToken, newC);
-		decl = &_classes.at(classToken);
+		ClassDeclarationDynamic* newType = new ClassDeclarationDynamic(classToken, parent, dynamicSize, staticSize, isValueType);
+		_classes.Insert(newType);
+		decl = newType;
 	}
 	
 	// Reinit
@@ -4496,16 +4463,22 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 
 ExecutionError FirmataIlExecutor::LoadInterfaces(int32_t classToken, byte argc, byte* argv)
 {
-	if (!_classes.contains(classToken))
+	auto elem = _classes.GetClassWithToken(classToken);
+	if (elem == nullptr)
 	{
 		return ExecutionError::InvalidArguments;
 	}
 
-	ClassDeclaration& ty = _classes.at(classToken);
+	if (elem->GetType() != ClassDeclarationType::Dynamic)
+	{
+		return ExecutionError::InternalError;
+	}
+
+	ClassDeclarationDynamic* ty = (ClassDeclarationDynamic*)(_classes.GetClassWithToken(classToken));
 	for (int i = 0; i < argc;)
 	{
 		int token = DecodePackedUint32(argv + i);
-		ty.interfaceTokens.push_back(token);
+		ty->interfaceTokens.push_back(token);
 		i += 5;
 	}
 	return ExecutionError::None;

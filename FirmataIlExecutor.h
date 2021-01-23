@@ -285,7 +285,7 @@ public:
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
-	Variable Box(Variable& value1, ClassDeclaration& ty);
+	Variable Box(Variable& value, ClassDeclaration* ty);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
@@ -302,14 +302,14 @@ public:
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
-    MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
-    void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
+    MethodState IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object);
+    void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(ClassDeclaration& cls);
+    void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
-    ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken);
-    ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken);
+    ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
+    ClassDeclaration* ResolveClassFromFieldToken(int32_t fieldToken);
     static uint16_t SizeOfClass(ClassDeclaration* cls);
     MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);

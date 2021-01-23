@@ -91,6 +91,12 @@
     <ClCompile Include="..\HardwareAccess.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\ClassDeclaration.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FreeMemory.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -208,6 +214,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\NativeMethod.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ClassDeclaration.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

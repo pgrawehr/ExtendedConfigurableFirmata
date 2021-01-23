@@ -129,7 +129,7 @@ bool HardwareAccess::ExecuteHardwareAccess(ExecutionState* currentFrame, NativeM
 		Variable& self = args.at(0);
 		Variable& data = args.at(1);
 		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
-		Variable address = FirmataIlExecutor::GetField(*cls, self, 2);
+		Variable address = FirmataIlExecutor::GetField(cls, self, 2);
 		// Since the implementation of I2CFirmata::handleI2CRequest is stateless, we can as well directly call the wire library. It's easier here.
 		// Note that this works only after an init
 		Wire.beginTransmission((byte)address.Int32);
