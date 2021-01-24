@@ -263,7 +263,7 @@ public:
 
 	// These are used by HardwareAccess methods
 	static ClassDeclaration* GetClassDeclaration(Variable& obj);
-	static Variable GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo);
+	Variable GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo);
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);

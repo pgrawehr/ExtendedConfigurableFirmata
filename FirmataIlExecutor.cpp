@@ -367,6 +367,9 @@ RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
 
 void FirmataIlExecutor::report(bool elapsed)
 {
+	// Keep track of timers
+	HardwareAccess::UpdateClocks();
+	
 	// Check that we have an existing execution context, and if so continue there.
 	if (!IsExecutingCode())
 	{
@@ -717,7 +720,7 @@ int TrailingZeroCount(uint32_t value)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	if (HardwareAccess::ExecuteHardwareAccess(currentFrame, method, args, result))
+	if (HardwareAccess::ExecuteHardwareAccess(this, currentFrame, method, args, result))
 	{
 		return;
 	}
@@ -1197,8 +1200,12 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 	// offset += Variable::datasize() * fieldNo;
 	// but we still need the field handle for the type
 	byte* o = (byte*)instancePtr.Object;
-	for (auto handle = type->GetFieldByIndex(idx); handle != nullptr; handle = type->GetFieldByIndex(++idx))
+
+	vector<Variable*> allfields;
+	CollectFields(type, allfields);
+	for (auto handle1 =allfields.begin(); handle1 != allfields.end(); ++handle1)
 	{
+		Variable* handle = *handle1;
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -1217,11 +1224,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 		}
 
 		offset += handle->fieldSize();
-		if ((uint32_t)offset >= (SizeOfClass(type)))
-		{
-			// Something is wrong.
-			throw ExecutionEngineException("Member offset exceeds class size");
-		}
+		idx++;
 	}
 	
 	throw ExecutionEngineException("Field not found in class.");
@@ -3485,11 +3488,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					
 					if (instance.Object == nullptr)
 					{
-						if (newMethod->nativeMethod != NativeMethod::None)
-						{
-							// For native methods, the this pointer may be null, that is ok (we're calling on a dummy interface)
-							goto outer;
-						}
 						Firmata.sendString(F("NullReferenceException calling virtual method"));
 						ExceptionOccurred(currentFrame, SystemException::NullReference, newMethod->methodToken);
 						return MethodState::Aborted;

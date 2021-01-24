@@ -27,7 +27,7 @@ void pinMode(int pin, int mode);
 void delay(int timeMs);
 void delayMicroseconds(int micros);
 int millis();
-int micros();
+unsigned long micros();
 byte digitalPinToBitMask(int pin);
 byte digitalPinToPort(int pin);
 byte* portModeRegister(int port);

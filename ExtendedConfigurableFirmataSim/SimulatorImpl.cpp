@@ -53,7 +53,6 @@ void pinMode(int pin, int mode)
 	}
 }
 
-
 void delay(int timeMs)
 {
 	Sleep(timeMs);
@@ -70,9 +69,25 @@ int millis()
 	return GetTickCount();
 }
 
-int micros()
+unsigned long micros()
 {
-	return GetTickCount();
+	const int ONEMILLION = 1000000;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	LARGE_INTEGER current;
+	QueryPerformanceCounter(&current);
+	LONGLONG ret;
+	if (freq.QuadPart >= ONEMILLION)
+	{
+		LONGLONG divisor = freq.QuadPart / ONEMILLION;
+		ret = (current.QuadPart / divisor);
+	}
+	else
+	{
+		LONGLONG multiplier = ONEMILLION / freq.QuadPart;
+		ret = (current.QuadPart * multiplier);
+	}
+	return (unsigned long)ret;
 }
 
 void Stream::begin()
