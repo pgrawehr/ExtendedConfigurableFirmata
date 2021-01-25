@@ -2840,17 +2840,14 @@ bool ImplementsMethodDirectly(ClassDeclaration* cls, int32_t methodToken)
 	int idx = 0;
 	for (auto handle = cls->GetMethodByIndex(idx); handle != nullptr; handle = cls->GetMethodByIndex(++idx))
 	{
-		if (handle->token == methodToken)
+		if (handle->MethodToken() == methodToken)
 		{
 			return true;
 		}
 
-		for (auto k = handle->declarationTokens.begin(); k != handle->declarationTokens.end(); ++k)
+		if (handle->ImplementsMethod(methodToken))
 		{
-			if (*k == methodToken)
-			{
-				return true;
-			}
+			return true;
 		}
 	}
 
@@ -3513,29 +3510,28 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
 					{
 						// The method is being called using the static type of the target
-						if (met->token == newMethod->methodToken)
+						int metToken = met->MethodToken();
+						if (metToken == newMethod->methodToken)
 						{
 							break;
 						}
 
-						for (auto alt = met->declarationTokens.begin(); alt != met->declarationTokens.end(); ++alt)
+						if (met->ImplementsMethod(newMethod->methodToken))
 						{
-							if (*alt == newMethod->methodToken)
+							
+							newMethod = ResolveToken(currentMethod, metToken);
+							if (newMethod == nullptr)
 							{
-								newMethod = ResolveToken(currentMethod, met->token);
-								if (newMethod == nullptr)
-								{
-									Firmata.sendString(F("Implementation not found for 0x"), met->token);
-									ExceptionOccurred(currentFrame, SystemException::NullReference, met->token);
-									return MethodState::Aborted;
-								}
-								goto outer;
+								Firmata.sendString(F("Implementation not found for 0x"), metToken);
+								ExceptionOccurred(currentFrame, SystemException::NullReference, metToken);
+								return MethodState::Aborted;
 							}
+							break;
+							
 						}
 					}
 					// We didn't find another method to call - we'd better already point to the right one
 				}
-				outer:
 
 				// Call to an abstract base class or an interface method - if this happens,
 				// we've probably not done the virtual function resolution correctly
@@ -4309,8 +4305,7 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken
 		ClassDeclaration* current = iterator.Current();
 		for (auto method = current->GetMethodByIndex(idx); method != nullptr; method = current->GetMethodByIndex(++idx))
 		{
-			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
-			if (method->token == ctorToken)
+			if (method->MethodToken() == ctorToken)
 			{
 				return current;
 			}
@@ -4440,16 +4435,22 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 	}
 
 	// if there are more arguments, these are the method tokens that point back to this implementation
-	Method me;
-	me.token = v.Int32;
-	decl->methodTypes.push_back(me);
-	// Weird reference handling, but since we have no working copy-ctor for vector<T>, we need to copy it before we start filling
-	Method& me2 = decl->methodTypes.back();
+	
+	int methodToken = v.Int32;
+	vector<int> baseTokens;
 	for (;i < argc - 4; i += 5)
 	{
 		// These are tokens of possible base implementations of this method - that means methods whose dynamic invocation target will be this method.
-		me2.declarationTokens.push_back(DecodePackedUint32(argv + i));
+		baseTokens.push_back(DecodePackedUint32(argv + i));
 	}
+
+	int* convertedBaseTokens = (int*)malloc(sizeof(int) * baseTokens.size());
+	for (size_t j = 0; j < baseTokens.size(); j++)
+	{
+		convertedBaseTokens[j] = baseTokens[j];
+	}
+
+	decl->methodTypes.push_back(Method(methodToken, baseTokens.size(), convertedBaseTokens));
 
 	if (isLastPart)
 	{

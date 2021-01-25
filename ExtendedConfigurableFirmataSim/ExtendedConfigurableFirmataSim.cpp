@@ -1,7 +1,8 @@
-// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
+﻿// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
 //
 
 #include <iostream>
+#include <conio.h>
 
 void setup();
 void loop();
@@ -11,6 +12,14 @@ int main()
 	setup();
 	while (true)
 	{
+		if (_kbhit())
+		{
+			int c = _getch();
+			if (c == 27)
+			{
+				break;
+			}
+		}
 		loop();
 	}
 }

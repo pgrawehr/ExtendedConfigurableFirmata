@@ -4,7 +4,7 @@
 #include "SimulatorImpl.h"
 #undef INPUT
 #include <Windows.h>
-#include <Ws2tcpip.h>
+#include <WS2tcpip.h>
 
 class Serial Serial;
 class Serial SerialUSB;

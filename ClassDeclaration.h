@@ -7,10 +7,45 @@
 
 struct Method
 {
+public:
+	Method(int methodToken, int numBaseTokens, int* baseTokens)
+	{
+		_methodToken = methodToken;
+		_numBaseTokens = numBaseTokens;
+		_baseTokens = baseTokens;
+	}
+
+	// Not a dtor, because the class instance must be copyable
+	void clear()
+	{
+		free(_baseTokens);
+		_baseTokens = nullptr;
+	}
+
+	int32_t MethodToken() const
+	{
+		return _methodToken;
+	}
+
+	bool ImplementsMethod(int methodToken) const
+	{
+		for (int i = 0; i < _numBaseTokens; i++)
+		{
+			if (_baseTokens[i] == methodToken)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+private:
 	// Our own token
-	int32_t token;
+	int32_t _methodToken;
 	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
-	stdSimple::vector<int> declarationTokens;
+	int32_t _numBaseTokens;
+	int* _baseTokens;
 };
 
 // Hand-Made type info, because the arduino compiler doesn't support dynamic_cast (not even on the Due)
@@ -74,6 +109,11 @@ public:
 	virtual ~ClassDeclarationDynamic()
 	{
 		fieldTypes.clear();
+		// The struct Method has no dtor, because it must not contain virtual members and it must be blittable
+		for (size_t i = 0; i < methodTypes.size(); i++)
+		{
+			methodTypes[i].clear();
+		}
 		methodTypes.clear();
 		interfaceTokens.clear();
 	}
