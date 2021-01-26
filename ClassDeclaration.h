@@ -138,32 +138,74 @@ public:
 	stdSimple::vector<int> interfaceTokens;
 };
 
+/// <summary>
+/// A class whose memory is in flash
+/// </summary>
+class ClassDeclarationFlash : public ClassDeclaration
+{
+public:
+	ClassDeclarationFlash(ClassDeclarationDynamic* source)
+		: ClassDeclaration(source->ClassToken, source->ParentToken, source->ClassDynamicSize, source->ClassStaticSize, source->ValueType)
+	{
+	}
+
+	virtual Variable* GetFieldByIndex(uint32_t idx) override;
+
+	virtual Method* GetMethodByIndex(uint32_t idx) override;
+
+	virtual bool ImplementsInterface(int token) override;
+
+	virtual ClassDeclarationType GetType() override
+	{
+		return ClassDeclarationType::Flash;
+	}
+private:
+	int _fieldTypeCount;
+	Variable* _fieldTypes; // Pointer to list
+	int _methodTypesCount;
+	Method* _methodTypes;
+	int _interfaceTokenCount;
+	int* _interfaceTokens;
+};
+
+
 class SortedClassList
 {
 private:
-	stdSimple::vector<ClassDeclaration*> _entries;
+	stdSimple::vector<ClassDeclaration*> _ramEntries;
+	stdSimple::vector<ClassDeclaration*> _flashEntries;
 public:
+	/// <summary>
+	/// This iterator iterates over both provided lists in sequence
+	/// </summary>
 	class Iterator
 	{
 	private:
 		stdSimple::vector<ClassDeclaration*>* _list;
+		stdSimple::vector<ClassDeclaration*>* _list2;
 		int _currentIndex;
 	public:
-		Iterator(stdSimple::vector<ClassDeclaration*>* list)
+		Iterator(stdSimple::vector<ClassDeclaration*>* list, stdSimple::vector<ClassDeclaration*>* list2)
 		{
 			_list = list;
+			_list2 = list;
 			// Start at the element before the start, so that the first Next() goes to the first element
 			_currentIndex = -1;
 		}
 		
 		ClassDeclaration* Current()
 		{
-			return _list->at(_currentIndex);
+			if (_currentIndex < _list->size())
+			{
+				return _list->at(_currentIndex);
+			}
+
+			return _list2->at(_currentIndex - _list->size());
 		}
 
 		bool Next()
 		{
-			return (++_currentIndex) < (int)_list->size();
+			return (++_currentIndex) < ((int)_list->size() + _list2->size());
 		}
 	};
 	
@@ -192,6 +234,6 @@ public:
 
 	Iterator GetIterator()
 	{
-		return Iterator(&_entries);
+		return Iterator(&_flashEntries, &_ramEntries);
 	}
 };
