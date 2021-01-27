@@ -47,6 +47,7 @@ enum class ExecutorCommand : byte
 	ClassDeclarationEnd = 9,
 	ConstantData = 10,
 	Interfaces = 11,
+	CopyToFlash = 12,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,

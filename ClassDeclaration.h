@@ -7,6 +7,8 @@
 
 struct Method
 {
+private:
+	friend class SortedClassList;
 public:
 	Method(int methodToken, int numBaseTokens, int* baseTokens)
 	{
@@ -143,10 +145,22 @@ public:
 /// </summary>
 class ClassDeclarationFlash : public ClassDeclaration
 {
+	friend class SortedClassList;
 public:
 	ClassDeclarationFlash(ClassDeclarationDynamic* source)
 		: ClassDeclaration(source->ClassToken, source->ParentToken, source->ClassDynamicSize, source->ClassStaticSize, source->ValueType)
 	{
+		_fieldTypeCount = 0;
+		_fieldTypes = nullptr;
+		_methodTypesCount = 0;
+		_methodTypes = nullptr;
+		_interfaceTokenCount = 0;
+		_interfaceTokens = nullptr;
+	}
+
+	virtual ~ClassDeclarationFlash() override
+	{
+		// This is in flash - cannot delete
 	}
 
 	virtual Variable* GetFieldByIndex(uint32_t idx) override;
@@ -159,12 +173,13 @@ public:
 	{
 		return ClassDeclarationType::Flash;
 	}
+	
 private:
-	int _fieldTypeCount;
+	uint32_t _fieldTypeCount;
 	Variable* _fieldTypes; // Pointer to list
-	int _methodTypesCount;
+	uint32_t _methodTypesCount;
 	Method* _methodTypes;
-	int _interfaceTokenCount;
+	uint32_t _interfaceTokenCount;
 	int* _interfaceTokens;
 };
 
@@ -183,7 +198,7 @@ public:
 	private:
 		stdSimple::vector<ClassDeclaration*>* _list;
 		stdSimple::vector<ClassDeclaration*>* _list2;
-		int _currentIndex;
+		size_t _currentIndex;
 	public:
 		Iterator(stdSimple::vector<ClassDeclaration*>* list, stdSimple::vector<ClassDeclaration*>* list2)
 		{
@@ -205,7 +220,7 @@ public:
 
 		bool Next()
 		{
-			return (++_currentIndex) < ((int)_list->size() + _list2->size());
+			return (++_currentIndex) < (_list->size() + _list2->size());
 		}
 	};
 	
@@ -230,10 +245,16 @@ public:
 
 	void Insert(ClassDeclaration* entry);
 
+	void CopyToFlash();
+	
 	void clear();
 
 	Iterator GetIterator()
 	{
 		return Iterator(&_flashEntries, &_ramEntries);
 	}
+
+private:
+	ClassDeclarationFlash* CreateFlashDeclaration(ClassDeclarationDynamic* dynamic);
+
 };

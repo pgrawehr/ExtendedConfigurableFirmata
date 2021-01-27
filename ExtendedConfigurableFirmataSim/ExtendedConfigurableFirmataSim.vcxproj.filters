@@ -97,6 +97,9 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FreeMemory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\FlashMemoryManager.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -217,6 +220,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\ClassDeclaration.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\FlashMemoryManager.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

@@ -189,6 +189,13 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
 			}
+			case ExecutorCommand::CopyToFlash:
+				{
+					// Copy all members currently in ram to flash
+				_classes.CopyToFlash();
+				}
+				SendAckOrNack(subCommand, ExecutionError::None);
+				break;
 			default:
 				// Unknown command
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);

@@ -163,6 +163,7 @@
     <ClCompile Include="..\Exceptions.cpp" />
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
     <ClCompile Include="..\FirmataStatusLed.cpp" />
+    <ClCompile Include="..\FlashMemoryManager.cpp" />
     <ClCompile Include="..\HardwareAccess.cpp" />
     <ClCompile Include="..\SelfTest.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
@@ -198,6 +199,7 @@
     <ClInclude Include="..\Exceptions.h" />
     <ClInclude Include="..\FirmataIlExecutor.h" />
     <ClInclude Include="..\FirmataStatusLed.h" />
+    <ClInclude Include="..\FlashMemoryManager.h" />
     <ClInclude Include="..\FreeMemory.h" />
     <ClInclude Include="..\HardwareAccess.h" />
     <ClInclude Include="..\KnownTypeTokens.h" />
