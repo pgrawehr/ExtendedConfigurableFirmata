@@ -26,6 +26,19 @@ int ByteDifference(T* higher, T* lower)
 	return (byte*)higher - (byte*)lower;
 }
 
+/// <summary>
+/// Relocates a pointer (to compute the same address relative to a new base)
+/// </summary>
+/// <param name="inBasePtr">Input base pointer</param>
+/// <param name="inPtr">Input pointer. Must be &gt; inBasePtr</param>
+/// <param name="outBasePtr">New base pointer</param>
+template <typename T>
+T* Relocate(T* inBasePtr, T* inPtr, T* outBasePtr)
+{
+	int offset = ByteDifference(inPtr, inBasePtr);
+	return AddBytes(outBasePtr, offset);
+}
+
 enum class VariableKind : byte
 {
 	Void = 0, // The slot contains no data

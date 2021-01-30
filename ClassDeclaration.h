@@ -203,7 +203,7 @@ public:
 		Iterator(stdSimple::vector<ClassDeclaration*>* list, stdSimple::vector<ClassDeclaration*>* list2)
 		{
 			_list = list;
-			_list2 = list;
+			_list2 = list2;
 			// Start at the element before the start, so that the first Next() goes to the first element
 			_currentIndex = -1;
 		}

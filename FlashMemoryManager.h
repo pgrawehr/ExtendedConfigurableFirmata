@@ -9,7 +9,7 @@
 	#include "WProgram.h"
 #endif
 
-#include <ConfigurableFirmata.h>
+struct FlashMemoryHeader;
 
 class FlashMemoryManager
 {
@@ -17,6 +17,7 @@ private:
 	byte* _endOfHeap;
 	byte* _startOfHeap;
 	byte* _flashEnd;
+	FlashMemoryHeader* _header;
 public:
 	FlashMemoryManager();
 
@@ -30,8 +31,14 @@ public:
 	void* FlashAlloc(size_t bytes);
 
 	void CopyToFlash(void* src, void* flashTarget, size_t length);
+	void WriteHeader(int dataVersion, int hashCode);
 
 	void Clear();
+
+	bool ContainsMatchingData(int dataVersion, int hashCode);
+
+private:
+	void Init();
 };
 
 extern FlashMemoryManager FlashManager;

@@ -19,6 +19,7 @@
 #include "Encoder7Bit.h"
 #include "SelfTest.h"
 #include "HardwareAccess.h"
+#include "FlashMemoryManager.h"
 #include <stdint.h>
 
 typedef byte BYTE;
@@ -196,6 +197,18 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
+
+			case ExecutorCommand::WriteFlashHeader:
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
+				SendAckOrNack(subCommand, ExecutionError::None);
+				break;
+
+			case ExecutorCommand::CheckFlashVersion:
+				{
+				bool result = FlashManager.ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
+				SendAckOrNack(subCommand, result ? ExecutionError::None : ExecutionError::InvalidArguments);
+				}
+				
 			default:
 				// Unknown command
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);

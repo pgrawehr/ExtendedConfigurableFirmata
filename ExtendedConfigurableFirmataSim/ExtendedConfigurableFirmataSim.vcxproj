@@ -166,6 +166,7 @@
     <ClCompile Include="..\FlashMemoryManager.cpp" />
     <ClCompile Include="..\HardwareAccess.cpp" />
     <ClCompile Include="..\SelfTest.cpp" />
+    <ClCompile Include="..\SimFlashStorage.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
     <ClCompile Include="SimulatorImpl.cpp" />
     <ClCompile Include="SPI.cpp" />
@@ -212,6 +213,7 @@
     <ClInclude Include="..\opcode.def.h" />
     <ClInclude Include="..\openum.h" />
     <ClInclude Include="..\SelfTest.h" />
+    <ClInclude Include="..\SimFlashStorage.h" />
     <ClInclude Include="HardwareSerial.h" />
     <ClInclude Include="pgmspace.h" />
     <ClInclude Include="SimulatorImpl.h" />

@@ -145,6 +145,7 @@
     <ClCompile Include="FlashMemoryStream.cpp" />
     <ClCompile Include="HardwareAccess.cpp" />
     <ClCompile Include="SelfTest.cpp" />
+    <ClCompile Include="SimFlashStorage.cpp" />
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>

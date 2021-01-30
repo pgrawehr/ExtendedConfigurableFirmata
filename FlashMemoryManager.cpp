@@ -5,22 +5,63 @@
 #include <ConfigurableFirmata.h>
 #ifndef SIM
 #include <DueFlashStorage.h>
-DueFlashStorage storage;
+DueFlashStorage* storage = nullptr;
 #else
 #include "SimFlashStorage.h"
+VirtualFlashMemory* storage = nullptr;
 #endif
 
 #include "FlashMemoryManager.h"
+#include "Variable.h"
 #include "Exceptions.h"
 
 using namespace stdSimple;
 
 FlashMemoryManager FlashManager;
 
+const int FLASH_MEMORY_IDENTIFIER = 0x7AABCDBB;
+
+struct FlashMemoryHeader
+{
+public:
+	int Identifier;
+	int DataVersion;
+	int DataHashCode;
+	byte* EndOfHeap;
+};
+
 FlashMemoryManager::FlashMemoryManager()
 {
-	_endOfHeap = _startOfHeap = storage.readAddress(0); // This just returns the start of the flash memory used by this manager
+#ifdef SIM
+	storage = new VirtualFlashMemory(IFLASH1_SIZE);
+#else
+	storage = new DueFlashStorage();
+#endif
+	_endOfHeap = _startOfHeap = storage->readAddress(0); // This just returns the start of the flash memory used by this manager
 	_flashEnd = _startOfHeap + IFLASH1_SIZE;
+	_header = (FlashMemoryHeader*)_startOfHeap;
+	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + 8) & ~0x7);
+	Init();
+}
+
+void FlashMemoryManager::Init()
+{
+	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
+	{
+		_endOfHeap = _header->EndOfHeap;
+	}
+
+	// TODO: Read remainder of data structure
+}
+
+bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
+{
+	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion == dataVersion && _header->DataHashCode == hashCode)
+	{
+		return true;
+	}
+
+	return false;
 }
 
 void FlashMemoryManager::Clear()
@@ -53,11 +94,20 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 		throw ExecutionEngineException("Flash memory address out of bounds");
 	}
 
-	if (!storage.write((uint32_t)flashTarget, (byte*)src, length))
+	if (!storage->write((uint32_t)flashTarget, (byte*)src, length))
 	{
 		throw ExecutionEngineException("Error writing flash");
 	}
 }
 
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode)
+{
+	FlashMemoryHeader hd;
+	hd.DataVersion = dataVersion;
+	hd.DataHashCode = hashCode;
+	hd.EndOfHeap = _endOfHeap;
+	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
+	storage->write((uint32_t)_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
+}
 
 

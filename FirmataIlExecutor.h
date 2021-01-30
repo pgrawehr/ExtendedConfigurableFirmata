@@ -48,6 +48,8 @@ enum class ExecutorCommand : byte
 	ConstantData = 10,
 	Interfaces = 11,
 	CopyToFlash = 12,
+	WriteFlashHeader = 13,
+	CheckFlashVersion = 14,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,

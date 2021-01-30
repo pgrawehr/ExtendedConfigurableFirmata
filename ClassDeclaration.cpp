@@ -53,12 +53,13 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 	int totalSize = sizeof(ClassDeclarationFlash) + dynamic->fieldTypes.size() * sizeof(Variable) + dynamic->interfaceTokens.size() * sizeof(int32_t);
 	for (size_t i = 0; i < dynamic->methodTypes.size(); i++)
 	{
-		totalSize += sizeof(int32_t); // method token
-		totalSize += sizeof(int32_t); // length
+		totalSize += sizeof(Method);
 		totalSize += dynamic->methodTypes[i]._numBaseTokens * sizeof(int32_t);
 	}
 
 	byte* flashCopy = (byte*)malloc(totalSize);
+	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
+	
 	byte* temp = flashCopy;
 	// Reserve space for main class
 	temp = AddBytes(temp, sizeof(ClassDeclarationFlash));
@@ -66,15 +67,29 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 	ClassDeclarationFlash* flash = new ClassDeclarationFlash(dynamic);
 	flash->_fieldTypeCount = dynamic->fieldTypes.size();
 	size_t fieldTypesLength = dynamic->fieldTypes.size() * sizeof(Variable);
-	memcpy(temp, &dynamic->fieldTypes.at(0), fieldTypesLength);
-	flash->_fieldTypes = (Variable*)temp;
-	temp = AddBytes(temp, fieldTypesLength);
+	if (fieldTypesLength > 0)
+	{
+		memcpy(temp, &dynamic->fieldTypes.at(0), fieldTypesLength);
+		flash->_fieldTypes = (Variable*)Relocate(flashCopy, temp, flashTarget);
+		temp = AddBytes(temp, fieldTypesLength);
+	}
+	else
+	{
+		flash->_fieldTypes = nullptr;
+	}
 
 	size_t interfaceTokenLength = dynamic->interfaceTokens.size() * sizeof(int32_t);
 	flash->_interfaceTokenCount = dynamic->interfaceTokens.size();
-	memcpy(temp, &dynamic->interfaceTokens.at(0), interfaceTokenLength);
-	flash->_interfaceTokens = (int*)temp;
-	temp = AddBytes(temp, interfaceTokenLength);
+	if (interfaceTokenLength > 0)
+	{
+		memcpy(temp, &dynamic->interfaceTokens.at(0), interfaceTokenLength);
+		flash->_interfaceTokens = (int*)Relocate(flashCopy, temp, flashTarget);
+		temp = AddBytes(temp, interfaceTokenLength);
+	}
+	else
+	{
+		flash->_interfaceTokens = nullptr;
+	}
 
 	Method* methodList = (Method*)temp;
 	// First, all the methods, then for each method the corresponding base tokens. Note that the datastructure requires that the methods
@@ -82,12 +97,12 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 	Method* currentMethod = methodList;
 	temp = AddBytes(temp, sizeof(Method) * dynamic->methodTypes.size());
 	flash->_methodTypesCount = dynamic->methodTypes.size();
-	flash->_methodTypes = methodList;
+	flash->_methodTypes = (Method*)Relocate(flashCopy, (byte*)methodList, flashTarget);
 	
 	for (size_t i = 0; i < dynamic->methodTypes.size(); i++)
 	{
 		Method& src = dynamic->methodTypes[i];
-		size_t baseTokenLen = dynamic->methodTypes[i]._numBaseTokens * sizeof(int32_t);
+		size_t baseTokenLen = src._numBaseTokens * sizeof(int32_t);
 		memcpy(temp, src._baseTokens, baseTokenLen);
 		byte* tokenList = temp;
 		temp = AddBytes(temp, baseTokenLen);
@@ -95,18 +110,26 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 		Method* method = currentMethod;
 		method->_methodToken = src.MethodToken();
 		method->_numBaseTokens = src._numBaseTokens;
-		method->_baseTokens = (int*)tokenList;
+		if (src._numBaseTokens > 0)
+		{
+			method->_baseTokens = (int*)Relocate(flashCopy, tokenList, flashTarget);
+		}
+		else
+		{
+			method->_baseTokens = nullptr;
+		}
+		
 		currentMethod = AddBytes(currentMethod, sizeof(Method));
 	}
 
 	// The class declaration comes first, copy it there
-	memcpy(temp, (void*)flash, sizeof(ClassDeclarationFlash));
+	memcpy(flashCopy, (void*)flash, sizeof(ClassDeclarationFlash));
 
-	ClassDeclarationFlash* flashTarget = (ClassDeclarationFlash*)FlashManager.FlashAlloc(totalSize);
-	FlashManager.CopyToFlash(temp, flashTarget, totalSize);
+	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
 	delete flash;
+	free(flashCopy);
 
-	return flashTarget;
+	return (ClassDeclarationFlash*)flashTarget;
 }
 
 
