@@ -208,7 +208,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				bool result = FlashManager.ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
 				SendAckOrNack(subCommand, result ? ExecutionError::None : ExecutionError::InvalidArguments);
 				}
-				
+				break;
 			default:
 				// Unknown command
 				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
