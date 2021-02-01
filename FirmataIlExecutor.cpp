@@ -3421,7 +3421,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				break;
 			case InlineMethod:
             {
-				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ)
+				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ && instr != CEE_LDFTN)
 				{
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
@@ -3597,6 +3597,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				*/
 
+				if (instr == CEE_LDFTN)
+				{
+					Variable ftptr;
+					ftptr.setSize(sizeof(void*));
+					ftptr.Marker = VARIABLE_DEFAULT_MARKER;
+					ftptr.Type = VariableKind::FunctionPointer;
+					ftptr.Uint64 = 0; // We may later need the top word for the object reference (CEE_LDVIRTFTN instruction)
+					ftptr.Object = newMethod;
+					stack->push(ftptr);
+					break;
+				}
+				
             	// Save return PC
                 currentFrame->UpdatePc(PC);
 				

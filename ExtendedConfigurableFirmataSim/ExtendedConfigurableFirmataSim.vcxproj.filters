@@ -231,5 +231,8 @@
     <ClInclude Include="..\SimFlashStorage.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="..\VariableKind.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

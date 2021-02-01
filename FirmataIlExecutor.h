@@ -28,6 +28,7 @@
 #include "MethodFlags.h"
 #include "KnownTypeTokens.h"
 #include "ClassDeclaration.h"
+#include "VariableKind.h"
 
 using namespace stdSimple;
 

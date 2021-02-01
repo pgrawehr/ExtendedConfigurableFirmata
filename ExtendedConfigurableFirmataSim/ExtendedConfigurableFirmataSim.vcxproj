@@ -214,6 +214,7 @@
     <ClInclude Include="..\openum.h" />
     <ClInclude Include="..\SelfTest.h" />
     <ClInclude Include="..\SimFlashStorage.h" />
+    <ClInclude Include="..\VariableKind.h" />
     <ClInclude Include="HardwareSerial.h" />
     <ClInclude Include="pgmspace.h" />
     <ClInclude Include="SimulatorImpl.h" />

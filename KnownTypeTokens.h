@@ -14,5 +14,7 @@ enum class KnownTypeTokens
     Enum = 8,
     Array = 9,
     ByReferenceByte = 10,
+    Delegate = 11,
+    MulticastDelegate = 12,
     LargestKnownTypeToken = 20,
 };

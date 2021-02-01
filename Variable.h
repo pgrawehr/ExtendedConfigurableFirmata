@@ -3,6 +3,7 @@
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
 #include "Exceptions.h"
+#include "VariableKind.h"
 #include "openum.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -38,27 +39,6 @@ T* Relocate(T* inBasePtr, T* inPtr, T* outBasePtr)
 	int offset = ByteDifference(inPtr, inBasePtr);
 	return AddBytes(outBasePtr, offset);
 }
-
-enum class VariableKind : byte
-{
-	Void = 0, // The slot contains no data
-	Uint32 = 1, // The slot contains unsigned integer data
-	Int32 = 2, // The slot contains signed integer data
-	Boolean = 3, // The slot contains true or false
-	Object = 4, // The slot contains an object reference
-	Method = 5,
-	ValueArray = 6, // The slot contains a reference to an array of value types (inline)
-	ReferenceArray = 7, // The slot contains a reference to an array of reference types
-	Float = 8,
-	LargeValueType = 9, // The slot contains a large value type
-	Int64 = 16 + 1,
-	Uint64 = 16 + 2,
-	Double = 16 + 4,
-	RuntimeFieldHandle = 33, // So far this is a pointer to a constant initializer
-	RuntimeTypeHandle = 34, // A type handle. The value is a type token
-	AddressOfVariable = 35, // An address pointing to a variable slot on another method's stack or arglist (obtained by LDLOCA or LDARGA)
-	StaticMember = 128, // This value is or'ed to the rest
-};
 
 inline VariableKind operator &(VariableKind a, VariableKind b)
 {
