@@ -2890,6 +2890,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	int instructionsExecuted = 0;
 	int constrainedTypeToken = 0; // Only used for the CONSTRAINED. prefix
+	MethodBody* target = nullptr; // Used for the calli instruction
 	u16 PC = 0;
 	u32* hlpCodePtr;
 	VariableDynamicStack* stack;
@@ -3419,9 +3420,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		            }
 	            }
 				break;
+			case InlineSig: // The calli instruction. The sig argument (a token) has currently no meaning for us
+			{
+				Variable& methodTarget = stack->top();
+				stack->pop();
+				ASSERT(methodTarget.Type == VariableKind::FunctionPointer);
+				target = (MethodBody*)methodTarget.Object;
+			}
+			// FALL TROUGH!
 			case InlineMethod:
             {
-				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ && instr != CEE_LDFTN)
+				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ && instr != CEE_LDFTN && instr != CEE_CALLI)
 				{
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
@@ -3433,7 +3442,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				u32 tk = *hlpCodePtr;
                 PC += 4;
 
-				MethodBody* newMethod = ResolveToken(currentMethod, tk);
+				MethodBody* newMethod = nullptr;
+				if (instr == CEE_CALLI)
+				{
+					newMethod = target;
+				}
+				else
+				{
+					newMethod = ResolveToken(currentMethod, tk);
+				}
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
@@ -3442,7 +3459,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 
 				ClassDeclaration* cls = nullptr;
-				if (instr == CEE_CALLVIRT)
+				if (instr == CEE_CALLVIRT || (instr == CEE_CALLI && (newMethod->MethodFlags() & (int)MethodFlags::Virtual)))
 				{
 					// For a virtual call, we need to grab the instance we operate on from the stack.
 					// The this pointer for the new method is the object that is last on the stack, so we need to use
@@ -3669,29 +3686,49 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	}
 				else
 				{
-					while (argumentCount > 0)
+					if (instr == CEE_CALLI && newMethod->MethodFlags() & (int)MethodFlags::Static)
 					{
-						argumentCount--;
-						Variable& v = oldStack->top();
-						////if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
-						////{
-						////	// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
-						////	// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
-						////	// There are a few more special cases to consider it seems, especially when the called method is virtual, see §8.6.1.5
-						////	Variable v2;
-						////	v2.Object = (void*)(*((uint32_t*)v.Object));
-						////	v2.Type = VariableKind::Object;
-						////	arguments->at(0) = v2;
-						////}
-						////else
+						// If the target method of a calli instruction is static, we drop argument 0
+						while (argumentCount > 1)
 						{
+							argumentCount--;
+							Variable& v = oldStack->top();
 							// This calls operator =, potentially copying more than sizeof(Variable)
-							arguments->at(argumentCount) = v;
+							arguments->at(argumentCount - 1) = v;
+							
+							oldStack->pop();
 						}
+
+						// drop the last element off the stack (is likely only a nullreference anyway)
 						oldStack->pop();
+					}
+					else
+					{
+						while (argumentCount > 0)
+						{
+							argumentCount--;
+							Variable& v = oldStack->top();
+							////if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
+							////{
+							////	// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
+							////	// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
+							////	// There are a few more special cases to consider it seems, especially when the called method is virtual, see §8.6.1.5
+							////	Variable v2;
+							////	v2.Object = (void*)(*((uint32_t*)v.Object));
+							////	v2.Type = VariableKind::Object;
+							////	arguments->at(0) = v2;
+							////}
+							////else
+							{
+								// This calls operator =, potentially copying more than sizeof(Variable)
+								arguments->at(argumentCount) = v;
+							}
+							oldStack->pop();
+						}
 					}
 				}
 
+				target = nullptr;
 				constrainedTypeToken = 0;
 				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
 				break;
