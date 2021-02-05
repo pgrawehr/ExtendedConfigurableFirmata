@@ -41,6 +41,7 @@ FlashMemoryManager::FlashMemoryManager()
 	_flashEnd = _startOfHeap + IFLASH1_SIZE;
 	_header = (FlashMemoryHeader*)_startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + 8) & ~0x7);
+	_headerClear = false;
 	Init();
 }
 
@@ -49,6 +50,7 @@ void FlashMemoryManager::Init()
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
 		_endOfHeap = _header->EndOfHeap;
+		_headerClear = false;
 	}
 
 	// TODO: Read remainder of data structure
@@ -56,6 +58,11 @@ void FlashMemoryManager::Init()
 
 bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 {
+	if (_headerClear)
+	{
+		return false;
+	}
+	
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion == dataVersion && _header->DataHashCode == hashCode)
 	{
 		return true;
@@ -67,6 +74,8 @@ bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 void FlashMemoryManager::Clear()
 {
 	_endOfHeap = _startOfHeap;
+	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + 8) & ~0x7);
+	_headerClear = true;
 }
 
 void* FlashMemoryManager::FlashAlloc(size_t bytes)
@@ -108,6 +117,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode)
 	hd.EndOfHeap = _endOfHeap;
 	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
 	storage->write((uint32_t)_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
+	_headerClear = false;
 }
 
 

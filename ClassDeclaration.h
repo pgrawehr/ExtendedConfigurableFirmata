@@ -247,7 +247,7 @@ public:
 
 	void CopyToFlash();
 	
-	void clear();
+	void clear(bool includingFlash);
 
 	Iterator GetIterator()
 	{

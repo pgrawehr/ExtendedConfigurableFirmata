@@ -51,6 +51,7 @@ enum class ExecutorCommand : byte
 	CopyToFlash = 12,
 	WriteFlashHeader = 13,
 	CheckFlashVersion = 14,
+	EraseFlash = 15,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,

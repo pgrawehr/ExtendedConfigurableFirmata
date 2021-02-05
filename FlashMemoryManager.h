@@ -18,6 +18,7 @@ private:
 	byte* _startOfHeap;
 	byte* _flashEnd;
 	FlashMemoryHeader* _header;
+	bool _headerClear; // This is set to true to indicate the header is invalid, even if it's contents would still be ok
 public:
 	FlashMemoryManager();
 
@@ -33,6 +34,9 @@ public:
 	void CopyToFlash(void* src, void* flashTarget, size_t length);
 	void WriteHeader(int dataVersion, int hashCode);
 
+	/// <summary>
+	/// Marks the flash as empty. It does not write anything yet, so if this is called without a subsequent CopyToFlash or WriteHeader, the memory will still be there after bootup
+	/// </summary>
 	void Clear();
 
 	bool ContainsMatchingData(int dataVersion, int hashCode);

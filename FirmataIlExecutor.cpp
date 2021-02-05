@@ -172,6 +172,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
+			case ExecutorCommand::EraseFlash:
+				_classes.clear(true);
+				// Fall trough
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
 				{
@@ -4698,7 +4701,7 @@ void FirmataIlExecutor::reset()
 
 	_firstMethod = nullptr;
 
-	_classes.clear();
+	_classes.clear(false);
 
 	for (auto c = _constants.begin(); c != _constants.end(); ++c)
 	{

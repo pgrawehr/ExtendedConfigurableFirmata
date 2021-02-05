@@ -31,8 +31,13 @@ void SortedClassList::Insert(ClassDeclaration* entry)
 	_ramEntries.push_back(entry);
 }
 
-void SortedClassList::clear()
+void SortedClassList::clear(bool includingFlash)
 {
+	if (includingFlash)
+	{
+		_flashEntries.clear();
+		FlashManager.Clear();
+	}
 	_ramEntries.clear();
 }
 
