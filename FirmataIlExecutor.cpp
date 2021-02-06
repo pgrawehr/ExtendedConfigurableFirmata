@@ -4726,5 +4726,5 @@ void FirmataIlExecutor::reset()
 
 	_gcData.clear();
 	
-	Firmata.sendString(F("Execution memory cleared. Free bytes: 0x"), freeMemory());
+	Firmata.sendStringf(F("Execution memory cleared. Free bytes: 0x%x"), 4, freeMemory());
 }

@@ -38,6 +38,12 @@ void SortedClassList::clear(bool includingFlash)
 		_flashEntries.clear();
 		FlashManager.Clear();
 	}
+
+	for (size_t i = 0; i < _ramEntries.size(); i++)
+	{
+		delete _ramEntries[i];
+	}
+	
 	_ramEntries.clear();
 }
 
@@ -49,7 +55,7 @@ void SortedClassList::CopyToFlash()
 		_flashEntries.push_back(flash);
 	}
 
-	_ramEntries.clear();
+	clear(false);
 }
 
 ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationDynamic* dynamic)
