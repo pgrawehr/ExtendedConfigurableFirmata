@@ -19,6 +19,13 @@ public:
 
 	byte* readAddress(uint32_t address);
 
+	/// <summary>
+	/// Write a block to flash
+	/// </summary>
+	/// <param name="address">Address, relative to start of flash</param>
+	/// <param name="data">Pointer to data</param>
+	/// <param name="dataLength">Length of data</param>
+	/// <returns>True on success, false otherwise</returns>
 	boolean write(uint32_t address, byte* data, uint32_t dataLength);
 };
 

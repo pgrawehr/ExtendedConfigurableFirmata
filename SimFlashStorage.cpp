@@ -18,6 +18,6 @@ byte* VirtualFlashMemory::readAddress(uint32_t address)
 
 boolean VirtualFlashMemory::write(uint32_t address, byte* data, uint32_t dataLength)
 {
-	memcpy((void*)address, data, dataLength);
+	memcpy(_memoryBasePtr + address, data, dataLength);
 	return true;
 }

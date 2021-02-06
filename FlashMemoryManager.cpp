@@ -65,6 +65,7 @@ bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 	
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion == dataVersion && _header->DataHashCode == hashCode)
 	{
+		Firmata.sendString(F("Found matching data in flash."));
 		return true;
 	}
 
@@ -103,7 +104,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 		throw ExecutionEngineException("Flash memory address out of bounds");
 	}
 
-	if (!storage->write((uint32_t)flashTarget, (byte*)src, length))
+	if (!storage->write((byte*)flashTarget - _startOfHeap, (byte*)src, length))
 	{
 		throw ExecutionEngineException("Error writing flash");
 	}
@@ -116,8 +117,12 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode)
 	hd.DataHashCode = hashCode;
 	hd.EndOfHeap = _endOfHeap;
 	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
-	storage->write((uint32_t)_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
+	storage->write(0, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;
+
+	int bytesUsed = _endOfHeap - _startOfHeap;
+	int bytesTotal = _flashEnd - _startOfHeap;
+	Firmata.sendStringf(F("Flash data written: %d bytes of %d used."), 4, bytesUsed, bytesTotal);
 }
 
 
