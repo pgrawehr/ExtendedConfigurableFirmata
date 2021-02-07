@@ -4,6 +4,7 @@
 #include "ObjectVector.h"
 #include "Variable.h"
 #include "KnownTypeTokens.h"
+#include "Exceptions.h"
 
 struct Method
 {
@@ -183,12 +184,13 @@ private:
 	int* _interfaceTokens;
 };
 
-
-class SortedClassList
+template<class TBase>
+class SortedList
 {
-private:
-	stdSimple::vector<ClassDeclaration*> _ramEntries;
-	stdSimple::vector<ClassDeclaration*> _flashEntries;
+
+protected:
+	stdSimple::vector<TBase*> _ramEntries;
+	stdSimple::vector<TBase*> _flashEntries;
 public:
 	/// <summary>
 	/// This iterator iterates over both provided lists in sequence
@@ -196,19 +198,19 @@ public:
 	class Iterator
 	{
 	private:
-		stdSimple::vector<ClassDeclaration*>* _list;
-		stdSimple::vector<ClassDeclaration*>* _list2;
+		stdSimple::vector<TBase*>* _list;
+		stdSimple::vector<TBase*>* _list2;
 		size_t _currentIndex;
 	public:
-		Iterator(stdSimple::vector<ClassDeclaration*>* list, stdSimple::vector<ClassDeclaration*>* list2)
+		Iterator(stdSimple::vector<TBase*>* list, stdSimple::vector<TBase*>* list2)
 		{
 			_list = list;
 			_list2 = list2;
 			// Start at the element before the start, so that the first Next() goes to the first element
 			_currentIndex = -1;
 		}
-		
-		ClassDeclaration* Current()
+
+		TBase* Current()
 		{
 			if (_currentIndex < _list->size())
 			{
@@ -223,10 +225,14 @@ public:
 			return (++_currentIndex) < (_list->size() + _list2->size());
 		}
 	};
-	
-	SortedClassList()
+
+	SortedList()
 	{
 		// TODO: This needs a "Reserve" method, then _entries shall be replaced by two static arrays (one in flash, the other in RAM)
+	}
+
+	virtual ~SortedList()
+	{
 	}
 
 	/// <summary>
@@ -235,25 +241,53 @@ public:
 	/// <param name="token">Token to find</param>
 	/// <param name="throwIfNotFound">True (the default) to throw if the token was not found. Needs to be true also if token is possibly 0</param>
 	/// <returns>The class declaration for the class with the given token or null.</returns>
-	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true);
+	TBase* GetClassWithToken(int token, bool throwIfNotFound = true)
+	{
+		for (auto elem = GetIterator(); elem.Next();)
+		{
+			if (elem.Current()->ClassToken == token)
+			{
+				return elem.Current();
+			}
+		}
 
-	ClassDeclaration* GetClassWithToken(KnownTypeTokens token)
+		if (throwIfNotFound)
+		{
+			ThrowNotFoundException(token);
+		}
+
+		return nullptr;
+	}
+
+	TBase* GetClassWithToken(KnownTypeTokens token)
 	{
 		// These must always be present
 		return GetClassWithToken((int)token, true);
 	}
 
-	void Insert(ClassDeclaration* entry);
+	void Insert(TBase* entry)
+	{
+		_ramEntries.push_back(entry);
+	}
 
-	void CopyToFlash();
-	
-	void clear(bool includingFlash);
+	virtual void CopyToFlash() = 0;
+
+	virtual void ThrowNotFoundException(int token) = 0;
+
+	virtual void clear(bool includingFlash) = 0;
 
 	Iterator GetIterator()
 	{
 		return Iterator(&_flashEntries, &_ramEntries);
 	}
+};
 
+class SortedClassList : public SortedList<ClassDeclaration>
+{
+public:
+	void CopyToFlash() override;
+	void ThrowNotFoundException(int token) override;
+	void clear(bool includingFlash) override;
 private:
 	ClassDeclarationFlash* CreateFlashDeclaration(ClassDeclarationDynamic* dynamic);
 

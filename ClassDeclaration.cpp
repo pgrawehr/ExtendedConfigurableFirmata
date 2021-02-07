@@ -7,30 +7,6 @@
 
 using namespace stdSimple;
 
-
-ClassDeclaration* SortedClassList::GetClassWithToken(int token, bool throwIfNotFound)
-{
-	for(auto elem = GetIterator(); elem.Next();)
-	{
-		if (elem.Current()->ClassToken == token)
-		{
-			return elem.Current();
-		}
-	}
-
-	if (throwIfNotFound)
-	{
-		throw ClrException(SystemException::ClassNotFound, token);
-	}
-
-	return nullptr;
-}
-
-void SortedClassList::Insert(ClassDeclaration* entry)
-{
-	_ramEntries.push_back(entry);
-}
-
 void SortedClassList::clear(bool includingFlash)
 {
 	if (includingFlash)
@@ -142,6 +118,12 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 
 	return (ClassDeclarationFlash*)flashTarget;
 }
+
+void SortedClassList::ThrowNotFoundException(int token)
+{
+	throw ClrException(SystemException::ClassNotFound, token);
+}
+
 
 
 Variable* ClassDeclarationDynamic::GetFieldByIndex(uint32_t idx)
