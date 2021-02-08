@@ -5,6 +5,7 @@
 #include "I2CFirmata.h"
 #include <Wire.h>
 
+
 // Reference the instance of the firmata i2c driver
 extern I2CFirmata i2c;
 
@@ -185,6 +186,26 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.setSize(4);
 		result.Boolean = true;
 		}
+		break;
+	case NativeMethod::InterlockedCompareExchange_Object:
+		ASSERT(args.size() == 3);
+	{
+			result.Type = VariableKind::Object;
+			result.setSize(4);
+			Variable& ref = args[0]; // Arg0 is a reference to an object
+			Variable& value = args[1];
+			Variable& comparand = args[2];
+			noInterrupts();
+			void** refPtr = (void**)ref.Object;
+			void* orig = *(refPtr);
+			if (orig == comparand.Object)
+			{
+				// The other properties at refTgt should already be equal, since this method only operates if all 3 arguments are objects.
+				*(refPtr) = value.Object; // Replace the object ref points to with the value if ref==comparand.
+			}
+			interrupts();
+			result.Object = orig; // Return the original destination object
+	}
 		break;
 	default:
 		return false;

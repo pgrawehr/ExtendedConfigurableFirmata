@@ -82,6 +82,7 @@ public:
 		if (empty())
 		{
 			Firmata.sendString(F("FATAL: Execution stack underflow"));
+			throw stdSimple::ExecutionEngineException("Execution stack underflow");
 		}
 		Variable* lastElem = AddBytes(_sp, -*_revPtr);
 		return *lastElem;
@@ -96,6 +97,7 @@ public:
 		if (empty())
 		{
 			Firmata.sendString(F("FATAL: Execution stack underflow"));
+			throw stdSimple::ExecutionEngineException("Execution stack underflow");
 		}
 		Variable* lastElem = AddBytes(_sp, -*_revPtr);
 		_sp = lastElem;

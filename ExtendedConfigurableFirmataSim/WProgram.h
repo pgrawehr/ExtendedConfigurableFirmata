@@ -33,6 +33,9 @@ byte digitalPinToPort(int pin);
 byte* portModeRegister(int port);
 byte* portOutputRegister(int port);
 
+void noInterrupts();
+void interrupts();
+
 #define INPUT 0
 #define OUTPUT 1
 #define INPUT_PULLUP 2

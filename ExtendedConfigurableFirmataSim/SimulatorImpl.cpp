@@ -69,6 +69,18 @@ int millis()
 	return GetTickCount();
 }
 
+CRITICAL_SECTION cs;
+
+void noInterrupts()
+{
+	EnterCriticalSection(&cs);
+}
+
+void interrupts()
+{
+	LeaveCriticalSection(&cs);
+}
+
 unsigned long micros()
 {
 	const int ONEMILLION = 1000000;
@@ -130,6 +142,7 @@ NetworkConnection::NetworkConnection()
 	memset(_dataBuf, 0, DATA_BUF_SIZE);
 	_readOffset = 0;
 	_writeOffset = 0;
+	InitializeCriticalSection(&cs);
 }
 
 NetworkConnection::~NetworkConnection()

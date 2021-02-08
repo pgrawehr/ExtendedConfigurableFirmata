@@ -89,9 +89,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			Firmata.sendString(F("Error in Scheduler command: Not enough parameters"));
 			return false;
 		}
-		if (argv[0] != 0xFF)
+		if (argv[0] != 0x7F)
 		{
-			// Scheduler message type must be 0xFF, specific meaning follows
+			// Scheduler message type must be 0x7F, specific meaning follows
 			Firmata.sendString(F("Error in Scheduler command: Unknown command syntax"));
 			return false;
 		}
@@ -1129,6 +1129,10 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			if (typeClassDeclaration == nullptr)
+			{
+				throw ClrException("Unknown type for sizeof()", SystemException::NullReference, _methodCurrentlyExecuting->MethodIndex());
+			}
 			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
 			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
