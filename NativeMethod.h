@@ -114,5 +114,6 @@ enum class NativeMethod
     InteropQueryPerformanceFrequency = 108,
     InteropQueryPerformanceCounter = 109,
     InterlockedCompareExchange_Object = 110,
-    ExchangeAdd = 111,
+    InterlockedExchangeAdd = 111,
+    DelegateInternalEqualTypes = 112,
 };

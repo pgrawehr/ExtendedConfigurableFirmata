@@ -894,7 +894,16 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// result is returning the newly constructed type instance
 		}
 		break;
-
+	case NativeMethod::ObjectGetType:
+		{
+		ASSERT(args.size() == 1); // The this pointer
+		ClassDeclaration* cls = GetClassDeclaration(args[0]);
+			Variable type;
+			type.Int32 = cls->ClassToken;
+			type.Type = VariableKind::RuntimeTypeHandle;
+			GetTypeFromHandle(currentFrame, result, type);
+		}
+		break;
 	case NativeMethod::TypeCreateInstanceForAnotherGenericParameter:
 		{
 			// The definition of this (private) function isn't 100% clear, but
@@ -1213,6 +1222,28 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result.setSize(2);
 	}
 	break;
+	case NativeMethod::DelegateInternalEqualTypes:
+	{
+		ASSERT(args.size() == 2);
+		// Both parameters should be of the same delegate type.
+		ASSERT(args[0].Type == VariableKind::Object);
+		ASSERT(args[1].Type == VariableKind::Object);
+		ClassDeclaration* cls1 = GetClassDeclaration(args[0]);
+		ClassDeclaration* cls2 = GetClassDeclaration(args[1]);
+		result.Type = VariableKind::Boolean;
+		result.setSize(4);
+		result.Boolean = cls1->ClassToken == cls2->ClassToken;
+	}
+		break;
+	case NativeMethod::ObjectGetHashCode:
+		{
+		ASSERT(args.size() == 1);
+		result.Type = VariableKind::Int32;
+		result.setSize(4);
+		// The memory address serves pretty fine as general hash code, as long as we don't have a heap compacting GC.
+		result.Int32 = (int)args[0].Object;
+		}
+		break;
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -3551,32 +3582,38 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 
 					int idx = 0;
-					for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
+					while (cls->ParentToken >= 1) // System.Object does not inherit methods from anywhere
 					{
-						// The method is being called using the static type of the target
-						int metToken = met->MethodToken();
-						if (metToken == newMethod->methodToken)
+						for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
 						{
-							break;
+							// The method is being called using the static type of the target
+							int metToken = met->MethodToken();
+							if (metToken == newMethod->methodToken)
+							{
+								goto outer;
+							}
+
+							if (met->ImplementsMethod(newMethod->methodToken))
+							{
+
+								newMethod = ResolveToken(currentMethod, metToken);
+								if (newMethod == nullptr)
+								{
+									Firmata.sendString(F("Implementation not found for 0x"), metToken);
+									ExceptionOccurred(currentFrame, SystemException::NullReference, metToken);
+									return MethodState::Aborted;
+								}
+								goto outer;
+
+							}
 						}
 
-						if (met->ImplementsMethod(newMethod->methodToken))
-						{
-							
-							newMethod = ResolveToken(currentMethod, metToken);
-							if (newMethod == nullptr)
-							{
-								Firmata.sendString(F("Implementation not found for 0x"), metToken);
-								ExceptionOccurred(currentFrame, SystemException::NullReference, metToken);
-								return MethodState::Aborted;
-							}
-							break;
-							
-						}
+						// Our metadata does not include virtual methods that are not overridden in the current class (but only in the base), therefore we have to go down
+						cls = _classes.GetClassWithToken(cls->ParentToken);
 					}
 					// We didn't find another method to call - we'd better already point to the right one
 				}
-
+				outer:
 				// Call to an abstract base class or an interface method - if this happens,
 				// we've probably not done the virtual function resolution correctly
 				if ((int)newMethod->MethodFlags() & (int)MethodFlags::Abstract)
@@ -4280,6 +4317,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	{
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
+		currentFrame->_runtimeException = new RuntimeException(SystemException::ExecutionEngine, Variable());
 		return MethodState::Aborted;
 	}
 	currentFrame->UpdatePc(PC);
