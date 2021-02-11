@@ -81,18 +81,32 @@ enum class ExecutionError : byte
 class RuntimeException
 {
 public:
-	RuntimeException(SystemException type, Variable arg0)
-		: ExceptionArgs(1, 1)
+	static const int MaxStackTokens = 10;
+	RuntimeException()
+		: ExceptionObject(VariableKind::Void)
 	{
 		TokenOfException = 0;
+		ExceptionType = SystemException::None;
+		for (int i = 0; i < MaxStackTokens; i++)
+		{
+			StackTokens[i] = 0;
+		}
+	}
+	RuntimeException(SystemException type, Variable exceptionObject, int tokenOfException = 0)
+	{
+		TokenOfException = tokenOfException;
 		ExceptionType = type;
-		ExceptionArgs.at(0) = arg0;
+		ExceptionObject = exceptionObject;
+		for (int i = 0; i < MaxStackTokens; i++)
+		{
+			StackTokens[i] = 0;
+		}
 	}
 	
 	int TokenOfException;
 	SystemException ExceptionType;
-	vector<Variable> ExceptionArgs;
-	vector<int> StackTokens;
+	Variable ExceptionObject;
+	int StackTokens[MaxStackTokens];
 };
 
 
@@ -180,32 +194,24 @@ class ExecutionState
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
 	MethodBody* _executingMethod;
-	RuntimeException* _runtimeException;
 	VariableList _localStorage; // Memory allocated by localloc
 
 	u32 _memoryGuard;
 	
 	ExecutionState(u16 codeReference, u16 maxStack, MethodBody* executingMethod) :
 		_pc(0), _executionStack(10),
-		_locals(), _arguments(),
-		_runtimeException(nullptr)
+		_locals(), _arguments()
 	{
 		_locals.InitFrom(executingMethod->localTypes);
 		_arguments.InitFrom(executingMethod->argumentTypes);
 		_codeReference = codeReference;
 		_next = nullptr;
-		_runtimeException = nullptr;
 		_executingMethod = executingMethod;
 		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
 	{
 		_next = nullptr;
-		if (_runtimeException != nullptr)
-		{
-			delete _runtimeException;
-			_runtimeException = nullptr;
-		}
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
@@ -302,7 +308,6 @@ public:
 	byte* AllocGcInstance(size_t bytes);
 	bool IsExecutingCode();
 	void KillCurrentTask();
-    RuntimeException* UnrollExecutionStack();
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
@@ -311,6 +316,7 @@ public:
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+    void CreateException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
@@ -320,7 +326,7 @@ public:
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
-    void SendExecutionResult(u16 codeReference, RuntimeException* lastState, Variable returnValue, MethodState execResult);
+    void SendExecutionResult(u16 codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(MethodBody* code, int32_t token);
 	MethodBody* GetMethodByCodeReference(u16 codeReference);
 	void AttachToMethodList(MethodBody* newCode);
@@ -333,6 +339,7 @@ public:
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
 	ExecutionState* _methodCurrentlyExecuting;
+	RuntimeException _currentException;
 
 	SortedClassList _classes;
 

@@ -330,62 +330,10 @@ void FirmataIlExecutor::KillCurrentTask()
 
 	int topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
 
-	// Ignore result - any exceptions that just occurred will be dropped by the abort request
-	UnrollExecutionStack();
-
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult((u16)topLevelMethod, nullptr, Variable(), MethodState::Killed);
+	SendExecutionResult((u16)topLevelMethod, _currentException, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 	_methodCurrentlyExecuting = nullptr;
-}
-
-RuntimeException* FirmataIlExecutor::UnrollExecutionStack()
-{
-	if (_methodCurrentlyExecuting == nullptr)
-	{
-		return nullptr;
-	}
-
-	RuntimeException* exceptionReturn = nullptr;
-	
-	ExecutionState** currentFrameVar = &_methodCurrentlyExecuting;
-	ExecutionState* currentFrame = _methodCurrentlyExecuting;
-	vector<int> stackTokens;
-	while (currentFrame != nullptr)
-	{
-		// destruct the stack top to bottom (to ensure we regain the complete memory chain)
-		while (currentFrame->_next != nullptr)
-		{
-			
-			currentFrameVar = &currentFrame->_next;
-			currentFrame = currentFrame->_next;
-		}
-
-		// Push all methods we saw to the list, this will hopefully get us something like a stack trace
-		stackTokens.push_back(currentFrame->_executingMethod->methodToken);
-		
-		// The first exception we find (hopefully there's only one) is moved out of its container (so it doesn't get deleted here)
-		if (currentFrame->_runtimeException != nullptr && exceptionReturn == nullptr)
-		{
-			exceptionReturn = currentFrame->_runtimeException;
-			currentFrame->_runtimeException = nullptr;
-		}
-
-		delete currentFrame;
-		*currentFrameVar = nullptr; // sets the parent's _next pointer to null
-
-		currentFrame = _methodCurrentlyExecuting;
-		currentFrameVar = &_methodCurrentlyExecuting;
-	}
-
-	if (exceptionReturn != nullptr)
-	{
-		for (size_t i = 0; i < stackTokens.size(); i++)
-		{
-			exceptionReturn->StackTokens.push_back(stackTokens.at(i));
-		}
-	}
-	return exceptionReturn;
 }
 
 void FirmataIlExecutor::report(bool elapsed)
@@ -409,8 +357,7 @@ void FirmataIlExecutor::report(bool elapsed)
 	}
 
 	int methodindex = _methodCurrentlyExecuting->MethodIndex();
-	RuntimeException* ex = UnrollExecutionStack();
-	SendExecutionResult((u16)methodindex, ex, retVal, execResult);
+	SendExecutionResult((u16)methodindex, _currentException, retVal, execResult);
 
 	// The method ended
 	delete _methodCurrentlyExecuting;
@@ -556,7 +503,7 @@ void FirmataIlExecutor::SendUint32(uint32_t value)
 	Firmata.sendValueAsTwo7bitBytes(value >> 24 & 0xFF);
 }
 
-void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException* ex, Variable returnValue, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException& ex, Variable returnValue, MethodState execResult)
 {
 	// Reply format:
 	// bytes 0-1: Reference of method that exited
@@ -573,30 +520,24 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException*
 	// 1: Code execution aborted due to exception (i.e. unsupported opcode, method not found)
 	// 2: Intermediate data from method (not used here)
 	Firmata.write((byte)execResult);
-	if (ex != nullptr && execResult == MethodState::Aborted)
+	if (ex.ExceptionType != SystemException::None && execResult == MethodState::Aborted)
 	{
-		Firmata.write((byte)(1 + ex->ExceptionArgs.size() + ex->StackTokens.size() + (ex->StackTokens.size() > 0 ? 1 : 0))); // Number of arguments that follow
-		if (ex->ExceptionType == SystemException::None)
+		Firmata.write((byte)(1 + 1 /* ExceptionArg*/ + RuntimeException::MaxStackTokens + 1)); // Number of arguments that follow
+		if (ex.ExceptionType == SystemException::None)
 		{
-			SendPackedInt32(ex->TokenOfException);
+			SendPackedInt32(ex.TokenOfException);
 		}
 		else
 		{
-			SendPackedInt32((int32_t)ex->ExceptionType);
+			SendPackedInt32((int32_t)ex.ExceptionType);
 		}
 
-		for (u32 i = 0; i < ex->ExceptionArgs.size(); i++)
+		SendPackedInt32(ex.TokenOfException);
+		
+		SendPackedInt32(0); // A dummy marker
+		for (u32 i = 0; i < RuntimeException::MaxStackTokens; i++)
 		{
-			SendPackedInt32(ex->ExceptionArgs.at(i).Int32);
-		}
-
-		if (ex->StackTokens.size() > 0)
-		{
-			SendPackedInt32(0); // A dummy marker
-			for (u32 i = 0; i < ex->StackTokens.size(); i++)
-			{
-				SendPackedInt32(ex->StackTokens.at(i));
-			}
+			SendPackedInt32(ex.StackTokens[i]);
 		}
 	}
 	else
@@ -671,8 +612,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	}
 
 	TRACE(Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference));
-	auto ex = UnrollExecutionStack();
-	SendExecutionResult(codeReference, ex, result, execResult);
+	SendExecutionResult(codeReference, _currentException, result, execResult);
 	
 	// The method ended very quickly
 	_methodCurrentlyExecuting = nullptr;
@@ -4302,7 +4242,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	{
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ox.Message());
-		currentFrame->_runtimeException = nullptr; // Can't allocate memory right now
+		Variable v(0, VariableKind::Object);
+		CreateException(SystemException::OutOfMemory, v, ox.ExceptionToken());
 		return MethodState::Aborted;
 	}
 	catch(ClrException& ex)
@@ -4310,14 +4251,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ex.Message());
 		// TODO: Replace with correct exception handling/stack unwinding later
-		currentFrame->_runtimeException = new RuntimeException(ex.ExceptionType(), Variable((int32_t)ex.ExceptionToken(), VariableKind::Int32));
+		Variable v(0, VariableKind::Object);
+		CreateException(ex.ExceptionType(), v, ex.ExceptionToken());
 		return MethodState::Aborted;
 	}
 	catch(ExecutionEngineException& ee)
 	{
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
-		currentFrame->_runtimeException = new RuntimeException(SystemException::ExecutionEngine, Variable());
+		Variable v(0, VariableKind::Object);
+		CreateException(SystemException::ExecutionEngine, v, 0);
 		return MethodState::Aborted;
 	}
 	currentFrame->UpdatePc(PC);
@@ -4328,6 +4271,32 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
+}
+
+void FirmataIlExecutor::CreateException(SystemException exception, Variable& managedException, int hintToken)
+{
+	if (managedException.Type != VariableKind::Object && managedException.Type != VariableKind::Void)
+	{
+		throw ExecutionEngineException("Double fault: Illegal exception type");
+	}
+	_currentException.ExceptionType = exception;
+	_currentException.TokenOfException = hintToken;
+	_currentException.ExceptionObject = managedException; // Must be of type object
+
+	ExecutionState* currentFrame = _methodCurrentlyExecuting;
+	int idx = 0;
+	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
+	while (currentFrame->_next != NULL)
+	{
+		_currentException.StackTokens[idx++] = currentFrame->MethodIndex();
+		currentFrame = currentFrame->_next;
+		if (idx >= RuntimeException::MaxStackTokens)
+		{
+			// If we have more than MaxStackTokens elements, shift the list and drop the first (lowest) elements
+			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int));
+			idx--;
+		}
+	}
 }
 
 /// <summary>
@@ -4755,6 +4724,10 @@ void FirmataIlExecutor::reset()
 	_statics.clear();
 
 	_largeStatics.clear();
+
+	_currentException.ExceptionObject.Type = VariableKind::Void;
+	_currentException.TokenOfException = 0;
+	_currentException.ExceptionType = SystemException::None;
 
 	for (size_t idx = 0; idx < _gcData.size(); idx++)
 	{
