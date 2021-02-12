@@ -6,9 +6,11 @@
 
 void setup();
 void loop();
+void shutdown();
 
 int main()
 {
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	setup();
 	while (true)
 	{
@@ -22,6 +24,7 @@ int main()
 		}
 		loop();
 	}
+	shutdown();
 }
 
 // Programm ausführen: STRG+F5 oder Menüeintrag "Debuggen" > "Starten ohne Debuggen starten"

@@ -10,6 +10,16 @@ VirtualFlashMemory::VirtualFlashMemory(size_t size)
 	memset(_memoryBasePtr, -1, size); // The Arduino Due's flash is initialized to all 1's when erasing
 }
 
+VirtualFlashMemory::~VirtualFlashMemory()
+{
+	if (_memoryBasePtr != nullptr)
+	{
+		free(_memoryBasePtr);
+	}
+
+	_memoryBasePtr = nullptr;
+}
+
 
 byte* VirtualFlashMemory::readAddress(uint32_t address)
 {

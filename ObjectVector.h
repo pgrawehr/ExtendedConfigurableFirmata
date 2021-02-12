@@ -120,8 +120,17 @@ namespace stdSimple
 		/// </summary>
 		void truncate()
 		{
-			_size = _count;
-			_data = (T*)realloc(_data, _size * sizeof(T));
+			if (_count != 0)
+			{
+				_size = _count;
+				_data = (T*)realloc(_data, _size * sizeof(T));
+			}
+			else if (_data != nullptr)
+			{
+				_size = 0;
+				free(_data);
+				_data = nullptr;
+			}
 		}
 
 		void pop_back()
@@ -154,7 +163,7 @@ namespace stdSimple
 			return _count;
 		}
 
-		void clear()
+		void clear(bool truncate = false)
 		{
 			if (_data != nullptr)
 			{
@@ -163,6 +172,14 @@ namespace stdSimple
 					_data[i].~T();
 				}
 			}
+
+			if (truncate)
+			{
+				_size = 0;
+				free(_data);
+				_data = nullptr;
+			}
+			
 			_count = 0;
 		}
 

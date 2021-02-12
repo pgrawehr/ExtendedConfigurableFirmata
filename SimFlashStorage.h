@@ -17,6 +17,8 @@ private:
 public:
 	VirtualFlashMemory(size_t size);
 
+	~VirtualFlashMemory();
+
 	byte* readAddress(uint32_t address);
 
 	/// <summary>

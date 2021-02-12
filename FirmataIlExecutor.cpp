@@ -333,6 +333,8 @@ void FirmataIlExecutor::KillCurrentTask()
 	// Send a status report, to end any process waiting for this method to return.
 	SendExecutionResult((u16)topLevelMethod, _currentException, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
+	
+	delete _methodCurrentlyExecuting;
 	_methodCurrentlyExecuting = nullptr;
 }
 
@@ -615,6 +617,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	SendExecutionResult(codeReference, _currentException, result, execResult);
 	
 	// The method ended very quickly
+	delete _methodCurrentlyExecuting;
 	_methodCurrentlyExecuting = nullptr;
 }
 
@@ -4488,8 +4491,9 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 	// Reinit
 	if (offset == 0)
 	{
-		decl->fieldTypes.clear();
-		decl->methodTypes.clear();
+		// TODO: If the class is not new, throw. Or handle correctly. 
+		decl->fieldTypes.clear(true);
+		decl->methodTypes.clear(true);
 	}
 
 	if (argc == 0)
@@ -4527,14 +4531,24 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 		baseTokens.push_back(DecodePackedUint32(argv + i));
 	}
 
-	int* convertedBaseTokens = (int*)malloc(sizeof(int) * baseTokens.size());
-	for (size_t j = 0; j < baseTokens.size(); j++)
+	if (baseTokens.size() > 0)
 	{
-		convertedBaseTokens[j] = baseTokens[j];
+		static int n = 0;
+		int* convertedBaseTokens = (int*)malloc(sizeof(int) * (baseTokens.size() + 1));
+		for (size_t j = 0; j < baseTokens.size(); j++)
+		{
+			convertedBaseTokens[j] = baseTokens[j];
+		}
+
+		convertedBaseTokens[baseTokens.size()] = methodToken + (++n << 16);
+
+		decl->methodTypes.push_back(Method(methodToken, baseTokens.size(), convertedBaseTokens));
 	}
-
-	decl->methodTypes.push_back(Method(methodToken, baseTokens.size(), convertedBaseTokens));
-
+	else
+	{
+		decl->methodTypes.push_back(Method(methodToken, 0, nullptr));
+	}
+	
 	if (isLastPart)
 	{
 		decl->fieldTypes.truncate();
@@ -4719,9 +4733,9 @@ void FirmataIlExecutor::reset()
 		free(c.second());
 	}
 	
-	_constants.clear();
+	_constants.clear(true);
 
-	_statics.clear();
+	_statics.clear(true);
 
 	_largeStatics.clear();
 
@@ -4739,7 +4753,7 @@ void FirmataIlExecutor::reset()
 		_gcData[idx] = nullptr;
 	}
 
-	_gcData.clear();
+	_gcData.clear(true);
 	
 	Firmata.sendStringf(F("Execution memory cleared. Free bytes: 0x%x"), 4, freeMemory());
 }

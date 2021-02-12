@@ -322,3 +322,4 @@ void loop()
 
   firmataExt.report(reporting.elapsed());
 }
+

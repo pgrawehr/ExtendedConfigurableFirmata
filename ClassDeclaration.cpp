@@ -20,7 +20,7 @@ void SortedClassList::clear(bool includingFlash)
 		delete _ramEntries[i];
 	}
 	
-	_ramEntries.clear();
+	_ramEntries.clear(true);
 }
 
 void SortedClassList::CopyToFlash()

@@ -125,4 +125,3 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode)
 	Firmata.sendStringf(F("Flash data written: %d bytes of %d used."), 4, bytesUsed, bytesTotal);
 }
 
-

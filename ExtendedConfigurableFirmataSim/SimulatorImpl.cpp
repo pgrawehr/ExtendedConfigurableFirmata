@@ -2,6 +2,8 @@
 #include <utility/Boards.h>
 
 #include "SimulatorImpl.h"
+#include "../SimFlashStorage.h"
+
 #undef INPUT
 #include <Windows.h>
 #include <WS2tcpip.h>
@@ -345,6 +347,14 @@ void NetworkConnection::flush()
 {
 }
 
-
+extern VirtualFlashMemory* storage;
+void shutdown()
+{
+	// Reset before shutdown, especially to clear the runtime memory, otherwise the
+	// list of memory leaks will be endless
+	Firmata.parse(SYSTEM_RESET); 
+	delete storage;
+	storage = nullptr;
+}
 
 

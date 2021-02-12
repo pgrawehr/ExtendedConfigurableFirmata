@@ -4,6 +4,11 @@
 // Simulate an Arduino due. This has sizeof(int)=4, which is the same than for a 32bit windows exe
 #define __SAM3X8E__ 1
 
+// Enable the debug runtime in debug mode
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdarg.h>

@@ -117,8 +117,8 @@ public:
 		{
 			methodTypes[i].clear();
 		}
-		methodTypes.clear();
-		interfaceTokens.clear();
+		methodTypes.clear(true);
+		interfaceTokens.clear(true);
 	}
 
 	virtual Variable* GetFieldByIndex(uint32_t idx) override;

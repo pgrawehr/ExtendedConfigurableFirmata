@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ObjectVector.h"
 #include "ObjectIterator.h"
@@ -90,10 +90,10 @@ namespace stdSimple
 			_values.push_back(value);
 		}
 
-		void clear()
+		void clear(bool truncate = false)
 		{
-			_keys.clear();
-			_values.clear();
+			_keys.clear(truncate);
+			_values.clear(truncate);
 		}
 
 		size_t size()
