@@ -197,6 +197,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				{
 					// Copy all members currently in ram to flash
 				_classes.CopyToFlash();
+				_methods.CopyToFlash();
 				}
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
@@ -4632,7 +4633,14 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 {
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
-	Firmata.write((byte)(errorCode == ExecutionError::None ? ExecutorCommand::Ack : ExecutorCommand::Nack));
+	if (errorCode == ExecutionError::None)
+	{
+		Firmata.write((byte)ExecutorCommand::Ack);
+	}
+	else
+	{
+		Firmata.write((byte)ExecutorCommand::Nack);
+	}
 	Firmata.write((byte)subCommand);
 	Firmata.write((byte)errorCode);
 	Firmata.endSysex();

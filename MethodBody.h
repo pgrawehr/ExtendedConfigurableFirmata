@@ -21,7 +21,7 @@ protected:
 public:
 	byte NumberOfArguments() const
 	{
-		return _numArgs;
+		return _numArguments;
 	}
 
 	byte MaxExecutionStack() const
@@ -34,8 +34,10 @@ public:
 		return _methodFlags;
 	}
 
-	virtual stdSimple::complexIteratorBase<VariableDescription>& GetLocalsIterator() const = 0;
-	virtual stdSimple::complexIteratorBase<VariableDescription>& GetArgumentTypesIterator() const = 0;
+	virtual short NumberOfLocals() const = 0;
+
+	virtual VariableDescription* GetLocalsIterator() const = 0;
+	virtual VariableDescription* GetArgumentTypesIterator() const = 0;
 
 	virtual VariableDescription& GetArgumentAt(int idx) const = 0;
 
@@ -49,21 +51,22 @@ public:
 	// Native method number
 	NativeMethod nativeMethod;
 
-private:
-	byte _numArgs;
+protected:
+	byte _numArguments;
 	byte _maxStack;
 	byte _methodFlags;
 };
 
 class MethodBodyDynamic : public MethodBody
 {
+	friend class SortedMethodList;
 private:
 	stdSimple::vector<VariableDescription, byte> _localTypes;
 	stdSimple::vector<VariableDescription, byte> _argumentTypes;
 public:
 	MethodBodyDynamic(byte flags, byte numArgs, byte maxStack);
-	virtual stdSimple::complexIteratorBase<VariableDescription>& GetLocalsIterator() const override;
-	virtual stdSimple::complexIteratorBase<VariableDescription>& GetArgumentTypesIterator() const override;
+	virtual VariableDescription* GetLocalsIterator() const override;
+	virtual VariableDescription* GetArgumentTypesIterator() const override;
 	void AddLocalDescription(VariableDescription& desc)
 	{
 		_localTypes.push_back(desc);
@@ -71,12 +74,17 @@ public:
 
 	void AddArgumentDescription(VariableDescription& desc)
 	{
-		_localTypes.push_back(desc);
+		_argumentTypes.push_back(desc);
 	}
 
 	bool IsDynamic() const override
 	{
 		return true;
+	}
+
+	virtual short NumberOfLocals() const override
+	{
+		return (short)_localTypes.size();
 	}
 
 	VariableDescription& GetArgumentAt(int idx) const override;
@@ -85,10 +93,43 @@ protected:
 	void Clear() override;
 };
 
+class MethodBodyFlash : public MethodBody
+{
+	friend class SortedMethodList;
+private:
+	VariableDescription* _locals;
+	VariableDescription* _arguments;
+	short _numLocals;
+	MethodBodyFlash(MethodBodyDynamic* from);
+public:
+	bool IsDynamic() const override
+	{
+		return false;
+	}
+
+	void Clear() override
+	{
+		// This is in flash -> cannot delete
+	}
+
+	VariableDescription& GetArgumentAt(int idx) const override;
+
+	virtual VariableDescription* GetLocalsIterator() const override;
+	virtual VariableDescription* GetArgumentTypesIterator() const override;
+
+	virtual short NumberOfLocals() const override
+	{
+		return _numLocals;
+	}
+};
+
 class SortedMethodList : public SortedList<MethodBody>
 {
 public:
 	void CopyToFlash() override;
 	void ThrowNotFoundException(int token) override;
+
 	void clear(bool includingFlash) override;
+private:
+	MethodBodyFlash* CreateFlashDeclaration(MethodBodyDynamic* element);
 };

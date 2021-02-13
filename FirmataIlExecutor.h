@@ -133,8 +133,8 @@ class ExecutionState
 		_pc(0), _executionStack(10),
 		_locals(), _arguments()
 	{
-		_locals.InitFrom(executingMethod->GetLocalsIterator());
-		_arguments.InitFrom(executingMethod->GetArgumentTypesIterator());
+		_locals.InitFrom(executingMethod->NumberOfLocals(), executingMethod->GetLocalsIterator());
+		_arguments.InitFrom(executingMethod->NumberOfArguments(), executingMethod->GetArgumentTypesIterator());
 		_codeReference = codeReference;
 		_next = nullptr;
 		_executingMethod = executingMethod;

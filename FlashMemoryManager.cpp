@@ -81,6 +81,11 @@ void FlashMemoryManager::Clear()
 
 void* FlashMemoryManager::FlashAlloc(size_t bytes)
 {
+	if (_endOfHeap + bytes + 8 >= _flashEnd)
+	{
+		OutOfMemoryException::Throw();
+	}
+	
 	byte* ret = _endOfHeap;
 	// Keep heap addresses 8-byte aligned
 	if (bytes % 8 != 0)

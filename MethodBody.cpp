@@ -12,7 +12,7 @@ MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 	_methodFlags = flags;
 	methodLength = 0;
 	methodIl = nullptr;
-	_numArgs = numArgs;
+	_numArguments = numArgs;
 	_maxStack = maxStack;
 	codeReference = -1;
 	nativeMethod = NativeMethod::None;
@@ -53,25 +53,115 @@ void MethodBodyDynamic::Clear()
 }
 
 
-stdSimple::complexIteratorBase<VariableDescription>& MethodBodyDynamic::GetLocalsIterator() const
+VariableDescription* MethodBodyDynamic::GetLocalsIterator() const
 {
-	// We keep one instance of this iterator as a static variable, so we can return it in a fire-and-forget way
-	static stdSimple::vector<VariableDescription, byte>::complexVectorIterator iteratorInUse;
-	iteratorInUse = _localTypes.GetIterator();
-	return iteratorInUse;
+	return &_localTypes.at(0);
 }
 
-stdSimple::complexIteratorBase<VariableDescription>& MethodBodyDynamic::GetArgumentTypesIterator() const
+VariableDescription* MethodBodyDynamic::GetArgumentTypesIterator() const
 {
-	// We keep one instance of this iterator as a static variable, so we can return it in a fire-and-forget way
-	static stdSimple::vector<VariableDescription, byte>::complexVectorIterator iteratorInUse;
-	iteratorInUse = _argumentTypes.GetIterator();
-	return iteratorInUse;
+	return &_argumentTypes.at(0);
 }
+
+MethodBodyFlash::MethodBodyFlash(MethodBodyDynamic* from)
+	: MethodBody(from->MethodFlags(), from->NumberOfArguments(), from->MaxExecutionStack())
+{
+	_locals = nullptr;
+	_numLocals = 0;
+	_arguments = nullptr;
+}
+
+VariableDescription& MethodBodyFlash::GetArgumentAt(int idx) const
+{
+	return _arguments[idx];
+}
+
+VariableDescription* MethodBodyFlash::GetArgumentTypesIterator() const
+{
+	return _arguments;
+}
+
+VariableDescription* MethodBodyFlash::GetLocalsIterator() const
+{
+	return _locals;
+}
+
 
 void SortedMethodList::CopyToFlash()
 {
-	throw stdSimple::ExecutionEngineException("Not supported stuff here");
+	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
+	{
+		MethodBodyFlash* flash = CreateFlashDeclaration((MethodBodyDynamic*)*iterator);
+		_flashEntries.push_back(flash);
+	}
+
+	clear(false);
+}
+
+MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dynamic)
+{
+	// First create the object in RAM
+	int totalSize = sizeof(MethodBodyFlash) + dynamic->_argumentTypes.size() * sizeof(VariableDescription) + dynamic->_localTypes.size() * sizeof(VariableDescription) + dynamic->methodLength;
+
+	byte* flashCopy = (byte*)malloc(totalSize);
+	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
+
+	byte* temp = flashCopy;
+	// Reserve space for main class
+	temp = AddBytes(temp, sizeof(MethodBodyFlash));
+
+	MethodBodyFlash* flash = new MethodBodyFlash(dynamic);
+	flash->codeReference = dynamic->codeReference;
+	flash->nativeMethod = dynamic->nativeMethod;
+	flash->methodToken = dynamic->methodToken;
+	
+	size_t argumentLength = dynamic->_argumentTypes.size() * sizeof(VariableDescription);
+	if (argumentLength > 0)
+	{
+		memcpy(temp, &dynamic->_argumentTypes.at(0), argumentLength);
+		flash->_arguments = (VariableDescription*)Relocate(flashCopy, temp, flashTarget);
+		temp = AddBytes(temp, argumentLength);
+		flash->_numArguments = (byte)dynamic->_argumentTypes.size();
+	}
+	else
+	{
+		flash->_arguments = nullptr;
+	}
+
+	size_t localsLength = dynamic->_localTypes.size() * sizeof(VariableDescription);
+	if (localsLength > 0)
+	{
+		memcpy(temp, &dynamic->_localTypes.at(0), localsLength);
+		flash->_locals = (VariableDescription*)Relocate(flashCopy, temp, flashTarget);
+		temp = AddBytes(temp, localsLength);
+		flash->_numLocals = (short)dynamic->_localTypes.size();;
+	}
+	else
+	{
+		flash->_locals = nullptr;
+	}
+
+	if (dynamic->methodLength > 0)
+	{
+		memcpy(temp, dynamic->methodIl, dynamic->methodLength);
+		flash->methodIl = (byte*)Relocate(flashCopy, temp, flashTarget);
+		flash->methodLength = dynamic->methodLength;
+		temp = AddBytes(temp, dynamic->methodLength);
+	}
+	else
+	{
+		flash->methodLength = 0;
+		flash->methodIl = nullptr;
+	}
+	
+	memcpy(flashCopy, (void*)flash, sizeof(MethodBodyFlash));
+	
+	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
+	flash->methodIl = nullptr; // Because the delete shall not touch this
+	delete flash;
+	free(flashCopy);
+
+	return (MethodBodyFlash*)flashTarget;
 }
 
 void SortedMethodList::ThrowNotFoundException(int token)
