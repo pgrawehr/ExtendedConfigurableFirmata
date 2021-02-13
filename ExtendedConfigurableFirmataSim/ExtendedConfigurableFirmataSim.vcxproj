@@ -165,6 +165,7 @@
     <ClCompile Include="..\FirmataStatusLed.cpp" />
     <ClCompile Include="..\FlashMemoryManager.cpp" />
     <ClCompile Include="..\HardwareAccess.cpp" />
+    <ClCompile Include="..\MethodBody.cpp" />
     <ClCompile Include="..\SelfTest.cpp" />
     <ClCompile Include="..\SimFlashStorage.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
@@ -204,6 +205,7 @@
     <ClInclude Include="..\FreeMemory.h" />
     <ClInclude Include="..\HardwareAccess.h" />
     <ClInclude Include="..\KnownTypeTokens.h" />
+    <ClInclude Include="..\MethodBody.h" />
     <ClInclude Include="..\MethodFlags.h" />
     <ClInclude Include="..\NativeMethod.h" />
     <ClInclude Include="..\ObjectIterator.h" />

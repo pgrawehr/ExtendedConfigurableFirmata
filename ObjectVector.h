@@ -4,6 +4,25 @@
 
 namespace stdSimple
 {
+	/// <summary>
+	/// This is a generic iterator interface.
+	/// </summary>
+	template<class T>
+	class complexIteratorBase
+	{
+	public:
+		virtual ~complexIteratorBase()
+		{
+		}
+		
+		virtual T* Current() = 0;
+		
+		virtual bool Next() = 0;
+
+		virtual void Reset() = 0;
+	};
+	
+	
 	template<class T, class TSize = size_t>
 	class vector
 	{
@@ -11,7 +30,43 @@ namespace stdSimple
 		TSize _size;
 		TSize _count;
 		T* _data;
+
 	public:
+		class complexVectorIterator : public complexIteratorBase<T>
+		{
+			vector<T, TSize>* _list;
+			int _currentIndex;
+
+			// This ctor is only used for housekeeping purposes
+		public:
+			complexVectorIterator()
+			{
+				_list = nullptr;
+				_currentIndex = -1;
+			}
+			
+			complexVectorIterator(vector<T, TSize>* list)
+			{
+				_list = list;
+				_currentIndex = -1; // before first
+			}
+
+			T* Current() override
+			{
+				return &_list->at(_currentIndex);
+			}
+
+			bool Next() override
+			{
+				return ++_currentIndex < (int)_list->size();
+			}
+
+			void Reset() override
+			{
+				_currentIndex = -1;
+			}
+		};
+	
 		typedef T* iterator;
 
 		vector()
@@ -214,6 +269,11 @@ namespace stdSimple
 			}
 			
 			return false;
+		}
+
+		complexVectorIterator GetIterator() const
+		{
+			return complexVectorIterator((vector<T, TSize>*)this);
 		}
 	};
 

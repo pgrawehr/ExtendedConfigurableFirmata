@@ -87,6 +87,9 @@
     <ClInclude Include="SimFlashStorage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="MethodBody.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -114,6 +117,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SimFlashStorage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MethodBody.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

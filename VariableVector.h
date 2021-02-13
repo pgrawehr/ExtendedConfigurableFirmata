@@ -24,7 +24,7 @@ public:
 		_size = 0;
 	}
 
-	bool InitDefault(int size, stdSimple::vector<VariableDescription, byte>& variableDescriptions)
+	bool InitDefault(int size, stdSimple::complexIteratorBase<VariableDescription>& variableDescriptions)
 	{
 		_defaultSizesOnly = true;
 		if (_data != nullptr)
@@ -44,8 +44,9 @@ public:
 			memset(_data, 0, size * sizeof(Variable));
 
 			int idx = 0;
-			for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+			while (variableDescriptions.Next())
 			{
+				VariableDescription* start = variableDescriptions.Current();
 				size_t fieldSize = start->fieldSize();
 				_data[idx].setSize((u16)fieldSize);
 				_data[idx].Type = start->Type;
@@ -61,29 +62,35 @@ public:
 		return true;
 	}
 
-	bool InitFrom(stdSimple::vector<VariableDescription, byte> &variableDescriptions)
+	bool InitFrom(stdSimple::complexIteratorBase<VariableDescription> &variableDescriptions)
 	{
 		bool canUseDefaultSizes = true;
 		int totalSize = 0;
 		// Check whether the list contains any large value type objects. If not, we will be using constant field sizes of sizeof(Variable)
 		// In the same run, sum up all sizes
-		for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+		variableDescriptions.Reset();
+
+		int count = 0;
+		while (variableDescriptions.Next())
 		{
+			VariableDescription* start = variableDescriptions.Current();
 			size_t size = start->fieldSize();
 			if (size > sizeof(double))
 			{
 				canUseDefaultSizes = false;
 			}
 			totalSize += MAX(size, sizeof(double)) + Variable::headersize(); // Each variable carries a header and holds at least 8 bytes
+			count++;
 		}
 
+		variableDescriptions.Reset();
 		if (canUseDefaultSizes)
 		{
-			return InitDefault(variableDescriptions.size(), variableDescriptions);
+			return InitDefault(count, variableDescriptions);
 		}
 
-		// This variable still contains the number of elements in the vector
-		_size = variableDescriptions.size();
+		// This variable contains the number of elements in the vector, even if the vector has variable-lenght entries
+		_size = count;
 		_defaultSizesOnly = false;
 		totalSize += sizeof(VariableDescription);
 		_data = (Variable*)malloc(totalSize);
@@ -97,8 +104,9 @@ public:
 		Variable* currentField = _data;
 		byte* currentFieldPtr = (byte*)_data;
 		// Now init the data structure: It's a ordered list with "next" pointers in the form of the size fields
-		for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+		while (variableDescriptions.Next())
 		{
+			VariableDescription* start = variableDescriptions.Current();
 			size_t size = MAX(start->fieldSize(), 8);
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;

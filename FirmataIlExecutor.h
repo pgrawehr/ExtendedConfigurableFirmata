@@ -29,6 +29,8 @@
 #include "KnownTypeTokens.h"
 #include "ClassDeclaration.h"
 #include "VariableKind.h"
+#include "MethodBody.h"
+
 
 using namespace stdSimple;
 
@@ -110,77 +112,6 @@ public:
 };
 
 
-class MethodBody
-{
-public:
-	MethodBody(byte flags, byte numArgs, byte maxStack)
-	{
-		methodToken = 0;
-		_methodFlags = flags;
-		methodLength = 0;
-		methodIl = nullptr;
-		_numArgs = numArgs;
-		_maxStack = maxStack;
-		next = nullptr;
-		codeReference = -1;
-		nativeMethod = NativeMethod::None;
-	}
-
-	~MethodBody()
-	{
-		Clear();
-	}
-
-private:
-	/// <summary>
-	/// Clear the current entry, so it can be reused.
-	/// </summary>
-	void Clear()
-	{
-		methodToken = 0;
-		if (methodIl != nullptr)
-		{
-			free(methodIl);
-			methodIl = nullptr;
-			methodLength = 0;
-		}
-
-		codeReference = -1;
-	}
-
-public:
-	byte NumberOfArguments() const
-	{
-		return _numArgs;
-	}
-
-	byte MaxExecutionStack() const
-	{
-		return _maxStack;
-	}
-
-	byte MethodFlags() const
-	{
-		return _methodFlags;
-	}
-
-	int32_t methodToken; // Primary method token (a methodDef token)
-	u16 methodLength;
-	u16 codeReference;
-	
-	vector<VariableDescription, byte> localTypes;
-	vector<VariableDescription, byte> argumentTypes;
-	byte* methodIl;
-	// Native method number
-	NativeMethod nativeMethod;
-	MethodBody* next;
-
-private:
-	byte _numArgs;
-	byte _maxStack;
-	byte _methodFlags;
-};
-
 class ExecutionState
 {
 	private:
@@ -202,8 +133,8 @@ class ExecutionState
 		_pc(0), _executionStack(10),
 		_locals(), _arguments()
 	{
-		_locals.InitFrom(executingMethod->localTypes);
-		_arguments.InitFrom(executingMethod->argumentTypes);
+		_locals.InitFrom(executingMethod->GetLocalsIterator());
+		_arguments.InitFrom(executingMethod->GetArgumentTypesIterator());
 		_codeReference = codeReference;
 		_next = nullptr;
 		_executingMethod = executingMethod;
@@ -329,12 +260,10 @@ public:
     void SendExecutionResult(u16 codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(MethodBody* code, int32_t token);
 	MethodBody* GetMethodByCodeReference(u16 codeReference);
-	void AttachToMethodList(MethodBody* newCode);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
 
 	stdSimple::vector<void*> _gcData;
-	MethodBody* _firstMethod;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
@@ -342,6 +271,7 @@ public:
 	RuntimeException _currentException;
 
 	SortedClassList _classes;
+	SortedMethodList _methods;
 
 	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;

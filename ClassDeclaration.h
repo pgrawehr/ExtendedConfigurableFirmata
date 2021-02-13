@@ -195,7 +195,7 @@ public:
 	/// <summary>
 	/// This iterator iterates over both provided lists in sequence
 	/// </summary>
-	class Iterator
+	class Iterator : public stdSimple::complexIteratorBase<TBase>
 	{
 	private:
 		stdSimple::vector<TBase*>* _list;
@@ -223,6 +223,11 @@ public:
 		bool Next()
 		{
 			return (++_currentIndex) < (_list->size() + _list2->size());
+		}
+
+		void Reset()
+		{
+			_currentIndex = -1;
 		}
 	};
 

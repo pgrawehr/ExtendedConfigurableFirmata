@@ -65,7 +65,6 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
-	_firstMethod = nullptr;
 }
 
 void FirmataIlExecutor::Init()
@@ -174,6 +173,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				break;
 			case ExecutorCommand::EraseFlash:
 				_classes.clear(true);
+				_methods.clear(true);
 				// Fall trough
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
@@ -382,13 +382,13 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	{
 		return ExecutionError::OutOfMemory;
 	}
+	
 	method->codeReference = codeReference;
-	// And immediately attach to the list
-	AttachToMethodList(method);
-
 	method->nativeMethod = nativeMethod;
 	method->methodToken = token;
-
+	
+	// And attach to the list
+	_methods.Insert(method);
 	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags));
 	return ExecutionError::None;
 }
@@ -4245,7 +4245,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	{
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ox.Message());
-		Variable v(0, VariableKind::Object);
+		Variable v(VariableKind::Object);
 		CreateException(SystemException::OutOfMemory, v, ox.ExceptionToken());
 		return MethodState::Aborted;
 	}
@@ -4254,7 +4254,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ex.Message());
 		// TODO: Replace with correct exception handling/stack unwinding later
-		Variable v(0, VariableKind::Object);
+		Variable v(VariableKind::Object);
 		CreateException(ex.ExceptionType(), v, ex.ExceptionToken());
 		return MethodState::Aborted;
 	}
@@ -4262,7 +4262,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	{
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
-		Variable v(0, VariableKind::Object);
+		Variable v(VariableKind::Object);
 		CreateException(SystemException::ExecutionEngine, v, 0);
 		return MethodState::Aborted;
 	}
@@ -4633,34 +4633,14 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 }
 
 
-void FirmataIlExecutor::AttachToMethodList(MethodBody* newCode)
-{
-	if (_firstMethod == nullptr)
-	{
-		_firstMethod = newCode;
-		return;
-	}
-
-	MethodBody* parent = _firstMethod;
-	while (parent->next != nullptr)
-	{
-		parent = parent->next;
-	}
-
-	parent->next = newCode;
-}
-
 MethodBody* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 {
-	MethodBody* current = _firstMethod;
-	while (current != nullptr)
+	for (auto current = _methods.GetIterator(); current.Next();)
 	{
-		if (current->codeReference == codeReference)
+		if (current.Current()->codeReference == codeReference)
 		{
-			return current;
+			return current.Current();
 		}
-
-		current = current->next;
 	}
 
 	TRACE(Firmata.sendString(F("Reference not found: "), codeReference));
@@ -4669,22 +4649,15 @@ MethodBody* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
 
 MethodBody* FirmataIlExecutor::GetMethodByToken(MethodBody* code, int32_t token)
 {
-	// Methods in the method list have their top nibble patched with the module ID.
-	// if the token to be searched has module 0, we need to add the current module Id (from the
-	// token of the currently executing method)
-
-	MethodBody* current = _firstMethod;
-	while (current != nullptr)
+	for (auto current = _methods.GetIterator(); current.Next();)
 	{
-		if (current->methodToken == token)
+		if (current.Current()->methodToken == token)
 		{
-			return current;
+			return current.Current();
 		}
-
-		current = current->next;
 	}
 
-	Firmata.sendString(F("Token not found: "), token);
+	TRACE(Firmata.sendString(F("Reference not found: "), codeReference));
 	return nullptr;
 }
 
@@ -4718,17 +4691,7 @@ OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen)
 
 void FirmataIlExecutor::reset()
 {
-	auto method = _firstMethod;
-
-	while (method != nullptr)
-	{
-		auto current = method;
-		method = method->next;
-		delete current;
-	}
-
-	_firstMethod = nullptr;
-
+	_methods.clear(false);
 	_classes.clear(false);
 
 	for (auto c = _constants.begin(); c != _constants.end(); ++c)
