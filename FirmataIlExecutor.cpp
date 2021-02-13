@@ -377,7 +377,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 		return ExecutionError::InvalidArguments;
 	}
 
-	method = new MethodBody((byte) flags, (byte)argCount, (byte)maxStack);
+	method = new MethodBodyDynamic((byte) flags, (byte)argCount, (byte)maxStack);
 	if (method == nullptr)
 	{
 		return ExecutionError::OutOfMemory;
@@ -396,11 +396,17 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv)
 {
 	TRACE(Firmata.sendStringf(F("Loading Declaration."), 0));
-	MethodBody* method = GetMethodByCodeReference(codeReference);
+	MethodBodyDynamic* method = (MethodBodyDynamic*)GetMethodByCodeReference(codeReference);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
 		Firmata.sendString(F("LoadMethodSignature for unknown codeReference"));
+		return ExecutionError::InvalidArguments;
+	}
+
+	if (!method->IsDynamic())
+	{
+		Firmata.sendString(F("Cannot update flash methods"));
 		return ExecutionError::InvalidArguments;
 	}
 
@@ -414,7 +420,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
 			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
-			method->argumentTypes.push_back(desc);
+			method->AddArgumentDescription(desc);
 			i += 3;
 		}
 	}
@@ -426,7 +432,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
 			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
-			method->localTypes.push_back(desc);
+			method->AddLocalDescription(desc);
 			i += 3;
 		}
 	}
@@ -590,7 +596,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	int idx = 0;
 	for (int i = 0; i < method->NumberOfArguments(); i++)
 	{
-		VariableDescription desc = method->argumentTypes[i];
+		VariableDescription& desc = method->GetArgumentAt(i);
 		VariableKind k = desc.Type;
 		if (((int)k & 16) == 0)
 		{

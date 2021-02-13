@@ -36,19 +36,36 @@ void MethodBody::Clear()
 	codeReference = -1;
 }
 
-stdSimple::complexIteratorBase<VariableDescription>& MethodBody::GetLocalsIterator() const
+MethodBodyDynamic::MethodBodyDynamic(byte flags, byte numArgs, byte maxStack)
+	:MethodBody(flags, numArgs, maxStack)
+{
+}
+
+VariableDescription& MethodBodyDynamic::GetArgumentAt(int idx) const
+{
+	return _argumentTypes.at(idx);
+}
+
+void MethodBodyDynamic::Clear()
+{
+	_localTypes.clear(true);
+	_argumentTypes.clear(true);
+}
+
+
+stdSimple::complexIteratorBase<VariableDescription>& MethodBodyDynamic::GetLocalsIterator() const
 {
 	// We keep one instance of this iterator as a static variable, so we can return it in a fire-and-forget way
 	static stdSimple::vector<VariableDescription, byte>::complexVectorIterator iteratorInUse;
-	iteratorInUse = localTypes.GetIterator();
+	iteratorInUse = _localTypes.GetIterator();
 	return iteratorInUse;
 }
 
-stdSimple::complexIteratorBase<VariableDescription>& MethodBody::GetArgumentTypesIterator() const
+stdSimple::complexIteratorBase<VariableDescription>& MethodBodyDynamic::GetArgumentTypesIterator() const
 {
 	// We keep one instance of this iterator as a static variable, so we can return it in a fire-and-forget way
 	static stdSimple::vector<VariableDescription, byte>::complexVectorIterator iteratorInUse;
-	iteratorInUse = argumentTypes.GetIterator();
+	iteratorInUse = _argumentTypes.GetIterator();
 	return iteratorInUse;
 }
 

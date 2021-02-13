@@ -12,11 +12,11 @@ public:
 
 	virtual ~MethodBody();
 
-private:
+protected:
 	/// <summary>
 	/// Clear the current entry, so it can be reused.
 	/// </summary>
-	void Clear();
+	virtual void Clear();
 
 public:
 	byte NumberOfArguments() const
@@ -34,15 +34,17 @@ public:
 		return _methodFlags;
 	}
 
-	stdSimple::complexIteratorBase<VariableDescription>& GetLocalsIterator() const;
-	stdSimple::complexIteratorBase<VariableDescription>& GetArgumentTypesIterator() const;
+	virtual stdSimple::complexIteratorBase<VariableDescription>& GetLocalsIterator() const = 0;
+	virtual stdSimple::complexIteratorBase<VariableDescription>& GetArgumentTypesIterator() const = 0;
+
+	virtual VariableDescription& GetArgumentAt(int idx) const = 0;
+
+	virtual bool IsDynamic() const = 0;
 
 	int32_t methodToken; // Primary method token (a methodDef token)
 	u16 methodLength;
 	u16 codeReference;
 
-	stdSimple::vector<VariableDescription, byte> localTypes;
-	stdSimple::vector<VariableDescription, byte> argumentTypes;
 	byte* methodIl;
 	// Native method number
 	NativeMethod nativeMethod;
@@ -51,6 +53,36 @@ private:
 	byte _numArgs;
 	byte _maxStack;
 	byte _methodFlags;
+};
+
+class MethodBodyDynamic : public MethodBody
+{
+private:
+	stdSimple::vector<VariableDescription, byte> _localTypes;
+	stdSimple::vector<VariableDescription, byte> _argumentTypes;
+public:
+	MethodBodyDynamic(byte flags, byte numArgs, byte maxStack);
+	virtual stdSimple::complexIteratorBase<VariableDescription>& GetLocalsIterator() const override;
+	virtual stdSimple::complexIteratorBase<VariableDescription>& GetArgumentTypesIterator() const override;
+	void AddLocalDescription(VariableDescription& desc)
+	{
+		_localTypes.push_back(desc);
+	}
+
+	void AddArgumentDescription(VariableDescription& desc)
+	{
+		_localTypes.push_back(desc);
+	}
+
+	bool IsDynamic() const override
+	{
+		return true;
+	}
+
+	VariableDescription& GetArgumentAt(int idx) const override;
+
+protected:
+	void Clear() override;
 };
 
 class SortedMethodList : public SortedList<MethodBody>
