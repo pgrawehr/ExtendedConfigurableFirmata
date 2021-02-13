@@ -4491,9 +4491,12 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 	// Reinit
 	if (offset == 0)
 	{
-		// TODO: If the class is not new, throw. Or handle correctly. 
-		decl->fieldTypes.clear(true);
-		decl->methodTypes.clear(true);
+		// If the class is not new, throw. Handling this right would be needlessly complicated.
+		if (decl->fieldTypes.size() > 0 || decl->methodTypes.size() > 0 || decl->interfaceTokens.size() > 0)
+		{
+			Firmata.sendString(F("Definition for class already seen. Duplicates not permited"));
+			return ExecutionError::InvalidArguments;
+		}
 	}
 
 	if (argc == 0)
