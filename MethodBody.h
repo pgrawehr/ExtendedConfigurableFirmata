@@ -34,6 +34,26 @@ public:
 		return _methodFlags;
 	}
 
+	u16 MethodLength() const
+	{
+		if (_methodIl == nullptr)
+		{
+			return 0;
+		}
+
+		return _methodLength;
+	}
+
+	NativeMethod NativeMethodNumber() const
+	{
+		if (_methodIl != nullptr)
+		{
+			return NativeMethod::None;
+		}
+
+		return _nativeMethod;
+	}
+
 	virtual short NumberOfLocals() const = 0;
 
 	virtual VariableDescription* GetLocalsIterator() const = 0;
@@ -45,12 +65,17 @@ public:
 
 	int32_t methodToken; // Primary method token (a methodDef token)
 
-	byte* methodIl;
-	// Native method number
-	NativeMethod nativeMethod;
+	byte* _methodIl;
 
-	u16 methodLength;
+	union
+	{
+		// We need only either of these two
+		NativeMethod _nativeMethod; // Native method number
+		u16 _methodLength;
+	};
+	
 protected:
+	
 	byte _numArguments;
 	byte _maxStack;
 	byte _methodFlags;

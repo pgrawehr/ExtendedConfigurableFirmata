@@ -10,11 +10,10 @@ MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 {
 	methodToken = 0;
 	_methodFlags = flags;
-	methodLength = 0;
-	methodIl = nullptr;
+	_methodLength = 0;
+	_methodIl = nullptr;
 	_numArguments = numArgs;
 	_maxStack = maxStack;
-	nativeMethod = NativeMethod::None;
 }
 
 MethodBody::~MethodBody()
@@ -25,11 +24,11 @@ MethodBody::~MethodBody()
 void MethodBody::Clear()
 {
 	methodToken = 0;
-	if (methodIl != nullptr)
+	if (_methodIl != nullptr)
 	{
-		free(methodIl);
-		methodIl = nullptr;
-		methodLength = 0;
+		free(_methodIl);
+		_methodIl = nullptr;
+		_methodLength = 0;
 	}
 }
 
@@ -98,7 +97,7 @@ void SortedMethodList::CopyToFlash()
 MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dynamic)
 {
 	// First create the object in RAM
-	int totalSize = sizeof(MethodBodyFlash) + dynamic->_argumentTypes.size() * sizeof(VariableDescription) + dynamic->_localTypes.size() * sizeof(VariableDescription) + dynamic->methodLength;
+	int totalSize = sizeof(MethodBodyFlash) + dynamic->_argumentTypes.size() * sizeof(VariableDescription) + dynamic->_localTypes.size() * sizeof(VariableDescription) + dynamic->MethodLength();
 
 	byte* flashCopy = (byte*)malloc(totalSize);
 	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
@@ -108,7 +107,11 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 	temp = AddBytes(temp, sizeof(MethodBodyFlash));
 
 	MethodBodyFlash* flash = new MethodBodyFlash(dynamic);
-	flash->nativeMethod = dynamic->nativeMethod;
+	if (dynamic->NativeMethodNumber() != NativeMethod::None)
+	{
+		flash->_nativeMethod = dynamic->NativeMethodNumber();
+	}
+	
 	flash->methodToken = dynamic->methodToken;
 	
 	size_t argumentLength = dynamic->_argumentTypes.size() * sizeof(VariableDescription);
@@ -137,23 +140,22 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 		flash->_locals = nullptr;
 	}
 
-	if (dynamic->methodLength > 0)
+	if (dynamic->MethodLength() > 0)
 	{
-		memcpy(temp, dynamic->methodIl, dynamic->methodLength);
-		flash->methodIl = (byte*)Relocate(flashCopy, temp, flashTarget);
-		flash->methodLength = dynamic->methodLength;
-		temp = AddBytes(temp, dynamic->methodLength);
+		memcpy(temp, dynamic->_methodIl, dynamic->_methodLength);
+		flash->_methodIl = (byte*)Relocate(flashCopy, temp, flashTarget);
+		flash->_methodLength = dynamic->_methodLength;
+		temp = AddBytes(temp, dynamic->_methodLength);
 	}
 	else
 	{
-		flash->methodLength = 0;
-		flash->methodIl = nullptr;
+		flash->_methodIl = nullptr;
 	}
 	
 	memcpy(flashCopy, (void*)flash, sizeof(MethodBodyFlash));
 	
 	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
-	flash->methodIl = nullptr; // Because the delete shall not touch this
+	flash->_methodIl = nullptr; // Because the delete shall not touch this
 	delete flash;
 	free(flashCopy);
 

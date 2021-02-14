@@ -385,7 +385,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, 
 		return ExecutionError::OutOfMemory;
 	}
 	
-	method->nativeMethod = nativeMethod;
+	method->_nativeMethod = nativeMethod;
 	method->methodToken = methodToken;
 	
 	// And attach to the list
@@ -461,10 +461,10 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLeng
 
 	if (offset == 0)
 	{
-		if (method->methodIl != nullptr)
+		if (method->_methodIl != nullptr)
 		{
-			free(method->methodIl);
-			method->methodIl = nullptr;
+			free(method->_methodIl);
+			method->_methodIl = nullptr;
 		}
 		byte* decodedIl = (byte*)malloc(codeLength);
 		if (decodedIl == nullptr)
@@ -475,12 +475,12 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLeng
 
 		int numToDecode = num7BitOutbytes(argc);
 		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
-		method->methodLength = codeLength;
-		method->methodIl = decodedIl;
+		method->_methodLength = codeLength;
+		method->_methodIl = decodedIl;
 	}
 	else 
 	{
-		byte* decodedIl = method->methodIl + offset;
+		byte* decodedIl = method->_methodIl + offset;
 		int numToDecode = num7BitOutbytes(argc);
 		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
 	}
@@ -2896,7 +2896,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	MethodBody* currentMethod = currentFrame->_executingMethod;
 
-	byte* pCode = currentMethod->methodIl;
+	byte* pCode = currentMethod->_methodIl;
 	TRACE(u32 startTime = micros());
 	try
 	{
@@ -2919,7 +2919,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     	
     	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::SpecialMethod))
 		{
-			NativeMethod specialMethod = currentMethod->nativeMethod;
+			NativeMethod specialMethod = currentMethod->NativeMethodNumber();
 
 			TRACE(Firmata.sendString(F("Executing special method "), (int)specialMethod));
 			Variable retVal;
@@ -2954,11 +2954,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     		
 			currentMethod = currentFrame->_executingMethod;
 
-			pCode = currentMethod->methodIl;
+			pCode = currentMethod->_methodIl;
 			continue;
 		}
 		
-		if (PC >= currentMethod->methodLength)
+		if (PC >= currentMethod->MethodLength())
 		{
 			// Except for a hacking attempt, this may happen if a branch instruction missbehaves
 			Firmata.sendString(F("Security violation: Attempted to execute code past end of method"));
@@ -3039,7 +3039,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					delete exitingFrame;
 
 					currentMethod = currentFrame->_executingMethod;
-					pCode = currentMethod->methodIl;
+					pCode = currentMethod->_methodIl;
 					
 					break;
 				}
@@ -3644,7 +3644,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
             	// Load data pointer for the new method
 				currentMethod = newMethod;
-				pCode = newMethod->methodIl;
+				pCode = newMethod->_methodIl;
 
 				// Provide arguments to the new method
 				if (newObjInstance != nullptr)

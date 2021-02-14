@@ -20,6 +20,7 @@ using namespace stdSimple;
 FlashMemoryManager FlashManager;
 
 const int FLASH_MEMORY_IDENTIFIER = 0x7AABCDBB;
+const int MEMORY_ALLOCATION_ALIGNMENT = 4;
 
 struct FlashMemoryHeader
 {
@@ -40,7 +41,7 @@ FlashMemoryManager::FlashMemoryManager()
 	_endOfHeap = _startOfHeap = storage->readAddress(0); // This just returns the start of the flash memory used by this manager
 	_flashEnd = _startOfHeap + IFLASH1_SIZE;
 	_header = (FlashMemoryHeader*)_startOfHeap;
-	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + 8) & ~0x7);
+	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = false;
 	Init();
 }
@@ -75,22 +76,22 @@ bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 void FlashMemoryManager::Clear()
 {
 	_endOfHeap = _startOfHeap;
-	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + 8) & ~0x7);
+	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = true;
 }
 
 void* FlashMemoryManager::FlashAlloc(size_t bytes)
 {
-	if (_endOfHeap + bytes + 8 >= _flashEnd)
+	if (_endOfHeap + bytes + MEMORY_ALLOCATION_ALIGNMENT >= _flashEnd)
 	{
 		OutOfMemoryException::Throw();
 	}
 	
 	byte* ret = _endOfHeap;
-	// Keep heap addresses 8-byte aligned
-	if (bytes % 8 != 0)
+	// Keep heap addresses aligned
+	if (bytes % MEMORY_ALLOCATION_ALIGNMENT != 0)
 	{
-		bytes = (bytes + 8) & ~0x7;
+		bytes = (bytes + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1);
 	}
 	_endOfHeap += bytes;
 	return ret;
