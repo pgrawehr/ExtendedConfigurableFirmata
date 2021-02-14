@@ -119,7 +119,7 @@ class ExecutionState
 	VariableDynamicStack _executionStack;
 	VariableVector _locals;
 	VariableVector _arguments;
-	u16 _codeReference;
+	u16 _taskId;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
@@ -129,13 +129,13 @@ class ExecutionState
 
 	u32 _memoryGuard;
 	
-	ExecutionState(u16 codeReference, u16 maxStack, MethodBody* executingMethod) :
+	ExecutionState(u16 taskId, u16 maxStack, MethodBody* executingMethod) :
 		_pc(0), _executionStack(10),
 		_locals(), _arguments()
 	{
 		_locals.InitFrom(executingMethod->NumberOfLocals(), executingMethod->GetLocalsIterator());
 		_arguments.InitFrom(executingMethod->NumberOfArguments(), executingMethod->GetArgumentTypesIterator());
-		_codeReference = codeReference;
+		_taskId = taskId;
 		_next = nullptr;
 		_executingMethod = executingMethod;
 		_memoryGuard = 0xCCCCCCCC;
@@ -182,9 +182,9 @@ class ExecutionState
 		_pc = pc;
 	}
 	
-	int MethodIndex()
+	int TaskId()
 	{
-		return _codeReference;
+		return _taskId;
 	}
 };
 
@@ -209,9 +209,9 @@ public:
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
-	ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
-	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
+	ExecutionError LoadIlDataStream(int token, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadIlDeclaration(int token, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod);
+	ExecutionError LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
 	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError ReserveMemory(uint32_t classes, uint32_t methods, uint32_t constants);
@@ -233,7 +233,7 @@ public:
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     int AllocateArrayInstance(int token, int size, Variable& v1);
 
-    void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
+    void DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
 	byte* AllocGcInstance(size_t bytes);
@@ -253,13 +253,11 @@ public:
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
     ClassDeclaration* ResolveClassFromFieldToken(int32_t fieldToken);
     static uint16_t SizeOfClass(ClassDeclaration* cls);
-    MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(u16 codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
-	MethodBody* GetMethodByToken(MethodBody* code, int32_t token);
-	MethodBody* GetMethodByCodeReference(u16 codeReference);
+	MethodBody* GetMethodByToken(int32_t token);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
 

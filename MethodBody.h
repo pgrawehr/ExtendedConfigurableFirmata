@@ -44,13 +44,12 @@ public:
 	virtual bool IsDynamic() const = 0;
 
 	int32_t methodToken; // Primary method token (a methodDef token)
-	u16 methodLength;
-	u16 codeReference;
 
 	byte* methodIl;
 	// Native method number
 	NativeMethod nativeMethod;
 
+	u16 methodLength;
 protected:
 	byte _numArguments;
 	byte _maxStack;

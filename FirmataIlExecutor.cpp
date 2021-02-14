@@ -117,10 +117,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					return true;
 				}
 				// 14-bit values transmitted for length and offset
-				SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint14(argv + 2), argv[4] | argv[5] << 7, argv[6] | argv[7] << 7, argc - 8, argv + 8));
+				SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 7), DecodePackedUint14(argv + 9), argc - 11, argv + 11));
 				break;
 			case ExecutorCommand::StartTask:
-				DecodeParametersAndExecute(DecodePackedUint14(argv + 2), argc - 4, argv + 4);
+				DecodeParametersAndExecute(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 2 + 5), argc - (5 + 2 + 2), argv + 5 + 2 + 2);
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
 			case ExecutorCommand::DeclareMethod:
@@ -130,8 +130,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint14(argv + 2), argv[4], argv[5], argv[6],
-					(NativeMethod)DecodePackedUint32(argv + 7), DecodePackedUint32(argv + 7 + 5)));
+				SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint32(argv + 2), argv[7], argv[8], argv[9],
+					(NativeMethod)DecodePackedUint32(argv + 10)));
 				break;
 			case ExecutorCommand::MethodSignature:
 				if (argc < 4)
@@ -140,7 +140,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint14(argv + 2), argv[4], argc - 5, argv + 6));
+				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint32(argv + 2), argv[7], argc - 8, argv + 8));
 				break;
 			case ExecutorCommand::ClassDeclarationEnd:
 			case ExecutorCommand::ClassDeclaration:
@@ -189,6 +189,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				break;
 			case ExecutorCommand::KillTask:
 			{
+					// TODO: This currently ignores the argument (the task id).
 				KillCurrentTask();
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
@@ -329,7 +330,7 @@ void FirmataIlExecutor::KillCurrentTask()
 		return;
 	}
 
-	int topLevelMethod = _methodCurrentlyExecuting->MethodIndex();
+	int topLevelMethod = _methodCurrentlyExecuting->TaskId();
 
 	// Send a status report, to end any process waiting for this method to return.
 	SendExecutionResult((u16)topLevelMethod, _currentException, Variable(), MethodState::Killed);
@@ -359,7 +360,7 @@ void FirmataIlExecutor::report(bool elapsed)
 		return;
 	}
 
-	int methodindex = _methodCurrentlyExecuting->MethodIndex();
+	int methodindex = _methodCurrentlyExecuting->TaskId();
 	SendExecutionResult((u16)methodindex, _currentException, retVal, execResult);
 
 	// The method ended
@@ -367,11 +368,11 @@ void FirmataIlExecutor::report(bool elapsed)
 	_methodCurrentlyExecuting = nullptr;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags, byte maxStack, byte argCount,
-	NativeMethod nativeMethod, int token)
+ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, byte maxStack, byte argCount,
+	NativeMethod nativeMethod)
 {
-	TRACE(Firmata.sendStringf(F("Loading declaration for codeReference %d, Flags 0x%x"), 6, (int)codeReference, (int)flags));
-	MethodBody* method = GetMethodByCodeReference(codeReference);
+	TRACE(Firmata.sendStringf(F("Loading declaration for token %x, Flags 0x%x"), 6, (int)methodToken, (int)flags));
+	MethodBody* method = GetMethodByToken(methodToken);
 	if (method != nullptr)
 	{
 		Firmata.sendString(F("Error: Method already defined"));
@@ -384,9 +385,8 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 		return ExecutionError::OutOfMemory;
 	}
 	
-	method->codeReference = codeReference;
 	method->nativeMethod = nativeMethod;
-	method->methodToken = token;
+	method->methodToken = methodToken;
 	
 	// And attach to the list
 	_methods.Insert(method);
@@ -394,14 +394,14 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(u16 codeReference, int flags
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv)
 {
-	TRACE(Firmata.sendStringf(F("Loading Declaration."), 0));
-	MethodBodyDynamic* method = (MethodBodyDynamic*)GetMethodByCodeReference(codeReference);
+	TRACE(Firmata.sendString(F("Loading Declaration.")));
+	MethodBodyDynamic* method = (MethodBodyDynamic*)GetMethodByToken(methodToken);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
-		Firmata.sendString(F("LoadMethodSignature for unknown codeReference"));
+		Firmata.sendString(F("LoadMethodSignature for unknown token"));
 		return ExecutionError::InvalidArguments;
 	}
 
@@ -413,6 +413,9 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 
 	VariableDescription desc;
 	int size;
+	// There's a "length of list" byte we don't need
+	argv++;
+	argc--;
 	if (signatureType == 0)
 	{
 		// Argument types. (This can be called multiple times for very long argument lists)
@@ -445,14 +448,14 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(u16 codeReference, byte si
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLength, u16 offset, byte argc, byte* argv)
 {
 	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
-	MethodBody* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByToken(methodToken);
 	if (method == nullptr)
 	{
 		// This operation is illegal if the method is unknown
-		Firmata.sendString(F("LoadIlDataStream for unknown codeReference 0x"), codeReference);
+		Firmata.sendString(F("LoadIlDataStream for unknown token 0x"), methodToken);
 		return ExecutionError::InvalidArguments;
 	}
 
@@ -583,12 +586,12 @@ void FirmataIlExecutor::SendPackedInt64(int64_t value)
 }
 
 
-void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv)
+void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv)
 {
 	Variable result;
-	MethodBody* method = GetMethodByCodeReference(codeReference);
+	MethodBody* method = GetMethodByToken(methodToken);
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
-	ExecutionState* rootState = new ExecutionState(codeReference, method->MaxExecutionStack(), method);
+	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
 	{
 		OutOfMemoryException::Throw();
@@ -621,7 +624,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(u16 codeReference, byte argc,
 	}
 
 	TRACE(Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference));
-	SendExecutionResult(codeReference, _currentException, result, execResult);
+	SendExecutionResult(taskId, _currentException, result, execResult);
 	
 	// The method ended very quickly
 	delete _methodCurrentlyExecuting;
@@ -1090,7 +1093,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 			if (typeClassDeclaration == nullptr)
 			{
-				throw ClrException("Unknown type for sizeof()", SystemException::NullReference, _methodCurrentlyExecuting->MethodIndex());
+				throw ClrException("Unknown type for sizeof()", SystemException::NullReference, 0);
 			}
 			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
@@ -3437,7 +3440,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				else
 				{
-					newMethod = ResolveToken(currentMethod, tk);
+					newMethod = GetMethodByToken(tk);
 				}
             	if (newMethod == nullptr)
 				{
@@ -3546,7 +3549,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							if (met->ImplementsMethod(newMethod->methodToken))
 							{
 
-								newMethod = ResolveToken(currentMethod, metToken);
+								newMethod = GetMethodByToken(metToken);
 								if (newMethod == nullptr)
 								{
 									Firmata.sendString(F("Implementation not found for 0x"), metToken);
@@ -3626,7 +3629,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				u16 argumentCount = newMethod->NumberOfArguments();
 				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
 				// to calculate on void types)
-				ExecutionState* newState = new ExecutionState(newMethod->codeReference, newMethod->MaxExecutionStack(), newMethod);
+				ExecutionState* newState = new ExecutionState((u16)currentFrame->TaskId(), newMethod->MaxExecutionStack(), newMethod);
 				if (newState == nullptr)
 				{
 					// Could also send a stack overflow exception here, but the reason is the same
@@ -4298,7 +4301,7 @@ void FirmataIlExecutor::CreateException(SystemException exception, Variable& man
 	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
 	while (currentFrame->_next != NULL)
 	{
-		_currentException.StackTokens[idx++] = currentFrame->MethodIndex();
+		_currentException.StackTokens[idx++] = currentFrame->_executingMethod->methodToken;
 		currentFrame = currentFrame->_next;
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
@@ -4590,45 +4593,6 @@ ExecutionError FirmataIlExecutor::LoadInterfaces(int32_t classToken, byte argc, 
 	return ExecutionError::None;
 }
 
-MethodBody* FirmataIlExecutor::ResolveToken(MethodBody* code, int32_t token)
-{
-	// All tokens are resolved and combined into a single namespace by the host already.
-	// However, if we want to still use the address patching (which is a good idea), we need to
-	// figure out how we determine the two cases (i.e. find illegal memory addresses, or also patch the opcode)
-	/*
-	IlCode* method;
-	if (((token >> 24) & 0xFF) == 0x0)
-	{
-		// We've previously patched the code directly with the lower 3 bytes of the method pointer
-		// Now we extend that again with the RAM base address (0x20000000 on a Due, 0x0 on an Uno)
-		token = token | ((u32)_firstMethod & 0xFF000000);
-		return (IlCode*)token;
-	}
-	if (((token >> 24) & 0xFF) == 0x0A)
-	{
-		// Use the token map first
-		int mapEntry = 0;
-
-		method = GetMethodByCodeReference(code->codeReference);
-		int32_t* entries = method -> tokenMap;
-		while (mapEntry < method->tokenMapEntries * 2)
-		{
-			int32_t memberRef = entries[mapEntry + 1];
-			// TRACE(Firmata.sendString(F("MemberRef token 0x"), entries[mapEntry + 1]));
-			// TRACE(Firmata.sendString(F("MethodDef token 0x"), entries[mapEntry]));
-			if (memberRef == token)
-			{
-				token = entries[mapEntry];
-				break;
-			}
-			mapEntry += 2;
-		}
-	}
-
-*/
-	return GetMethodByToken(code, token);
-}
-
 void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode)
 {
 	Firmata.startSysex();
@@ -4646,22 +4610,7 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 	Firmata.endSysex();
 }
 
-
-MethodBody* FirmataIlExecutor::GetMethodByCodeReference(u16 codeReference)
-{
-	for (auto current = _methods.GetIterator(); current.Next();)
-	{
-		if (current.Current()->codeReference == codeReference)
-		{
-			return current.Current();
-		}
-	}
-
-	TRACE(Firmata.sendString(F("Reference not found: "), codeReference));
-	return nullptr;
-}
-
-MethodBody* FirmataIlExecutor::GetMethodByToken(MethodBody* code, int32_t token)
+MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 {
 	for (auto current = _methods.GetIterator(); current.Next();)
 	{

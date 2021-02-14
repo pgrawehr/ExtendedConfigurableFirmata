@@ -14,7 +14,6 @@ MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 	methodIl = nullptr;
 	_numArguments = numArgs;
 	_maxStack = maxStack;
-	codeReference = -1;
 	nativeMethod = NativeMethod::None;
 }
 
@@ -32,8 +31,6 @@ void MethodBody::Clear()
 		methodIl = nullptr;
 		methodLength = 0;
 	}
-
-	codeReference = -1;
 }
 
 MethodBodyDynamic::MethodBodyDynamic(byte flags, byte numArgs, byte maxStack)
@@ -111,7 +108,6 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 	temp = AddBytes(temp, sizeof(MethodBodyFlash));
 
 	MethodBodyFlash* flash = new MethodBodyFlash(dynamic);
-	flash->codeReference = dynamic->codeReference;
 	flash->nativeMethod = dynamic->nativeMethod;
 	flash->methodToken = dynamic->methodToken;
 	
