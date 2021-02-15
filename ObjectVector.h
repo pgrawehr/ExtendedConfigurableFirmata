@@ -128,11 +128,13 @@ namespace stdSimple
 				else
 				{
 					_size += 4;
-					_data = (T*)realloc(_data, _size * sizeof(T));
-					if (_data == nullptr)
+					// Need a temp variable here, so that in case of an error, the original block is still available
+					T* temp = (T*)realloc(_data, _size * sizeof(T));
+					if (temp == nullptr)
 					{
 						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
 					}
+					_data = temp;
 				}
 				
 				_data[_count++] = object;
@@ -159,11 +161,12 @@ namespace stdSimple
 				else
 				{
 					_size += 4;
-					_data = (T*)realloc(_data, _size * sizeof(T));
-					if (_data == nullptr)
+					T* temp = (T*)realloc(_data, _size * sizeof(T));
+					if (temp == nullptr)
 					{
 						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
 					}
+					_data = temp;
 				}
 				
 				_data[_count++] = object;
@@ -178,7 +181,12 @@ namespace stdSimple
 			if (_count != 0)
 			{
 				_size = _count;
-				_data = (T*)realloc(_data, _size * sizeof(T));
+				T* temp = (T*)realloc(_data, _size * sizeof(T));
+				if (temp == nullptr)
+				{
+					OutOfMemoryException::Throw();
+				}
+				_data = temp;
 			}
 			else if (_data != nullptr)
 			{

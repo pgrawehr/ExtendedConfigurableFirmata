@@ -226,9 +226,12 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			Firmata.sendString(STRING_DATA, ex.Message());
 			SendAckOrNack(subCommand, ExecutionError::InternalError);
 		}
-		catch(OutOfMemoryException&)
+		catch(OutOfMemoryException& ex)
 		{
 			Firmata.sendString(F("Out of memory loading data"));
+			Firmata.sendString(STRING_DATA, ex.Message());
+			
+			reset();
 			SendAckOrNack(subCommand, ExecutionError::OutOfMemory);
 		}
 		catch(Exception& ex)
@@ -4656,18 +4659,15 @@ void FirmataIlExecutor::reset()
 {
 	_methods.clear(false);
 	_classes.clear(false);
-
 	for (auto c = _constants.begin(); c != _constants.end(); ++c)
 	{
 		free(c.second());
 	}
 	
 	_constants.clear(true);
-
 	_statics.clear(true);
 
 	_largeStatics.clear();
-
 	_currentException.ExceptionObject.Type = VariableKind::Void;
 	_currentException.TokenOfException = 0;
 	_currentException.ExceptionType = SystemException::None;

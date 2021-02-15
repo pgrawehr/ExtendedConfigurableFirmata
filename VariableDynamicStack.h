@@ -4,6 +4,7 @@
 #include <FirmataFeature.h>
 #include "ObjectVector.h"
 #include "Variable.h"
+#include "Exceptions.h"
 
 /// <summary>
 /// A stack that can hold arbitrarily sized variables and auto-extends if needed
@@ -21,6 +22,11 @@ public:
 	{
 		_bytesAllocated = (initialElements * sizeof(Variable)) + sizeof(void*);
 		_begin = (Variable*)malloc(_bytesAllocated);
+		if (_begin == nullptr)
+		{
+			stdSimple::OutOfMemoryException::Throw();
+		}
+		
 		memset(_begin, 0, _bytesAllocated);
 		_revPtr = (int*)AddBytes(_begin, -4); // Points before start, but won't be used until at least one element is on the stack
 		_sp = _begin;
@@ -61,6 +67,10 @@ public:
 		{
 			uint32_t newSize = _bytesAllocated + sizeUsed; // Extend so that it certainly matches
 			Variable* newBegin = (Variable*)realloc(_begin, newSize); // with this, also _sp and _revPtr become invalid
+			if (newBegin == nullptr)
+			{
+				stdSimple::OutOfMemoryException::Throw();
+			}
 			int oldOffset = BytesUsed();
 			_sp = AddBytes(newBegin, oldOffset); // be sure to calculate in bytes
 			_revPtr = (int*)AddBytes(newBegin, oldOffset - 4);
