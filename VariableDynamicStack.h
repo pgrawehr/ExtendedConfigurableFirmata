@@ -24,7 +24,7 @@ public:
 		_begin = (Variable*)malloc(_bytesAllocated);
 		if (_begin == nullptr)
 		{
-			stdSimple::OutOfMemoryException::Throw();
+			stdSimple::OutOfMemoryException::Throw("Out of memory initializing dynamic stack");
 		}
 		
 		memset(_begin, 0, _bytesAllocated);
@@ -69,7 +69,7 @@ public:
 			Variable* newBegin = (Variable*)realloc(_begin, newSize); // with this, also _sp and _revPtr become invalid
 			if (newBegin == nullptr)
 			{
-				stdSimple::OutOfMemoryException::Throw();
+				stdSimple::OutOfMemoryException::Throw("Out of memory increasing dynamic stack");
 			}
 			int oldOffset = BytesUsed();
 			_sp = AddBytes(newBegin, oldOffset); // be sure to calculate in bytes

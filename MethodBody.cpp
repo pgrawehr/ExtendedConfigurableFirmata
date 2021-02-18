@@ -83,7 +83,7 @@ VariableDescription* MethodBodyFlash::GetLocalsIterator() const
 }
 
 
-void SortedMethodList::CopyToFlash()
+void SortedMethodList::CopyContentsToFlash()
 {
 	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{

@@ -65,17 +65,33 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
+	_stringHeap = nullptr;
 }
 
 void FirmataIlExecutor::Init()
 {
-	// This method is expected to be called at least once on startup
+	// This method is expected to be called at least once on startup, but not necessarily after a connection
 	SelfTest test;
 	test.PerformSelfTest();
+
+	void* classes, *methods;
+	FlashManager.Init(classes, methods);
+	_classes.ReadListFromFlash(classes);
+	_methods.ReadListFromFlash(methods);
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
 {
+#if SIM
+	if (pin == 1)
+	{
+		// In simulation, re-read the flash after a reset, to emulate a board reset.
+		void* classes, * methods;
+		FlashManager.Init(classes, methods);
+		_classes.ReadListFromFlash(classes);
+		_methods.ReadListFromFlash(methods);
+	}
+#endif
 }
 
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
@@ -197,15 +213,19 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::CopyToFlash:
 				{
 					// Copy all members currently in ram to flash
-				_classes.CopyToFlash();
-				_methods.CopyToFlash();
+				_classes.CopyContentsToFlash();
+				_methods.CopyContentsToFlash();
 				}
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
 
 			case ExecutorCommand::WriteFlashHeader:
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
+			{
+				void* classesPtr = _classes.CopyListToFlash();
+				void* methodsPtr = _methods.CopyListToFlash();
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr);
 				SendAckOrNack(subCommand, ExecutionError::None);
+			}
 				break;
 
 			case ExecutorCommand::CheckFlashVersion:
@@ -244,9 +264,76 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 	return false;
 }
 
+byte* FirmataIlExecutor::GetString(int stringToken, int& length)
+{
+	if (_stringHeap == nullptr)
+	{
+		throw ClrException(SystemException::NotSupported, stringToken);
+	}
+
+	int* tokenPtr = (int*)_stringHeap;
+	int token = *tokenPtr;
+	length = stringToken & 0xFFFF;
+	while (token != 0 && token != stringToken)
+	{
+		int len = token & 0xFFFF;
+		tokenPtr = AddBytes(tokenPtr, len + 4); // Including the token itself
+		token = *tokenPtr;
+	}
+
+	if (token == stringToken)
+	{
+		return (byte*)AddBytes(tokenPtr, 4);
+	}
+
+	throw ClrException(SystemException::NotSupported, stringToken);
+}
+
 ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv)
 {
 	byte* data;
+
+	if (constantToken >= 0x10000)
+	{
+		// A string element
+		if (_stringHeap == nullptr)
+		{
+			_stringHeap = (byte*)malloc(10000); // TODO: obviously
+			if (_stringHeap == nullptr)
+			{
+				OutOfMemoryException::Throw("Not enough memory for string heap");
+			}
+			memset(_stringHeap, 0, 10000);
+		}
+
+		int newStringLen = constantToken & 0xFFFF;
+		if (newStringLen != totalLength)
+		{
+			return ExecutionError::InvalidArguments;
+		}
+		int* tokenPtr = (int*)_stringHeap;
+		int token = *tokenPtr;
+		while (token != 0 && token != constantToken)
+		{
+			int len = token & 0xFFFF;
+			tokenPtr = AddBytes(tokenPtr, len + 4); // Including the token itself
+			token = *tokenPtr;
+		}
+		*tokenPtr = constantToken;
+		int numToDecode = num7BitOutbytes(argc);
+		data = (byte*)AddBytes(tokenPtr, 4 + offset);
+		Encoder7Bit.readBinary(numToDecode, argv, data);
+
+		// Verification
+		int resultLen = 0;
+		byte* result = GetString(constantToken, resultLen);
+		if (result != (byte*)AddBytes(tokenPtr, 4))
+		{
+			throw ExecutionEngineException("The string that was just inserted is not there");
+		}
+		return ExecutionError::None;
+	}
+
 	if (offset == 0)
 	{
 		int numToDecode = num7BitOutbytes(argc);
@@ -259,7 +346,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command,
 	int numToDecode = num7BitOutbytes(argc);
 	data = _constants.at(constantToken);
 	Encoder7Bit.readBinary(numToDecode, argv, data + offset);
-	
+
 	return ExecutionError::None;
 }
 
@@ -307,7 +394,7 @@ byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 	byte* ret = (byte*)malloc(bytes);
 	if (ret == nullptr)
 	{
-		OutOfMemoryException::Throw();
+		OutOfMemoryException::Throw("Out of memory allocating gc object");
 	}
 	
 	memset(ret, 0, bytes);
@@ -597,7 +684,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, 
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
 	{
-		OutOfMemoryException::Throw();
+		OutOfMemoryException::Throw("Out of memory starting task");
 	}
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
@@ -1936,7 +2023,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		if (value1.fieldSize() <= 4)
 		{
-			intermediate = { value1.Uint32 / value2.Uint32, VariableKind::Uint32 };
+			intermediate.Uint32 = value1.Uint32 / value2.Uint32;
+			intermediate.Type = VariableKind::Uint32;
 		}
 		else
 		{
@@ -1953,7 +2041,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		// Operation is not directly allowed on floating point variables by the CLR
 		if (value1.Type == VariableKind::Int32 || value1.Type == VariableKind::Uint32)
 		{
-			intermediate = { value1.Uint32 % value2.Uint32, VariableKind::Uint32 };
+			intermediate.Uint32 = value1.Uint32 % value2.Uint32;
+			intermediate.Type = VariableKind::Uint32;
 		}
 		else
 		{
@@ -2366,7 +2455,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			}
 			else
 			{
-				Variable r(*(data + 3 + index), VariableKind::Object);
+				Variable r(VariableKind::Object);
+				r.Uint32 = *(data + 3 + index);
 				stack->push(r);
 			}
 		}
@@ -3636,7 +3726,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				if (newState == nullptr)
 				{
 					// Could also send a stack overflow exception here, but the reason is the same
-					OutOfMemoryException::Throw();
+					OutOfMemoryException::Throw("Out of memory to create stack frame");
 				}
 				currentFrame->_next = newState;
 				
@@ -4202,34 +4292,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
 					PC += 4;
 					bool emptyString = (token & 0xFFFF) == 0;
-					if (_constants.contains(token) || emptyString)
+					int length = 0;
+					byte* string = nullptr;
+					if (!emptyString)
 					{
-						byte* data = nullptr;
-						uint32_t length = (uint32_t)(token & 0xFFFF);
-						if (!emptyString)
-						{
-							data = _constants.at(token);
-						}
-
-						// TODO: Check string behavior, because we have only ASCII strings here.
-						byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); 
-						// The string data is stored inline in the class data junk
-						memcpy(classInstance + 8, data, length);
-						*AddBytes(classInstance, 8 + length) = 0; // Add terminating 0 (the constant array does not include these)
-						ClassDeclaration* string = _classes.GetClassWithToken(KnownTypeTokens::String);
-						
-						// Length
-						Variable v(length, VariableKind::Int32);
-						intermediate.Type = VariableKind::Object;
-						intermediate.Object = classInstance;
-						SetField4(string, v, intermediate, 0);
-						stack->push(intermediate);
+						string = GetString(token, length);
 					}
-					else
-					{
-						ExceptionOccurred(currentFrame, SystemException::NotSupported, token);
-						return MethodState::Aborted;
-					}
+					// TODO: Check string behavior, because we have only ASCII strings here.
+					byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); 
+					// The string data is stored inline in the class data junk
+					memcpy(classInstance + 8, string, length);
+					*AddBytes(classInstance, 8 + length) = 0; // Add terminating 0 (the constant array does not include these)
+					ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
+					
+					// Length
+					Variable v(VariableKind::Int32);
+					v.Int32 = length;
+					intermediate.Type = VariableKind::Object;
+					intermediate.Object = classInstance;
+					SetField4(stringInstance, v, intermediate, 0);
+					stack->push(intermediate);
 				}
 				break;
 			case InlineSwitch:
@@ -4384,7 +4466,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	void* ret = AllocGcInstance(sizeOfClass);
 	if (ret == nullptr)
 	{
-		OutOfMemoryException::Throw();
+		OutOfMemoryException::Throw("Out of memory creating class instance internally");
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.
@@ -4449,7 +4531,7 @@ void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 	void* ret = AllocGcInstance(sizeOfClass);
 	if (ret == nullptr)
 	{
-		OutOfMemoryException::Throw();
+		OutOfMemoryException::Throw("Out of memory creating class instance ");
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.
@@ -4657,6 +4739,13 @@ OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen)
 
 void FirmataIlExecutor::reset()
 {
+	if (_stringHeap != nullptr)
+	{
+		// TODO: Find consecutive junks
+		free(_stringHeap);
+		_stringHeap = nullptr;
+	}
+	
 	_methods.clear(false);
 	_classes.clear(false);
 	for (auto c = _constants.begin(); c != _constants.end(); ++c)

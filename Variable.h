@@ -109,20 +109,6 @@ public:
 		return *this;
 	}
 
-	Variable(uint32_t value, VariableKind type)
-	{
-		CommonInit();
-		Uint32 = value;
-		Type = type;
-	}
-
-	Variable(int32_t value, VariableKind type)
-	{
-		CommonInit();
-		Int32 = value;
-		Type = type;
-	}
-
 	Variable(VariableKind type)
 	{
 		CommonInit();

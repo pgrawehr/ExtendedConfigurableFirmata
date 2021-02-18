@@ -22,6 +22,7 @@ private:
 public:
 	FlashMemoryManager();
 
+	void Init(void*& classes, void*& methods);
 	/// <summary>
 	/// Allocate memory in flash.
 	/// Note that: a) The memory cannot be freed so far, except clearing the whole block. b) The returned address cannot be used directly as a target for
@@ -32,7 +33,7 @@ public:
 	void* FlashAlloc(size_t bytes);
 
 	void CopyToFlash(void* src, void* flashTarget, size_t length);
-	void WriteHeader(int dataVersion, int hashCode);
+	void WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr);
 
 	/// <summary>
 	/// Marks the flash as empty. It does not write anything yet, so if this is called without a subsequent CopyToFlash or WriteHeader, the memory will still be there after bootup
@@ -41,8 +42,6 @@ public:
 
 	bool ContainsMatchingData(int dataVersion, int hashCode);
 
-private:
-	void Init();
 };
 
 extern FlashMemoryManager FlashManager;

@@ -5,6 +5,7 @@
 #include "Variable.h"
 #include "KnownTypeTokens.h"
 #include "Exceptions.h"
+#include "FlashMemoryManager.h"
 
 struct Method
 {
@@ -275,7 +276,34 @@ public:
 		_ramEntries.push_back(entry);
 	}
 
-	virtual void CopyToFlash() = 0;
+	virtual void* CopyListToFlash()
+	{
+		if (_flashEntries.size() == 0)
+		{
+			return nullptr;
+		}
+
+		int sizeToAlloc = _flashEntries.size() * sizeof(TBase*);
+		sizeToAlloc += sizeof(int); // for number of entries
+		byte* target = (byte*)FlashManager.FlashAlloc(sizeToAlloc);
+		int size = _flashEntries.size();
+		FlashManager.CopyToFlash(&size, target, sizeof(int));
+		FlashManager.CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*));
+		return target;
+	}
+
+	virtual void ReadListFromFlash(void* flashAddress)
+	{
+		if (flashAddress == nullptr)
+		{
+			return;
+		}
+
+		int size = *((int*)flashAddress);
+		_flashEntries.initFrom(size, (TBase*)AddBytes(flashAddress, sizeof(int)));
+	}
+
+	virtual void CopyContentsToFlash() = 0;
 
 	virtual void ThrowNotFoundException(int token) = 0;
 
@@ -290,7 +318,7 @@ public:
 class SortedClassList : public SortedList<ClassDeclaration>
 {
 public:
-	void CopyToFlash() override;
+	void CopyContentsToFlash() override;
 	void ThrowNotFoundException(int token) override;
 	void clear(bool includingFlash) override;
 private:

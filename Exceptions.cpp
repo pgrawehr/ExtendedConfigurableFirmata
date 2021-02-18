@@ -37,13 +37,11 @@ namespace stdSimple
 		_tokenCausingException = exceptionToken;
 	}
 
-	OutOfMemoryException::OutOfMemoryException()
-		: ClrException("Out of memory", SystemException::OutOfMemory, 0)
+	OutOfMemoryException::OutOfMemoryException(const char* msg)
+		: ClrException(msg, SystemException::OutOfMemory, 0)
 	{
 	}
-
-	OutOfMemoryException OutOfMemoryException::OutOfMemoryExceptionInstance;
-
+	
 	ExecutionEngineException::ExecutionEngineException(const char* msg)
 		: Exception(msg)
 	{

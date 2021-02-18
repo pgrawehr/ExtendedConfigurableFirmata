@@ -75,7 +75,8 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		digitalWrite(args[1].Int32, args[2].Int32 != 0);
 		break;
 	case NativeMethod::HardwareLevelAccessReadPin:
-		result = { (int32_t)digitalRead(args[1].Int32), VariableKind::Int32 };
+		result.Int32 = digitalRead(args[1].Int32);
+		result.Type = VariableKind::Int32;
 		break;
 	case NativeMethod::EnvironmentProcessorCount:
 		result.Type = VariableKind::Int32;
@@ -85,14 +86,16 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	{
 		int mil = millis();
 		// this one returns signed, because it replaces a standard library function
-		result = { (int32_t)mil, VariableKind::Int32 };
+		result.Int32 = mil;
+		result.Type = VariableKind::Int32;
 		break;
 	}
 	case NativeMethod::ArduinoNativeHelpersSleepMicroseconds:
 		delayMicroseconds(args[0].Uint32);
 		break;
 	case NativeMethod::ArduinoNativeHelpersGetMicroseconds:
-		result = { (uint32_t)micros(), VariableKind::Uint32 };
+		result.Uint32 = micros();
+		result.Type = VariableKind::Uint32;
 		break;
 	case NativeMethod::HardwareLevelAccessGetPinCount:
 		ASSERT(args.size() == 1); // unused this pointer

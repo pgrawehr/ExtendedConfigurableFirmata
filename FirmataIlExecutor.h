@@ -261,6 +261,8 @@ public:
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
 
+	byte* GetString(int stringToken, int& length);
+
 	stdSimple::vector<void*> _gcData;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
@@ -276,8 +278,11 @@ public:
 
 	VariableList _largeStatics;
 
-	// Constant data fields (such as array initializers or strings)
+	// Constant data fields (such as array initializers)
 	stdSimple::map<u32, byte*> _constants;
+
+	// The string heap. Just a bunch of strings. The token/length field is used to iterate trough it
+	byte* _stringHeap; 
 };
 
 

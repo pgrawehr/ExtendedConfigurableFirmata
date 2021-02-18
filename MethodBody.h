@@ -150,7 +150,7 @@ public:
 class SortedMethodList : public SortedList<MethodBody>
 {
 public:
-	void CopyToFlash() override;
+	void CopyContentsToFlash() override;
 	void ThrowNotFoundException(int token) override;
 
 	void clear(bool includingFlash) override;

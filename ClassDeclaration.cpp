@@ -23,7 +23,7 @@ void SortedClassList::clear(bool includingFlash)
 	_ramEntries.clear(true);
 }
 
-void SortedClassList::CopyToFlash()
+void SortedClassList::CopyContentsToFlash()
 {
 	for(auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{

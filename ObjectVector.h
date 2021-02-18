@@ -87,7 +87,7 @@ namespace stdSimple
 				_data = (T*)malloc(initialSize * sizeof(T));
 				if (_data == nullptr)
 				{
-					throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+					throw OutOfMemoryException::Throw("Out of memory initializing vector");
 				}
 			}
 			else
@@ -122,7 +122,7 @@ namespace stdSimple
 					_data = (T*)malloc(_size * sizeof(T));
 					if (_data == nullptr)
 					{
-						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
 					}
 				}
 				else
@@ -132,7 +132,8 @@ namespace stdSimple
 					T* temp = (T*)realloc(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
-						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+						Firmata.sendStringf(F("Bad: No more memory for %d elements"), 4, _size);
+						OutOfMemoryException::Throw("Out of memory resizing vector");
 					}
 					_data = temp;
 				}
@@ -155,7 +156,7 @@ namespace stdSimple
 					_data = (T*)malloc(_size * sizeof(T));
 					if (_data == nullptr)
 					{
-						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
 					}
 				}
 				else
@@ -164,7 +165,8 @@ namespace stdSimple
 					T* temp = (T*)realloc(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
-						throw OutOfMemoryException::OutOfMemoryExceptionInstance;
+						Firmata.sendStringf(F("Extra Bad: No more memory for %d elements"), 4, _size);
+						OutOfMemoryException::Throw("Out of memory increasing vector size");
 					}
 					_data = temp;
 				}
@@ -184,7 +186,7 @@ namespace stdSimple
 				T* temp = (T*)realloc(_data, _size * sizeof(T));
 				if (temp == nullptr)
 				{
-					OutOfMemoryException::Throw();
+					OutOfMemoryException::Throw("Out of memory truncating vector");
 				}
 				_data = temp;
 			}
@@ -193,6 +195,24 @@ namespace stdSimple
 				_size = 0;
 				free(_data);
 				_data = nullptr;
+			}
+		}
+
+		void initFrom(TSize size, T data)
+		{
+			if (_data != nullptr)
+			{
+				free(_data);
+				_data = nullptr;
+				_size = 0;
+				_count = 0;
+			}
+			if (size > 0)
+			{
+				_size = size;
+				_data = (T*)malloc(_size * sizeof(T));
+				_count = _size;
+				memcpy(_data, data, _size * sizeof(T));
 			}
 		}
 

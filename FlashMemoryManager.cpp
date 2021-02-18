@@ -28,6 +28,8 @@ public:
 	int Identifier;
 	int DataVersion;
 	int DataHashCode;
+	void* Classes;
+	void* Methods;
 	byte* EndOfHeap;
 };
 
@@ -42,19 +44,28 @@ FlashMemoryManager::FlashMemoryManager()
 	_flashEnd = _startOfHeap + IFLASH1_SIZE;
 	_header = (FlashMemoryHeader*)_startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
-	_headerClear = false;
-	Init();
-}
-
-void FlashMemoryManager::Init()
-{
+	_headerClear = true;
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
 		_endOfHeap = _header->EndOfHeap;
 		_headerClear = false;
 	}
+}
 
-	// TODO: Read remainder of data structure
+void FlashMemoryManager::Init(void*& classes, void*& methods)
+{
+	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
+	{
+		_endOfHeap = _header->EndOfHeap;
+		_headerClear = false;
+		classes = _header->Classes;
+		methods = _header->Methods;
+	}
+	else
+	{
+		classes = nullptr;
+		methods = nullptr;
+	}
 }
 
 bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
@@ -84,7 +95,7 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 {
 	if (_endOfHeap + bytes + MEMORY_ALLOCATION_ALIGNMENT >= _flashEnd)
 	{
-		OutOfMemoryException::Throw();
+		OutOfMemoryException::Throw("Out of flash memory");
 	}
 	
 	byte* ret = _endOfHeap;
@@ -116,13 +127,15 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 	}
 }
 
-void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode)
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr)
 {
 	FlashMemoryHeader hd;
 	hd.DataVersion = dataVersion;
 	hd.DataHashCode = hashCode;
 	hd.EndOfHeap = _endOfHeap;
 	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
+	hd.Classes = classesPtr;
+	hd.Methods = methodsPtr;
 	storage->write(0, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;
 

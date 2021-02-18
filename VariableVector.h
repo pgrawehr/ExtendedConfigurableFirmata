@@ -38,7 +38,7 @@ public:
 			_data = (Variable*)malloc(numDescriptions * sizeof(Variable));
 			if (_data == nullptr)
 			{
-				throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
+				stdSimple::OutOfMemoryException::Throw("Out of memory initializing default variable description list");
 			}
 			
 			memset(_data, 0, numDescriptions * sizeof(Variable));
@@ -91,7 +91,7 @@ public:
 		_data = (Variable*)malloc(totalSize);
 		if (_data == nullptr)
 		{
-			throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
+			stdSimple::OutOfMemoryException::Throw("Out of memory initalizing dynamic variable vector");
 		}
 		
 		memset(_data, 0, totalSize);
