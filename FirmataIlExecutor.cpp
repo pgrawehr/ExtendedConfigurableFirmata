@@ -182,7 +182,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
 				break;
-			
+			case ExecutorCommand::SetConstantMemorySize:
+				SendAckOrNack(subCommand, PrepareStringLoad(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5)));
+				break;
 			case ExecutorCommand::ConstantData:
 				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
@@ -289,7 +291,34 @@ byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 	throw ClrException(SystemException::NotSupported, stringToken);
 }
 
-ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv)
+/// <summary>
+/// Prepares the memory for loading constants and strings
+/// </summary>
+/// <param name="constantSize">Total size of all constants (currently unused)</param>
+/// <param name="stringListSize">Total size of all strings</param>
+/// <returns>Execution result</returns>
+ExecutionError FirmataIlExecutor::PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize)
+{
+	if (_stringHeap != nullptr)
+	{
+		free(_stringHeap);
+		_stringHeap = nullptr;
+		_stringHeapSize = 0;
+	}
+	if (stringListSize > 0)
+	{
+		_stringHeapSize = stringListSize;
+		_stringHeap = (byte*)malloc(_stringHeapSize);
+		memset(_stringHeap, 0, _stringHeapSize);
+		if (_stringHeap == nullptr)
+		{
+			return ExecutionError::OutOfMemory;
+		}
+	}
+	return ExecutionError::None;
+}
+
+ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv)
 {
 	byte* data;
 
@@ -298,16 +327,17 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command,
 		// A string element
 		if (_stringHeap == nullptr)
 		{
-			_stringHeap = (byte*)malloc(10000); // TODO: obviously
+			_stringHeapSize = 10000;
+			_stringHeap = (byte*)malloc(_stringHeapSize); // Should not normally get here (because already pre-allocated)
 			if (_stringHeap == nullptr)
 			{
 				OutOfMemoryException::Throw("Not enough memory for string heap");
 			}
-			memset(_stringHeap, 0, 10000);
+			memset(_stringHeap, 0, _stringHeapSize);
 		}
 
 		int newStringLen = constantToken & 0xFFFF;
-		if (newStringLen != totalLength)
+		if (newStringLen != currentEntryLength)
 		{
 			return ExecutionError::InvalidArguments;
 		}
@@ -319,6 +349,11 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command,
 			tokenPtr = AddBytes(tokenPtr, len + 4); // Including the token itself
 			token = *tokenPtr;
 		}
+		if (tokenPtr > (int*)AddBytes(_stringHeap, _stringHeapSize - currentEntryLength))
+		{
+			OutOfMemoryException::Throw("String Heap not large enough");
+		}
+		
 		*tokenPtr = constantToken;
 		int numToDecode = num7BitOutbytes(argc);
 		data = (byte*)AddBytes(tokenPtr, 4 + offset);
@@ -337,7 +372,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executor_command,
 	if (offset == 0)
 	{
 		int numToDecode = num7BitOutbytes(argc);
-		data = (byte*)malloc(totalLength);
+		data = (byte*)malloc(currentEntryLength);
 		Encoder7Bit.readBinary(numToDecode, argv, data);
 		_constants.insert(constantToken, data);
 		return ExecutionError::None;
@@ -725,7 +760,7 @@ void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
 {
 	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
 	
-	ExceptionOccurred(_methodCurrentlyExecuting, SystemException::InvalidOpCode, opCode);
+	throw ClrException("Invalid opcode", SystemException::InvalidOpCode, opCode);
 }
 
 void FirmataIlExecutor::GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type)
@@ -1775,11 +1810,7 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
 }
 
-void FirmataIlExecutor::ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken)
-{
-	throw ClrException("", error, errorLocationToken);
-	// state->_runtimeException = new RuntimeException(error, Variable(errorLocationToken, VariableKind::Int32));
-}
+
 
 #define BinaryOperation(op) \
 switch (value1.Type)\
@@ -1813,8 +1844,7 @@ case VariableKind::Double:\
 	intermediate.Type = VariableKind::Double;\
 	break;\
 default:\
-	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
-	return MethodState::Aborted;\
+	throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
 
@@ -1848,8 +1878,7 @@ case VariableKind::Double:\
 	intermediate.Boolean = value1.Double op value2.Double;\
 	break;\
 default:\
-	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
-	return MethodState::Aborted;\
+	throw ClrException("Unsupported case in comparison operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
 // Implements binary operations when they're only defined on integral types (i.e AND, OR)
@@ -1874,8 +1903,7 @@ case VariableKind::Int64:\
 	intermediate.Type = VariableKind::Int64;\
 	break;\
 default:\
-	ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
-	return MethodState::Aborted;\
+	throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
 #define MakeUnsigned() \
@@ -1902,7 +1930,8 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			stack->pop();
 		}
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
-		ExceptionOccurred(currentFrame, SystemException::CustomException, exceptionType->ClassToken);
+		// TODO: Extract the string from the argument
+		throw ClrException("Custom exception", SystemException::CustomException, exceptionType->ClassToken);
 		return MethodState::Aborted;
 	}
 	case CEE_NOP:
@@ -2011,8 +2040,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Type = VariableKind::Double;
 			break;
 		default:
-			ExceptionOccurred(currentFrame, SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException("Unsupported case in modulo operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken); \
 		}
 		stack->push(intermediate);
 		break;
@@ -2323,8 +2351,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException("Array Index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 		}
 
 		// This can only be a value type (of type short or ushort)
@@ -2355,7 +2382,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+			throw ClrException("Index out of range in STELEM.I2 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -2378,7 +2405,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+			throw ClrException("Index out of range in LDELEM.I1 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			return MethodState::Aborted;
 		}
 
@@ -2410,8 +2437,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException("Index out of range in STELEM.I1 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 		}
 
 		// This can only be a value type (of type byte or sbyte)
@@ -2433,8 +2459,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			int32_t index = value2.Int32;
 			if (index < 0 || index >= size)
 			{
-				ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				throw ClrException("Index out of range in LDELEM.I4 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 			}
 
 			// Note: Here, size of Variable is equal size of pointer, but this doesn't hold for the other LDELEM variants
@@ -2474,8 +2499,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		int32_t index = value2.Int32;
 		if (index < 0 || index >= size)
 		{
-			ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-			return MethodState::Aborted;
+			throw ClrException("Index out of range in STELEM.I4 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 		}
 
 		if (value1.Type == VariableKind::ValueArray)
@@ -2488,8 +2512,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			{
 				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
 				// at least it should be a reference
-				ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
-				return MethodState::Aborted;
+				throw ClrException("Array type mismatch", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 			}
 			// can only be an object now
 			*(data + 3 + index) = (uint32_t)value3.Object;
@@ -3460,8 +3483,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						void* ptr = Stfld(currentMethod, obj, token, var);
 						if (ptr == nullptr)
 						{
-							ExceptionOccurred(currentFrame, SystemException::NullReference, currentFrame->_executingMethod->methodToken);
-							return MethodState::Aborted;
+							throw ClrException("Null reference exception in STFLD instruction", SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 						}
 						break;
 					}
@@ -3538,8 +3560,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
-            		ExceptionOccurred(currentFrame, SystemException::MissingMethod, tk);
-					return MethodState::Aborted;
+					throw ClrException("Unknown target method token in call instruction", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 				}
 
 				ClassDeclaration* cls = nullptr;
@@ -3606,9 +3627,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					
 					if (instance.Object == nullptr)
 					{
-						Firmata.sendString(F("NullReferenceException calling virtual method"));
-						ExceptionOccurred(currentFrame, SystemException::NullReference, newMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Null reference exception calling virtual method", SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 
 					if (cls == nullptr)
@@ -3622,9 +3641,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray &&
 						instance.Type != VariableKind::ReferenceArray && instance.Type != VariableKind::AddressOfVariable)
 					{
-						Firmata.sendString(F("Virtual function call on something that is not an object"));
-						ExceptionOccurred(currentFrame, SystemException::InvalidCast, newMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Virtual function call on something that is not an object", SystemException::InvalidCast, currentFrame->_executingMethod->methodToken);
 					}
 
 					int idx = 0;
@@ -3645,9 +3662,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								newMethod = GetMethodByToken(metToken);
 								if (newMethod == nullptr)
 								{
-									Firmata.sendString(F("Implementation not found for 0x"), metToken);
-									ExceptionOccurred(currentFrame, SystemException::NullReference, metToken);
-									return MethodState::Aborted;
+									throw ClrException("Implementation for token not found", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 								}
 								goto outer;
 
@@ -3664,9 +3679,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				// we've probably not done the virtual function resolution correctly
 				if ((int)newMethod->MethodFlags() & (int)MethodFlags::Abstract)
 				{
-					Firmata.sendString(F("Call to abstract method 0x"), tk);
-					ExceptionOccurred(currentFrame, SystemException::MissingMethod, tk);
-					return MethodState::Aborted;
+					throw ClrException("Call to abstract method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 				}
 
 				if (instr == CEE_NEWOBJ)
@@ -3839,8 +3852,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					AllocateArrayInstance(token, size, v1);
 					if (v1.Type == VariableKind::Void)
 					{
-						ExceptionOccurred(currentFrame, SystemException::OutOfMemory, token);
-						return MethodState::Aborted;
+						OutOfMemoryException::Throw("Not enough memory to allocate array");
 					}
 					stack->push(v1);
 				}
@@ -3863,14 +3875,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						int32_t targetType = *(data + 2);
 						if (token != targetType)
 						{
-							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+							throw ClrException("Array type mismatch - Type of array does not match element to store", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 							return MethodState::Aborted;
 						}
 						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 						int32_t index = value2.Int32;
 						if (index < 0 || index >= arraysize)
 						{
-							ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+							throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 							return MethodState::Aborted;
 						}
 
@@ -3907,8 +3919,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							break;
 						}
 						case 0: // That's fishy
-							ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, token);
-							return MethodState::Aborted;
+							throw ClrException("Cannot address array with element size 0", SystemException::ArrayTypeMismatch, token);
 						}
 						
 					}
@@ -3929,14 +3940,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					int32_t targetType = *(data + 2);
 					if (token != targetType)
 					{
-						ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Array element type does not match type to add", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 					}
 					int32_t index = value2.Int32;
 					if (index < 0 || index >= arraysize)
 					{
-						ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 					}
 
 					if (value1.Type == VariableKind::ValueArray)
@@ -4017,14 +4026,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					int32_t targetType = *(data + 2);
 					if (token != targetType)
 					{
-						ExceptionOccurred(currentFrame, SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Array element type does not match type to add", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 					}
 					int32_t index = value2.Int32;
 					if (index < 0 || index >= arraysize)
 					{
-						ExceptionOccurred(currentFrame, SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-						return MethodState::Aborted;
+						throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 					}
 
 					Variable v1;
@@ -4206,8 +4213,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					}
 					// The cast fails. Throw a InvalidCastException
-					ExceptionOccurred(currentFrame, SystemException::InvalidCast, ty->ClassToken);
-					return MethodState::Aborted;
+					throw ClrException("Invalid cast", SystemException::InvalidCast, ty->ClassToken);
 				}
 				case CEE_CONSTRAINED_:
 					constrainedTypeToken = token; // This is always immediately followed by a callvirt
@@ -4223,7 +4229,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					if (value1.Type != VariableKind::AddressOfVariable)
 					{
-						ExceptionOccurred(currentFrame, SystemException::InvalidOperation, token);
+						throw ClrException("LDOBJ with invalid argument", SystemException::InvalidOperation, token);
 						return MethodState::Aborted;
 					}
 					
@@ -4275,8 +4281,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							else
 							{
 								// Unsupported case
-								ExceptionOccurred(currentFrame, SystemException::ClassNotFound, token);
-								return MethodState::Aborted;
+								throw ClrException("Argument to LDTOKEN is unknown", SystemException::ClassNotFound, token);
 							}
 						}
 						break;

@@ -54,6 +54,7 @@ enum class ExecutorCommand : byte
 	WriteFlashHeader = 13,
 	CheckFlashVersion = 14,
 	EraseFlash = 15,
+	SetConstantMemorySize = 16,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -213,11 +214,10 @@ public:
 	ExecutionError LoadIlDeclaration(int token, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod);
 	ExecutionError LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
-	ExecutionError ReserveMemory(uint32_t classes, uint32_t methods, uint32_t constants);
+	ExecutionError PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize);
+	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
-	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
 	Variable& Ldsfld(int token);
 	Variable Ldsflda(int token);
@@ -282,7 +282,8 @@ public:
 	stdSimple::map<u32, byte*> _constants;
 
 	// The string heap. Just a bunch of strings. The token/length field is used to iterate trough it
-	byte* _stringHeap; 
+	byte* _stringHeap;
+	uint32_t _stringHeapSize;
 };
 
 
