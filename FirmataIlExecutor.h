@@ -79,7 +79,7 @@ enum class ExecutionError : byte
 
 #define GENERIC_TOKEN_MASK 0xFF800000
 #define NULLABLE_TOKEN_MASK 0x00800000
-
+#define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
 
 class RuntimeException
 {
@@ -93,6 +93,7 @@ public:
 		for (int i = 0; i < MaxStackTokens; i++)
 		{
 			StackTokens[i] = 0;
+			PerStackPc[i] = 0;
 		}
 	}
 	RuntimeException(SystemException type, Variable exceptionObject, int tokenOfException = 0)
@@ -103,13 +104,17 @@ public:
 		for (int i = 0; i < MaxStackTokens; i++)
 		{
 			StackTokens[i] = 0;
+			PerStackPc[i] = 0;
 		}
 	}
 	
 	int TokenOfException;
 	SystemException ExceptionType;
 	Variable ExceptionObject;
+	// List of method tokens for the stack list
 	int StackTokens[MaxStackTokens];
+	// For each of the above, the PC in the corresponding frame
+	short PerStackPc[MaxStackTokens];
 };
 
 
@@ -181,6 +186,11 @@ class ExecutionState
 		}
 		
 		_pc = pc;
+	}
+
+	u16 CurrentPc()
+	{
+		return _pc;
 	}
 	
 	int TaskId()

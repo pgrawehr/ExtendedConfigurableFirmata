@@ -675,6 +675,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 		for (u32 i = 0; i < RuntimeException::MaxStackTokens; i++)
 		{
 			SendPackedInt32(ex.StackTokens[i]);
+			SendPackedInt32(ex.PerStackPc[i]);
 		}
 	}
 	else
@@ -853,7 +854,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
 			ClassDeclaration* ty = _classes.GetClassWithToken(*(data + 2));
 			int32_t size = *(data + 1);
-			byte* targetPtr = (byte*)(data + 3);
+			byte* targetPtr = (byte*)(data + ARRAY_DATA_START/4);
 			memcpy(targetPtr, field.Object, size * ty->ClassDynamicSize);
 		}
 		break;
@@ -941,7 +942,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			{
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
-			uint32_t parameter = *(data + 3); // First element of array
+			uint32_t parameter = *(data + ARRAY_DATA_START/4); // First element of array
 			Variable argumentTypeInstance;
 			// First, get element of array (an object)
 			argumentTypeInstance.Uint32 = parameter;
@@ -1293,11 +1294,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	case NativeMethod::StringGetElem:
 		ASSERT(args.size() == 2); // indexer
 	{
-			Variable& self = args[0];
+		Variable& self = args[0];
 			byte b = *AddBytes((byte*)self.Object, 8 + args[1].Int32); // String elements are only byte??
-			result.Int32 = b;
-			result.Type = VariableKind::Uint32;
-			result.setSize(2);
+		result.Int32 = b;
+		result.Type = VariableKind::Uint32;
+		result.setSize(2);
 	}
 	break;
 	case NativeMethod::DelegateInternalEqualTypes:
@@ -2468,12 +2469,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				if (instr == CEE_LDELEM_I4)
 				{
 					intermediate.Type = VariableKind::Int32;
-					intermediate.Int32 = *(data + 3 + index);
+					intermediate.Int32 = *(data + ARRAY_DATA_START/4 + index);
 				}
 				else
 				{
 					intermediate.Type = VariableKind::Uint32;
-					intermediate.Uint32 = *(data + 3 + index);
+					intermediate.Uint32 = *(data + ARRAY_DATA_START/4 + index);
 				}
 
 				stack->push(intermediate);
@@ -2481,7 +2482,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			else
 			{
 				Variable r(VariableKind::Object);
-				r.Uint32 = *(data + 3 + index);
+				r.Uint32 = *(data + ARRAY_DATA_START/4 + index);
 				stack->push(r);
 			}
 		}
@@ -2504,7 +2505,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		if (value1.Type == VariableKind::ValueArray)
 		{
-			*(data + 3 + index) = value3.Int32;
+			*(data + ARRAY_DATA_START/4 + index) = value3.Int32;
 		}
 		else
 		{
@@ -2515,7 +2516,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 				throw ClrException("Array type mismatch", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 			}
 			// can only be an object now
-			*(data + 3 + index) = (uint32_t)value3.Object;
+			*(data + ARRAY_DATA_START/4 + index) = (uint32_t)value3.Object;
 		}
 	}
 	break;
@@ -2885,7 +2886,7 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 			result = Variable();
 			return 0;
 		}
-		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
+		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + ARRAY_DATA_START));
 		result.Type = VariableKind::ValueArray;
 	}
 	else
@@ -2897,7 +2898,7 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 			result = Variable();
 			return 0;
 		}
-		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + 12));
+		data = (uint32_t*)AllocGcInstance((uint32_t)(sizeToAllocate + ARRAY_DATA_START));
 		result.Type = VariableKind::ReferenceArray;
 	}
 
@@ -3560,7 +3561,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	if (newMethod == nullptr)
 				{
 					Firmata.sendString(F("Unknown token 0x"), tk);
-					throw ClrException("Unknown target method token in call instruction", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
+					throw ClrException("Unknown target method token in call instruction", SystemException::MissingMethod, tk);
 				}
 
 				ClassDeclaration* cls = nullptr;
@@ -3960,7 +3961,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							byte* dataptr = (byte*)data;
 							tempVariable->Type = VariableKind::Int32;
-							tempVariable->Int32 = *(dataptr + 12 + index);
+							tempVariable->Int32 = *(dataptr + ARRAY_DATA_START + index);
 							tempVariable->setSize(4);
 							break;
 						}
@@ -3968,14 +3969,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							short* dataptr = (short*)data;
 							tempVariable->Type = VariableKind::Int32;
-							tempVariable->Int32 = *(dataptr + 6 + index);
+							tempVariable->Int32 = *(dataptr + ARRAY_DATA_START/2 + index);
 							tempVariable->setSize(4);
 							break;
 						}
 						case 4:
 						{
 							tempVariable->Type = VariableKind::Int32;
-							tempVariable->Int32 = *(data + 3 + index);
+							tempVariable->Int32 = *(data + ARRAY_DATA_START/4 + index);
 							tempVariable->setSize(4);
 							break;
 						}
@@ -3983,13 +3984,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							tempVariable->Type = VariableKind::Int64;
 							uint64_t* dataptr = (uint64_t*)data;
-							tempVariable->Int64 = *(AddBytes(dataptr, 12) + index);
+							tempVariable->Int64 = *(AddBytes(dataptr, ARRAY_DATA_START) + index);
 							tempVariable->setSize(8);
 							break;
 						}
 						default:
 							byte* dataptr = (byte*)data;
-							byte* srcPtr = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
+							byte* srcPtr = AddBytes(dataptr, ARRAY_DATA_START + (elemTy->ClassDynamicSize * index));
 							tempVariable->setSize(elemTy->ClassDynamicSize);
 							tempVariable->Type = elemTy->ClassDynamicSize <= 8 ? VariableKind::Int64 : VariableKind::LargeValueType;
 							memcpy(&tempVariable->Int32, srcPtr, elemTy->ClassDynamicSize);
@@ -4003,7 +4004,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						// can only be an object now
 						Variable v1;
 						v1.Marker = VARIABLE_DEFAULT_MARKER;
-						v1.Object = (void*)*(data + 3 + index);
+						v1.Object = (void*)*(data + ARRAY_DATA_START/4 + index);
 						v1.Type = VariableKind::Object;
 						v1.setSize(4);
 						stack->push(v1);
@@ -4044,29 +4045,29 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 1:
 						{
 							byte* dataptr = (byte*)data;
-							v1.Object = (dataptr + 12 + index);
+							v1.Object = (dataptr + ARRAY_DATA_START + index);
 							break;
 						}
 						case 2:
 						{
 							short* dataptr = (short*)data;
-							v1.Object = (dataptr + 6 + index);
+							v1.Object = (dataptr + ARRAY_DATA_START/2 + index);
 							break;
 						}
 						case 4:
 						{
-							v1.Object = (data + 3 + index);
+							v1.Object = (data + ARRAY_DATA_START/4 + index);
 							break;
 						}
 						case 8:
 						{
 							uint64_t* dataptr = (uint64_t*)data;
-							v1.Object = (AddBytes(dataptr, 12) + index);
+							v1.Object = (AddBytes(dataptr, ARRAY_DATA_START) + index);
 							break;
 						}
 						default:
 							byte* dataptr = (byte*)data;
-							v1.Object = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
+							v1.Object = AddBytes(dataptr, ARRAY_DATA_START + (elemTy->ClassDynamicSize * index));
 							break;
 						}
 						
@@ -4075,7 +4076,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					else
 					{
 						// can only be an object now
-						v1.Object = (data + 3 + index);
+						v1.Object = (data + ARRAY_DATA_START/4 + index);
 						v1.Type = VariableKind::Object;
 					}
 					stack->push(v1);
@@ -4389,14 +4390,17 @@ void FirmataIlExecutor::CreateException(SystemException exception, Variable& man
 	ExecutionState* currentFrame = _methodCurrentlyExecuting;
 	int idx = 0;
 	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
+	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(u16));
 	while (currentFrame->_next != NULL)
 	{
-		_currentException.StackTokens[idx++] = currentFrame->_executingMethod->methodToken;
+		_currentException.StackTokens[idx] = currentFrame->_executingMethod->methodToken;
+		_currentException.PerStackPc[idx++] = currentFrame->CurrentPc();
 		currentFrame = currentFrame->_next;
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
 			// If we have more than MaxStackTokens elements, shift the list and drop the first (lowest) elements
 			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int));
+			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(u16));
 			idx--;
 		}
 	}
