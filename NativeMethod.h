@@ -118,4 +118,6 @@ enum class NativeMethod
     InterlockedCompareExchange_Object = 112,
     InterlockedExchangeAdd = 113,
     DelegateInternalEqualTypes = 114,
+    DateTimeUtcNow = 115,
+    MemoryMarshalGetArrayDataReference = 116,
 };

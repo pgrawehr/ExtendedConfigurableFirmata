@@ -1295,7 +1295,13 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		ASSERT(args.size() == 2); // indexer
 	{
 		Variable& self = args[0];
-			byte b = *AddBytes((byte*)self.Object, 8 + args[1].Int32); // String elements are only byte??
+		Variable& index = args[1];
+		uint32_t length = *AddBytes((uint32_t*)self.Object, 4);
+		if (index.Uint32 >= length)
+		{
+			throw ClrException("String indexer: Index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+		}
+		byte b = *AddBytes((byte*)self.Object, 8 + index.Int32); // String elements are only byte??
 		result.Int32 = b;
 		result.Type = VariableKind::Uint32;
 		result.setSize(2);
@@ -1323,6 +1329,21 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Int32 = (int)args[0].Object;
 		}
 		break;
+	case NativeMethod::DateTimeUtcNow:
+		result.Type = VariableKind::Int64;
+		result.setSize(8);
+		result.Int64 = 0x48d8d5bb26a9dc17; // 2020-02-20 15:19 UTC
+		break;
+	case NativeMethod::MemoryMarshalGetArrayDataReference:
+	{
+		ASSERT(args.size() == 1);
+		Variable& array = args[0];
+		ASSERT(array.Type == VariableKind::ReferenceArray || array.Type == VariableKind::ValueArray);
+		result.Object = AddBytes(array.Object, ARRAY_DATA_START);
+		result.Type = VariableKind::AddressOfVariable;
+		result.setSize(sizeof(void*));
+	}
+	break;
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
