@@ -94,6 +94,40 @@ void FirmataIlExecutor::handleCapability(byte pin)
 #endif
 }
 
+// See https://stackoverflow.com/questions/18534494/convert-from-utf-8-to-unicode-c
+uint16_t utf8_to_unicode(byte*& coded)
+{
+	int charcode = 0;
+	int t = *coded;
+	coded++;
+	if (t < 128)
+	{
+		return (uint16_t)t;
+	}
+	int high_bit_mask = (1 << 6) - 1;
+	int high_bit_shift = 0;
+	int total_bits = 0;
+	const int other_bits = 6;
+	while ((t & 0xC0) == 0xC0)
+	{
+		t <<= 1;
+		t &= 0xff;
+		total_bits += 6;
+		high_bit_mask >>= 1;
+		high_bit_shift++;
+		charcode <<= other_bits;
+		charcode |= *coded & ((1 << other_bits) - 1);
+		coded++;
+	}
+	charcode |= ((t >> high_bit_shift) & high_bit_mask) << total_bits;
+	if (charcode > 0xFFFF)
+	{
+		charcode = 0x3F; // The Question Mark
+	}
+	return (uint16_t)charcode;
+}
+
+
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 {
 	ExecutorCommand subCommand = ExecutorCommand::None;
@@ -1301,12 +1335,39 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			throw ClrException("String indexer: Index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 		}
-		byte b = *AddBytes((byte*)self.Object, 8 + index.Int32); // String elements are only byte??
+		byte b = *AddBytes((byte*)self.Object, STRING_DATA_START + (index.Int32 * SIZEOF_CHAR)); // String elements are only byte??
 		result.Int32 = b;
 		result.Type = VariableKind::Uint32;
 		result.setSize(2);
 	}
 	break;
+	case NativeMethod::StringFastAllocateString:
+		{
+		// This creates an instance of System.String with the indicated length but no content.
+		ASSERT(args.size() == 1);
+		Variable& lengthVar = args[0];
+		int length = lengthVar.Int32;
+		result.Type = VariableKind::Object;
+		result.setSize(sizeof(void*));
+		byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); // +1 for the terminating 0
+
+		ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
+		// Length
+		Variable v(VariableKind::Int32);
+		v.Int32 = length;
+		result.Object = classInstance;
+		SetField4(stringInstance, v, result, 0);
+		}
+	break;
+	case NativeMethod::StringGetPinnableReference:
+		ASSERT(args.size() == 1); // this
+		{
+			Variable& self = args[0];
+			result.setSize(sizeof(void*));
+			result.Type = VariableKind::AddressOfVariable;
+			result.Object = AddBytes(self.Object, STRING_DATA_START);
+		}
+		break;
 	case NativeMethod::DelegateInternalEqualTypes:
 	{
 		ASSERT(args.size() == 2);
@@ -4325,11 +4386,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						string = GetString(token, length);
 					}
-					// TODO: Check string behavior, because we have only ASCII strings here.
-					byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); 
+
+					// This creates an unicode string (16 bits per letter) from the UTF-8 encoded constant retrieved above
+					byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); // +1 for the terminating 0
 					// The string data is stored inline in the class data junk
-					memcpy(classInstance + 8, string, length);
-					*AddBytes(classInstance, 8 + length) = 0; // Add terminating 0 (the constant array does not include these)
+					uint16_t* stringData = (uint16_t*)AddBytes(classInstance, STRING_DATA_START);
+					int i = 0;
+					for (; i < length; i++)
+					{
+						// memcpy(classInstance + STRING_DATA_START, string, length);
+						stringData[i] = utf8_to_unicode(string);
+					}
+					stringData[i] = 0; // Add terminating 0 (the constant array does not include these)
 					ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
 					
 					// Length
@@ -4489,7 +4557,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	size_t sizeOfClass = SizeOfClass(cls);
 	if (cls->ClassToken == (int)KnownTypeTokens::String)
 	{
-		sizeOfClass = sizeof(void*) + 4 + length + 2;
+		sizeOfClass = sizeof(void*) + 4 + length * SIZEOF_CHAR;
 	}
 
 	TRACE(Firmata.sendString(F("Class size is 0x"), sizeOfClass));
