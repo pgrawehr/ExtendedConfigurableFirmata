@@ -1340,6 +1340,12 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Uint32;
 		result.setSize(2);
 	}
+	//case NativeMethod::StringEquals: // These two are technically identical
+	//case NativeMethod::StringEqualsStatic:
+	//	{
+	//	ASSERT(args.size() == 2);
+	//		
+	//	}
 	break;
 	case NativeMethod::StringFastAllocateString:
 		{
@@ -1405,6 +1411,25 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.setSize(sizeof(void*));
 	}
 	break;
+	case NativeMethod::BufferZeroMemory:
+		{
+		ASSERT(args.size() == 2);
+		result.Type = VariableKind::Void;
+		Variable& b = args[0];
+		Variable& length = args[1];
+		memset(b.Object, 0, length.Int32);
+		}
+		break;
+	case NativeMethod::BufferMemmove:
+		{
+		ASSERT(args.size() == 3);
+		result.Type = VariableKind::Void;
+		Variable& dest = args[0];
+		Variable& src = args[1];
+		Variable& length = args[2];
+		memmove(dest.Object, src.Object, length.Int32);
+		}
+		break;
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
