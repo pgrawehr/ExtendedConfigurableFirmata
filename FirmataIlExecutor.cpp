@@ -21,6 +21,7 @@
 #include "HardwareAccess.h"
 #include "FlashMemoryManager.h"
 #include <stdint.h>
+#include <cwchar>
 
 typedef byte BYTE;
 typedef uint32_t DWORD;
@@ -1340,13 +1341,58 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Uint32;
 		result.setSize(2);
 	}
-	//case NativeMethod::StringEquals: // These two are technically identical
-	//case NativeMethod::StringEqualsStatic:
-	//	{
-	//	ASSERT(args.size() == 2);
-	//		
-	//	}
 	break;
+	case NativeMethod::StringEquals: // These two are technically identical
+	case NativeMethod::StringEqualsStatic:
+		{
+		ASSERT(args.size() == 2);
+		result.Type = VariableKind::Boolean;
+		Variable& a = args[0];
+		Variable& b = args[1];
+		if (a.Object == b.Object)
+		{
+			result.Boolean = true;
+			return;
+		}
+		if (a.Object == nullptr || b.Object == nullptr)
+		{
+			result.Boolean = false;
+			return;
+		}
+		int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
+		result.Boolean = cmp == 0;
+		}
+	break;
+	case NativeMethod::StringUnEqualsStatic:
+	{
+		ASSERT(args.size() == 2);
+		Variable& a = args[0];
+		Variable& b = args[1];
+		if (a.Object == b.Object)
+		{
+			result.Boolean = false;
+			return;
+		}
+		if (a.Object == nullptr || b.Object == nullptr)
+		{
+			result.Boolean = true;
+			return;
+		}
+		int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
+		result.Type = VariableKind::Boolean;
+		result.Boolean = cmp != 0;
+	}
+	break;
+	case NativeMethod::StringGetHashCode:
+		ASSERT(args.size() == 0);
+		result.Type = VariableKind::Int32;
+		result.Int32 = (int32_t)args[0].Object; // Use memory address as hash code
+		break;
+	case NativeMethod::StringToString:
+		ASSERT(args.size() == 0);
+		result.Type = VariableKind::Object;
+		result.Object = args[0].Object; // Return "this"
+		break;
 	case NativeMethod::StringFastAllocateString:
 		{
 		// This creates an instance of System.String with the indicated length but no content.
@@ -1399,7 +1445,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	case NativeMethod::DateTimeUtcNow:
 		result.Type = VariableKind::Int64;
 		result.setSize(8);
-		result.Int64 = 0x48d8d5bb26a9dc17; // 2020-02-20 15:19 UTC
+		result.Int64 = 0x48d8d5bb26a9dc17; // 2020-02-20 16:18 UTC
 		break;
 	case NativeMethod::MemoryMarshalGetArrayDataReference:
 	{
