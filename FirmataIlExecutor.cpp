@@ -694,7 +694,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 	Firmata.write((byte)execResult);
 	if (ex.ExceptionType != SystemException::None && execResult == MethodState::Aborted)
 	{
-		Firmata.write((byte)(1 + 1 /* ExceptionArg*/ + RuntimeException::MaxStackTokens + 1)); // Number of arguments that follow
+		Firmata.write((byte)(1 + 1 /* ExceptionArg*/ + 2 * RuntimeException::MaxStackTokens + 1)); // Number of arguments that follow
 		if (ex.ExceptionType == SystemException::None)
 		{
 			SendPackedInt32(ex.TokenOfException);
@@ -2014,6 +2014,7 @@ case VariableKind::AddressOfVariable:\
 case VariableKind::ReferenceArray:\
 case VariableKind::ValueArray:\
 	intermediate.Boolean = value1.Object op value2.Object; \
+	break;\
 case VariableKind::RuntimeTypeHandle:\
 case VariableKind::Boolean:\
 case VariableKind::Uint32:\
@@ -2030,6 +2031,9 @@ case VariableKind::Float:\
 	break;\
 case VariableKind::Double:\
 	intermediate.Boolean = value1.Double op value2.Double;\
+	break;\
+case VariableKind::Void: /* Happens when comparing references in uninitialized array fields */ \
+	intermediate.Boolean = value1.Object op value2.Object;\
 	break;\
 default:\
 	throw ClrException("Unsupported case in comparison operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
@@ -2235,15 +2239,41 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	case CEE_CGT_UN:
-		if (value1.Type == VariableKind::Int64 || value1.Type == VariableKind::Uint64)
+		intermediate.Type = VariableKind::Boolean;
+		switch (value1.Type)
 		{
-			value1.Type = VariableKind::Uint64;
-		}
-		else
-		{
-			value1.Type = VariableKind::Uint32;
-		}
-		// fall trough
+		case VariableKind::Object:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::ReferenceArray:
+		case VariableKind::ValueArray:
+		case VariableKind::Reference:
+			intermediate.Boolean = value1.Object > value2.Object;
+			break;
+		case VariableKind::Int32:
+		case VariableKind::RuntimeTypeHandle:
+		case VariableKind::Boolean:
+		case VariableKind::Uint32:
+			intermediate.Boolean = value1.Uint32 > value2.Uint32;
+			break;
+
+		case VariableKind::Int64:
+		case VariableKind::Uint64:
+			intermediate.Boolean = value1.Uint64 > value2.Uint64;
+			break;
+		case VariableKind::Float:
+			intermediate.Boolean = value1.Float > value2.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Boolean = value1.Double > value2.Double;
+			break;
+		case VariableKind::Void:
+			intermediate.Boolean = value1.Object > value2.Object;
+			break;
+		default:
+			throw ClrException("Unsupported case in comparison operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		};
+		stack->push(intermediate);
+		break;
 	case CEE_CGT:
 		{
 			ComparisonOperation(> );
@@ -2290,6 +2320,44 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_CLT:
 		ComparisonOperation(< );
+		stack->push(intermediate);
+		break;
+	case CEE_CLT_UN:
+		intermediate.Type = VariableKind::Boolean;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Boolean = value1.Uint32 < value2.Uint32;
+			break;
+		case VariableKind::Object:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::ReferenceArray:
+		case VariableKind::ValueArray:
+			intermediate.Boolean = value1.Object < value2.Object;
+			break;
+		case VariableKind::RuntimeTypeHandle:
+		case VariableKind::Boolean:
+		case VariableKind::Uint32:
+			intermediate.Boolean = value1.Uint32 < value2.Uint32;
+			break;
+		case VariableKind::Uint64:
+			intermediate.Boolean = value1.Uint64 < value2.Uint64;
+			break;
+		case VariableKind::Int64:
+			intermediate.Boolean = value1.Uint64 < value2.Uint64;
+			break;
+		case VariableKind::Float:
+			intermediate.Boolean = value1.Float < value2.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Boolean = value1.Double < value2.Double;
+			break;
+		case VariableKind::Void:
+			intermediate.Boolean = value1.Object < value2.Object;
+			break;
+		default:
+			throw ClrException("Unsupported case in comparison operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		};
 		stack->push(intermediate);
 		break;
 	case CEE_SHL:
@@ -4553,16 +4621,17 @@ void FirmataIlExecutor::CreateException(SystemException exception, Variable& man
 	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(u16));
 	while (currentFrame->_next != NULL)
 	{
-		_currentException.StackTokens[idx] = currentFrame->_executingMethod->methodToken;
-		_currentException.PerStackPc[idx++] = currentFrame->CurrentPc();
-		currentFrame = currentFrame->_next;
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
 			// If we have more than MaxStackTokens elements, shift the list and drop the first (lowest) elements
-			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int));
-			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(u16));
+			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int) * (RuntimeException::MaxStackTokens - 1));
+			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(u16) * (RuntimeException::MaxStackTokens - 1));
 			idx--;
 		}
+		
+		_currentException.StackTokens[idx] = currentFrame->_executingMethod->methodToken;
+		_currentException.PerStackPc[idx++] = currentFrame->CurrentPc();
+		currentFrame = currentFrame->_next;
 	}
 }
 
