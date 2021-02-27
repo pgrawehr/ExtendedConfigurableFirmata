@@ -241,36 +241,6 @@ public:
 	{
 	}
 
-	/// <summary>
-	/// Gets the class declaration for a given token. Throws an exception if the token is not found, unless throwIfNotFound is false.
-	/// </summary>
-	/// <param name="token">Token to find</param>
-	/// <param name="throwIfNotFound">True (the default) to throw if the token was not found. Needs to be true also if token is possibly 0</param>
-	/// <returns>The class declaration for the class with the given token or null.</returns>
-	TBase* GetClassWithToken(int token, bool throwIfNotFound = true)
-	{
-		for (auto elem = GetIterator(); elem.Next();)
-		{
-			if (elem.Current()->ClassToken == token)
-			{
-				return elem.Current();
-			}
-		}
-
-		if (throwIfNotFound)
-		{
-			ThrowNotFoundException(token);
-		}
-
-		return nullptr;
-	}
-
-	TBase* GetClassWithToken(KnownTypeTokens token)
-	{
-		// These must always be present
-		return GetClassWithToken((int)token, true);
-	}
-
 	void Insert(TBase* entry)
 	{
 		_ramEntries.push_back(entry);
@@ -321,7 +291,46 @@ public:
 	void CopyContentsToFlash() override;
 	void ThrowNotFoundException(int token) override;
 	void clear(bool includingFlash) override;
+	
+	/// <summary>
+	/// Gets the class declaration for a given token. Throws an exception if the token is not found, unless throwIfNotFound is false.
+	/// </summary>
+	/// <param name="token">Token to find</param>
+	/// <param name="throwIfNotFound">True (the default) to throw if the token was not found. Needs to be true also if token is possibly 0</param>
+	/// <returns>The class declaration for the class with the given token or null.</returns>
+	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
+	{
+		for (auto elem = GetIterator(); elem.Next();)
+		{
+			if (elem.Current()->ClassToken == token)
+			{
+				return elem.Current();
+			}
+		}
+
+		if (throwIfNotFound)
+		{
+			ThrowNotFoundException(token);
+		}
+
+		return nullptr;
+	}
+
+	ClassDeclaration* GetClassWithToken(KnownTypeTokens token)
+	{
+		// These must always be present
+		return GetClassWithToken((int)token, true);
+	}
 private:
 	ClassDeclarationFlash* CreateFlashDeclaration(ClassDeclarationDynamic* dynamic);
 
+};
+
+// The list of constants. Each element is prefixed with the token and the length
+class SortedConstantList : public SortedList<byte>
+{
+public:
+	void CopyContentsToFlash() override;
+	void ThrowNotFoundException(int token) override;
+	void clear(bool includingFlash) override;
 };

@@ -355,10 +355,9 @@ ExecutionError FirmataIlExecutor::PrepareStringLoad(uint32_t constantSize, uint3
 
 ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv)
 {
-	byte* data;
-
 	if (constantToken >= 0x10000)
 	{
+		byte* data;
 		// A string element
 		if (_stringHeap == nullptr)
 		{
@@ -371,7 +370,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 			memset(_stringHeap, 0, _stringHeapSize);
 		}
 
-		int newStringLen = constantToken & 0xFFFF;
+		uint32_t newStringLen = constantToken & 0xFFFF;
 		if (newStringLen != currentEntryLength)
 		{
 			return ExecutionError::InvalidArguments;
@@ -404,20 +403,45 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		return ExecutionError::None;
 	}
 
+	int* data2;
 	if (offset == 0)
 	{
 		int numToDecode = num7BitOutbytes(argc);
-		data = (byte*)malloc(currentEntryLength);
-		Encoder7Bit.readBinary(numToDecode, argv, data);
-		_constants.insert(constantToken, data);
+		data2 = (int*)malloc(currentEntryLength + 2 * sizeof(int));
+		Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, 2 * sizeof(int)));
+		data2[0] = constantToken;
+		data2[1] = currentEntryLength;
+		_constants.Insert((byte*)data2);
 		return ExecutionError::None;
 	}
 
 	int numToDecode = num7BitOutbytes(argc);
-	data = _constants.at(constantToken);
-	Encoder7Bit.readBinary(numToDecode, argv, data + offset);
+	data2 = (int*)GetConstant(constantToken);
+	if (data2 == nullptr)
+	{
+		return ExecutionError::InvalidArguments;
+	}
+	
+	Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, offset));
 
 	return ExecutionError::None;
+}
+
+/// <summary>
+/// Returns the constant with the given token (without header). Returns null on failure
+/// </summary>
+byte* FirmataIlExecutor::GetConstant(int token)
+{
+	for (auto iterator = _constants.GetIterator(); iterator.Next();)
+	{
+		int* currentWithHeader = (int*)iterator.Current();
+		if (*currentWithHeader == token)
+		{
+			return (byte*)AddBytes(currentWithHeader, 2 * sizeof(int));
+		}
+	}
+
+	return nullptr;
 }
 
 /// <summary>
@@ -1474,6 +1498,29 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		Variable& src = args[1];
 		Variable& length = args[2];
 		memmove(dest.Object, src.Object, length.Int32);
+		}
+		break;
+	case NativeMethod::ArrayCopyCore:
+		{
+		ASSERT(args.size() == 5);
+		Variable& srcArray = args[0];
+		Variable& srcIndex = args[1];
+		Variable& dstArray = args[2];
+		Variable& dstIndex = args[3];
+		Variable& length = args[4];
+		ASSERT(srcArray.Type == VariableKind::ReferenceArray || srcArray.Type == VariableKind::ValueArray);
+		ASSERT(dstArray.Type == VariableKind::ReferenceArray || dstArray.Type == VariableKind::ValueArray);
+		ClassDeclaration* srcType = GetClassDeclaration(srcArray);
+		ClassDeclaration* dstType = GetClassDeclaration(dstArray);
+			if (srcType != dstType)
+			{
+				throw ClrException(SystemException::ArrayTypeMismatch, srcType->ClassToken);
+			}
+		byte* srcPtr = (byte*)AddBytes(srcArray.Object, ARRAY_DATA_START + (srcType->ClassDynamicSize * srcIndex.Int32));
+		byte* dstPtr = (byte*)AddBytes(dstArray.Object, ARRAY_DATA_START + (dstType->ClassDynamicSize * dstIndex.Int32));
+		int bytesToCopy = srcType->ClassDynamicSize * length.Int32;
+		memmove(dstPtr, srcPtr, bytesToCopy);
+		result.Type = VariableKind::Void;
 		}
 		break;
 	default:
@@ -4156,7 +4203,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
-					// The instruction suffix (here .i4) indicates the element size
+
 					uint32_t* data = (uint32_t*)value1.Object;
 					int32_t arraysize = *(data + 1);
 					int32_t targetType = *(data + 2);
@@ -4487,9 +4534,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_LDTOKEN:
 						{
 							// constants above 0x10000 are string tokens, but they're not used with LDTOKEN, but with LDSTR
-							if (token < 0x10000 && _constants.contains(token))
+							byte* data = GetConstant(token);
+							if (token < 0x10000 && data != nullptr)
 							{
-								byte* data = _constants.at(token);
 								intermediate.Object = data;
 								intermediate.Type = VariableKind::RuntimeFieldHandle;
 								stack->push(intermediate);
@@ -4986,11 +5033,6 @@ void FirmataIlExecutor::reset()
 	
 	_methods.clear(false);
 	_classes.clear(false);
-	for (auto c = _constants.begin(); c != _constants.end(); ++c)
-	{
-		free(c.second());
-	}
-	
 	_constants.clear(true);
 	_statics.clear(true);
 

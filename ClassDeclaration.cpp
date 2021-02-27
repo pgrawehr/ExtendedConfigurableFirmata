@@ -192,3 +192,41 @@ bool ClassDeclarationFlash::ImplementsInterface(int token)
 
 	return false;
 }
+
+void SortedConstantList::clear(bool includingFlash)
+{
+	for (uint32_t i = 0; i < _ramEntries.size(); i++)
+	{
+		delete _ramEntries[i];
+		_ramEntries[i] = nullptr;
+	}
+
+	_ramEntries.clear(true);
+
+	if (includingFlash)
+	{
+		_flashEntries.clear(true);
+	}
+}
+
+void SortedConstantList::ThrowNotFoundException(int token)
+{
+	throw ClrException("Constant token not found", SystemException::ClassNotFound, token);
+}
+
+void SortedConstantList::CopyContentsToFlash()
+{
+	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
+	{
+		byte* sourceAddress = *iterator;
+		int* sourceHdr = (int*)sourceAddress;
+		int length = sourceHdr[1];
+		length += 2 * sizeof(int);
+		byte* target = (byte*)FlashManager.FlashAlloc(length);
+		FlashManager.CopyToFlash(sourceAddress, target, length);
+		_flashEntries.push_back(target);
+	}
+
+	clear(false);
+}
+

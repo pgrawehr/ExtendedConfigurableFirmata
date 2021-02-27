@@ -274,6 +274,7 @@ public:
 	void SendPackedInt64(int64_t value);
 
 	byte* GetString(int stringToken, int& length);
+	byte* GetConstant(int token);
 
 	stdSimple::vector<void*> _gcData;
 
@@ -291,7 +292,7 @@ public:
 	VariableList _largeStatics;
 
 	// Constant data fields (such as array initializers)
-	stdSimple::map<u32, byte*> _constants;
+	SortedConstantList _constants;
 
 	// The string heap. Just a bunch of strings. The token/length field is used to iterate trough it
 	byte* _stringHeap;
