@@ -4512,7 +4512,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					}
 					// Our metadata list does not contain array[] types, therefore we assume this matches for now
-					if (value1.Type == VariableKind::ReferenceArray || value1.Type == VariableKind::ReferenceArray)
+					if (value1.Type == VariableKind::ReferenceArray)
 					{
 						// TODO: Verification possible when looking inside?
 						stack->push(value1);
@@ -4797,6 +4797,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* 
 	if (ret == nullptr)
 	{
 		OutOfMemoryException::Throw("Out of memory creating class instance internally");
+		return nullptr;
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.

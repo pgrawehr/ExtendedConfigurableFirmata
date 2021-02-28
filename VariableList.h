@@ -2,7 +2,10 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+
 #include "ObjectVector.h"
+#include "Exceptions.h"
+#include "SystemException.h"
 
 struct VariableListEntry
 {
@@ -55,8 +58,7 @@ public:
 			current = current->Next;
 		}
 
-		_first = nullptr;
-		return _first->Data; // Boom! todo: Throw
+		throw stdSimple::ClrException(SystemException::ClassNotFound, token);
 	}
 
 	bool contains(int token) const
@@ -150,11 +152,11 @@ public:
 
 	void clear()
 	{
-		VariableListEntry* current = _first;;
+		VariableListEntry* current = _first;
 		while (current != nullptr)
 		{
 			VariableListEntry* last = current;
-			current = last->Next;
+			current = current->Next;
 			free(last);
 		}
 

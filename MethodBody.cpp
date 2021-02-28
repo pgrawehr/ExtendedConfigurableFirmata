@@ -9,6 +9,7 @@
 MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 {
 	methodToken = 0;
+	_nativeMethod = NativeMethod::None;
 	_methodFlags = flags;
 	_methodLength = 0;
 	_methodIl = nullptr;
