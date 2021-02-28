@@ -23,7 +23,7 @@ namespace stdSimple
 	};
 	
 	
-	template<class T, class TSize = size_t>
+	template<class T, class TSize = size_t, size_t vectorIncrement = 10>
 	class vector
 	{
 	private:
@@ -118,7 +118,7 @@ namespace stdSimple
 			{
 				if (_size == 0)
 				{
-					_size = 4;
+					_size = vectorIncrement;
 					_data = (T*)malloc(_size * sizeof(T));
 					if (_data == nullptr)
 					{
@@ -127,7 +127,7 @@ namespace stdSimple
 				}
 				else
 				{
-					_size += 4;
+					_size += vectorIncrement;
 					// Need a temp variable here, so that in case of an error, the original block is still available
 					T* temp = (T*)realloc(_data, _size * sizeof(T));
 					if (temp == nullptr)

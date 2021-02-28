@@ -279,7 +279,7 @@ public:
 
 	void* CopyStringsToFlash();
 
-	stdSimple::vector<void*> _gcData;
+	stdSimple::vector<void*, size_t, 2000> _gcData;
 	uint32_t _gcAllocSize;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
