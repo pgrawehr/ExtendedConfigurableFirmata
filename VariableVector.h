@@ -2,6 +2,7 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+#include "MemoryManagement.h"
 #include "ObjectVector.h"
 
 /// <summary>
@@ -29,13 +30,13 @@ public:
 		_defaultSizesOnly = true;
 		if (_data != nullptr)
 		{
-			free(_data);
+			freeEx(_data);
 			_data = nullptr;
 		}
 
 		if (numDescriptions > 0)
 		{
-			_data = (Variable*)malloc(numDescriptions * sizeof(Variable));
+			_data = (Variable*)mallocEx(numDescriptions * sizeof(Variable));
 			if (_data == nullptr)
 			{
 				stdSimple::OutOfMemoryException::Throw("Out of memory initializing default variable description list");
@@ -88,7 +89,7 @@ public:
 		_size = numDescriptions;
 		_defaultSizesOnly = false;
 		totalSize += sizeof(VariableDescription);
-		_data = (Variable*)malloc(totalSize);
+		_data = (Variable*)mallocEx(totalSize);
 		if (_data == nullptr)
 		{
 			stdSimple::OutOfMemoryException::Throw("Out of memory initalizing dynamic variable vector");
@@ -117,7 +118,7 @@ public:
 	{
 		if (_data != nullptr)
 		{
-			free(_data);
+			freeEx(_data);
 		}
 		_data = nullptr;
 	}

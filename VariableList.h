@@ -89,7 +89,7 @@ public:
 		// Not found. Create new entry
 		// TODO: Should know how much we need to store the variable header alone
 		size_t size = sizeof(Variable) + entry.fieldSize() + sizeof(int) + sizeof(void*);
-		VariableListEntry* newMem = (VariableListEntry*)malloc(size);
+		VariableListEntry* newMem = (VariableListEntry*)mallocEx(size);
 		memset(newMem, 0, size);
 		newMem->Token = token;
 		newMem->Next = nullptr;
@@ -130,7 +130,7 @@ public:
 		// Not found. Create new entry
 		// TODO: Should know how much we need to store the variable header alone
 		size_t size = sizeof(Variable) + entry.fieldSize() + sizeof(int) + sizeof(void*);
-		VariableListEntry* newMem = (VariableListEntry*)malloc(size);
+		VariableListEntry* newMem = (VariableListEntry*)mallocEx(size);
 		memset(newMem, 0, size);
 		newMem->Data.setSize(entry.fieldSize()); // so that the copy operator knows it's fine to copy there
 		newMem->Data = entry;// performs a full copy
@@ -157,7 +157,7 @@ public:
 		{
 			VariableListEntry* last = current;
 			current = current->Next;
-			free(last);
+			freeEx(last);
 		}
 
 		_first = nullptr;

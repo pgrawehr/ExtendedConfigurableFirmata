@@ -5,6 +5,7 @@
 #include "Variable.h"
 #include "KnownTypeTokens.h"
 #include "Exceptions.h"
+#include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
 
 struct Method
@@ -22,7 +23,7 @@ public:
 	// Not a dtor, because the class instance must be copyable
 	void clear()
 	{
-		free(_baseTokens);
+		freeEx(_baseTokens);
 		_baseTokens = nullptr;
 	}
 

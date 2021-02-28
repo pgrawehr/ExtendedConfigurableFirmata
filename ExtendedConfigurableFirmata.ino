@@ -4,6 +4,7 @@
  */
 
 
+#include "MemoryManagement.h"
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
 #include "SelfTest.h"

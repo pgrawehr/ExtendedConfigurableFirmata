@@ -2,6 +2,7 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+#include "MemoryManagement.h"
 #include "ObjectVector.h"
 #include "Variable.h"
 #include "Exceptions.h"
@@ -21,10 +22,11 @@ public:
 	VariableDynamicStack(int initialElements)
 	{
 		_bytesAllocated = (initialElements * sizeof(Variable)) + sizeof(void*);
-		_begin = (Variable*)malloc(_bytesAllocated);
+		_begin = (Variable*)mallocEx(_bytesAllocated);
 		if (_begin == nullptr)
 		{
 			stdSimple::OutOfMemoryException::Throw("Out of memory initializing dynamic stack");
+			return;
 		}
 		
 		memset(_begin, 0, _bytesAllocated);
@@ -36,7 +38,7 @@ public:
 	{
 		if (_begin != nullptr)
 		{
-			free(_begin);
+			freeEx(_begin);
 		}
 		_begin = nullptr;
 		_sp = nullptr;

@@ -1,6 +1,7 @@
 ﻿#include <ConfigurableFirmata.h>
 #include "ClassDeclaration.h"
 
+#include "MemoryManagement.h"
 #include "SystemException.h"
 #include "Exceptions.h"
 #include "FlashMemoryManager.h"
@@ -17,7 +18,7 @@ void SortedClassList::clear(bool includingFlash)
 
 	for (size_t i = 0; i < _ramEntries.size(); i++)
 	{
-		delete _ramEntries[i];
+		deleteEx(_ramEntries[i]);
 	}
 	
 	_ramEntries.clear(true);
@@ -44,7 +45,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 		totalSize += dynamic->methodTypes[i]._numBaseTokens * sizeof(int32_t);
 	}
 
-	byte* flashCopy = (byte*)malloc(totalSize);
+	byte* flashCopy = (byte*)mallocEx(totalSize);
 	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
 	
 	byte* temp = flashCopy;
@@ -114,7 +115,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 
 	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
 	delete flash;
-	free(flashCopy);
+	freeEx(flashCopy);
 
 	return (ClassDeclarationFlash*)flashTarget;
 }
@@ -197,7 +198,7 @@ void SortedConstantList::clear(bool includingFlash)
 {
 	for (uint32_t i = 0; i < _ramEntries.size(); i++)
 	{
-		delete _ramEntries[i];
+		deleteEx(_ramEntries[i]);
 		_ramEntries[i] = nullptr;
 	}
 

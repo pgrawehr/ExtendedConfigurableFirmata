@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Exceptions.h"
+#include "MemoryManagement.h"
 
 namespace stdSimple
 {
@@ -84,7 +85,7 @@ namespace stdSimple
 			}
 			if (initialSize > 0)
 			{
-				_data = (T*)malloc(initialSize * sizeof(T));
+				_data = (T*)mallocEx(initialSize * sizeof(T));
 				if (_data == nullptr)
 				{
 					throw OutOfMemoryException::Throw("Out of memory initializing vector");
@@ -102,7 +103,7 @@ namespace stdSimple
 		{
 			if (_data != nullptr)
 			{
-				free(_data);
+				freeEx(_data);
 			}
 			_data = nullptr;
 			_count = 0;
@@ -119,7 +120,7 @@ namespace stdSimple
 				if (_size == 0)
 				{
 					_size = vectorIncrement;
-					_data = (T*)malloc(_size * sizeof(T));
+					_data = (T*)mallocEx(_size * sizeof(T));
 					if (_data == nullptr)
 					{
 						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
@@ -129,7 +130,7 @@ namespace stdSimple
 				{
 					_size += vectorIncrement;
 					// Need a temp variable here, so that in case of an error, the original block is still available
-					T* temp = (T*)realloc(_data, _size * sizeof(T));
+					T* temp = (T*)reallocEx(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
 						Firmata.sendStringf(F("Bad: No more memory for %d elements"), 4, _size);
@@ -152,8 +153,8 @@ namespace stdSimple
 			{
 				if (_size == 0)
 				{
-					_size = 4;
-					_data = (T*)malloc(_size * sizeof(T));
+					_size = vectorIncrement;
+					_data = (T*)mallocEx(_size * sizeof(T));
 					if (_data == nullptr)
 					{
 						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
@@ -161,8 +162,8 @@ namespace stdSimple
 				}
 				else
 				{
-					_size += 4;
-					T* temp = (T*)realloc(_data, _size * sizeof(T));
+					_size += vectorIncrement;
+					T* temp = (T*)reallocEx(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
 						Firmata.sendStringf(F("Extra Bad: No more memory for %d elements"), 4, _size);
@@ -183,7 +184,7 @@ namespace stdSimple
 			if (_count != 0)
 			{
 				_size = _count;
-				T* temp = (T*)realloc(_data, _size * sizeof(T));
+				T* temp = (T*)reallocEx(_data, _size * sizeof(T));
 				if (temp == nullptr)
 				{
 					OutOfMemoryException::Throw("Out of memory truncating vector");
@@ -193,7 +194,7 @@ namespace stdSimple
 			else if (_data != nullptr)
 			{
 				_size = 0;
-				free(_data);
+				freeEx(_data);
 				_data = nullptr;
 			}
 		}
@@ -202,7 +203,7 @@ namespace stdSimple
 		{
 			if (_data != nullptr)
 			{
-				free(_data);
+				freeEx(_data);
 				_data = nullptr;
 				_size = 0;
 				_count = 0;
@@ -210,7 +211,7 @@ namespace stdSimple
 			if (size > 0)
 			{
 				_size = size;
-				_data = (T*)malloc(_size * sizeof(T));
+				_data = (T*)mallocEx(_size * sizeof(T));
 				_count = _size;
 				memcpy(_data, data, _size * sizeof(T));
 			}
@@ -259,7 +260,7 @@ namespace stdSimple
 			if (truncate)
 			{
 				_size = 0;
-				free(_data);
+				freeEx(_data);
 				_data = nullptr;
 			}
 			

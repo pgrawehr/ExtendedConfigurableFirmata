@@ -19,9 +19,11 @@
 #include "Encoder7Bit.h"
 #include "SelfTest.h"
 #include "HardwareAccess.h"
+#include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
 #include <stdint.h>
 #include <cwchar>
+#include <new>
 
 typedef byte BYTE;
 typedef uint32_t DWORD;
@@ -233,6 +235,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::EraseFlash:
 				_classes.clear(true);
 				_methods.clear(true);
+				_constants.clear(true);
+				_stringHeapFlash = nullptr;
+				freeEx(_stringHeapRam);
+				_stringHeapRamSize = 0;
 				// Fall trough
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
@@ -323,7 +329,7 @@ void* FirmataIlExecutor::CopyStringsToFlash()
 	FlashManager.CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
 	if (_stringHeapRam != nullptr)
 	{
-		free(_stringHeapRam);
+		freeEx(_stringHeapRam);
 		_stringHeapRam = nullptr;
 		_stringHeapRamSize = 0;
 	}
@@ -383,14 +389,14 @@ ExecutionError FirmataIlExecutor::PrepareStringLoad(uint32_t constantSize, uint3
 {
 	if (_stringHeapRam != nullptr)
 	{
-		free(_stringHeapRam);
+		freeEx(_stringHeapRam);
 		_stringHeapRam = nullptr;
 		_stringHeapRamSize = 0;
 	}
 	if (stringListSize > 0)
 	{
 		_stringHeapRamSize = stringListSize;
-		_stringHeapRam = (byte*)malloc(_stringHeapRamSize);
+		_stringHeapRam = (byte*)mallocEx(_stringHeapRamSize);
 		memset(_stringHeapRam, 0, _stringHeapRamSize);
 		if (_stringHeapRam == nullptr)
 		{
@@ -449,7 +455,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 	if (offset == 0)
 	{
 		int numToDecode = num7BitOutbytes(argc);
-		data2 = (int*)malloc(currentEntryLength + 2 * sizeof(int));
+		data2 = (int*)mallocEx(currentEntryLength + 2 * sizeof(int));
 		Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, 2 * sizeof(int)));
 		data2[0] = constantToken;
 		data2[1] = currentEntryLength;
@@ -527,10 +533,11 @@ bool FirmataIlExecutor::IsExecutingCode()
 // TODO: Keep track, implement GC, etc...
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
-	byte* ret = (byte*)malloc(bytes);
+	byte* ret = (byte*)mallocEx(bytes);
 	if (ret == nullptr)
 	{
 		OutOfMemoryException::Throw("Out of memory allocating gc object");
+		return nullptr;
 	}
 
 	memset(ret, 0, bytes);
@@ -546,7 +553,7 @@ void FreeGcInstance(Variable& obj)
 {
 	if (obj.Object != nullptr)
 	{
-		free(obj.Object);
+		freeEx(obj.Object);
 	}
 	obj.Object = nullptr;
 	obj.Type = VariableKind::Void;
@@ -608,7 +615,8 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, 
 		return ExecutionError::InvalidArguments;
 	}
 
-	method = new MethodBodyDynamic((byte) flags, (byte)argCount, (byte)maxStack);
+	void* dataPtr = mallocEx(sizeof(MethodBodyDynamic));
+	method = new(dataPtr) MethodBodyDynamic((byte) flags, (byte)argCount, (byte)maxStack);
 	if (method == nullptr)
 	{
 		return ExecutionError::OutOfMemory;
@@ -692,10 +700,10 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLeng
 	{
 		if (method->_methodIl != nullptr)
 		{
-			free(method->_methodIl);
+			freeEx(method->_methodIl);
 			method->_methodIl = nullptr;
 		}
-		byte* decodedIl = (byte*)malloc(codeLength);
+		byte* decodedIl = (byte*)mallocEx(codeLength);
 		if (decodedIl == nullptr)
 		{
 			Firmata.sendString(F("Not enough memory. "), codeLength);
@@ -4909,7 +4917,10 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 			// Value types are not expected to exceed more than a few words
 			dynamicSize = dynamicSize << 2;
 		}
-		ClassDeclarationDynamic* newType = new ClassDeclarationDynamic(classToken, parent, dynamicSize, staticSize, isValueType);
+
+		void* ptr = mallocEx(sizeof(ClassDeclarationDynamic));
+		
+		ClassDeclarationDynamic* newType = new(ptr) ClassDeclarationDynamic(classToken, parent, dynamicSize, staticSize, isValueType);
 		_classes.Insert(newType);
 		decl = newType;
 	}
@@ -4963,7 +4974,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 	if (baseTokens.size() > 0)
 	{
 		static int n = 0;
-		int* convertedBaseTokens = (int*)malloc(sizeof(int) * (baseTokens.size() + 1));
+		int* convertedBaseTokens = (int*)mallocEx(sizeof(int) * (baseTokens.size() + 1));
 		for (size_t j = 0; j < baseTokens.size(); j++)
 		{
 			convertedBaseTokens[j] = baseTokens[j];
@@ -5073,7 +5084,7 @@ void FirmataIlExecutor::reset()
 	if (_stringHeapRam != nullptr)
 	{
 		// TODO: Find consecutive junks
-		free(_stringHeapRam);
+		freeEx(_stringHeapRam);
 		_stringHeapRam = nullptr;
 		_stringHeapRamSize = 0;
 	}
@@ -5093,7 +5104,7 @@ void FirmataIlExecutor::reset()
 		void* ptr = _gcData[idx];
 		if (ptr != nullptr)
 		{
-			free(ptr);
+			freeEx(ptr);
 		}
 		_gcData[idx] = nullptr;
 	}

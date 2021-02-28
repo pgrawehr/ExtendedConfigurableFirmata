@@ -27,7 +27,7 @@ void MethodBody::Clear()
 	methodToken = 0;
 	if (_methodIl != nullptr)
 	{
-		free(_methodIl);
+		freeEx(_methodIl);
 		_methodIl = nullptr;
 		_methodLength = 0;
 	}
@@ -100,7 +100,7 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 	// First create the object in RAM
 	int totalSize = sizeof(MethodBodyFlash) + dynamic->_argumentTypes.size() * sizeof(VariableDescription) + dynamic->_localTypes.size() * sizeof(VariableDescription) + dynamic->MethodLength();
 
-	byte* flashCopy = (byte*)malloc(totalSize);
+	byte* flashCopy = (byte*)mallocEx(totalSize);
 	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
 
 	byte* temp = flashCopy;
@@ -158,7 +158,7 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
 	flash->_methodIl = nullptr; // Because the delete shall not touch this
 	delete flash;
-	free(flashCopy);
+	freeEx(flashCopy);
 
 	return (MethodBodyFlash*)flashTarget;
 }
@@ -178,7 +178,7 @@ void SortedMethodList::clear(bool includingFlash)
 
 	for (size_t i = 0; i < _ramEntries.size(); i++)
 	{
-		delete _ramEntries[i];
+		deleteEx(_ramEntries[i]);
 	}
 
 	_ramEntries.clear(true);
