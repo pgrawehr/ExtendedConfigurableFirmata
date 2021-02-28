@@ -75,10 +75,11 @@ void FirmataIlExecutor::Init()
 	SelfTest test;
 	test.PerformSelfTest();
 
-	void* classes, *methods;
-	FlashManager.Init(classes, methods);
+	void* classes, *methods, *constants, *stringHeap;
+	FlashManager.Init(classes, methods, constants, stringHeap);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
+	_constants.ReadListFromFlash(constants);
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -87,10 +88,11 @@ void FirmataIlExecutor::handleCapability(byte pin)
 	if (pin == 1)
 	{
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
-		void* classes, * methods;
-		FlashManager.Init(classes, methods);
+		void* classes, * methods, * constants, * stringHeap;
+		FlashManager.Init(classes, methods, constants, stringHeap);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
+		_constants.ReadListFromFlash(constants);
 	}
 #endif
 }
@@ -252,6 +254,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					// Copy all members currently in ram to flash
 				_classes.CopyContentsToFlash();
 				_methods.CopyContentsToFlash();
+				_constants.CopyContentsToFlash();
 				}
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
@@ -260,7 +263,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			{
 				void* classesPtr = _classes.CopyListToFlash();
 				void* methodsPtr = _methods.CopyListToFlash();
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr);
+				void* constantPtr = _constants.CopyListToFlash();
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, nullptr);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 				break;
@@ -5033,7 +5037,7 @@ void FirmataIlExecutor::reset()
 	
 	_methods.clear(false);
 	_classes.clear(false);
-	_constants.clear(true);
+	_constants.clear(false);
 	_statics.clear(true);
 
 	_largeStatics.clear();

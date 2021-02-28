@@ -30,6 +30,8 @@ public:
 	int DataHashCode;
 	void* Classes;
 	void* Methods;
+	void* Constants;
+	void* StringHeap;
 	byte* EndOfHeap;
 };
 
@@ -52,7 +54,7 @@ FlashMemoryManager::FlashMemoryManager()
 	}
 }
 
-void FlashMemoryManager::Init(void*& classes, void*& methods)
+void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap)
 {
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
@@ -60,11 +62,15 @@ void FlashMemoryManager::Init(void*& classes, void*& methods)
 		_headerClear = false;
 		classes = _header->Classes;
 		methods = _header->Methods;
+		constants = _header->Constants;
+		stringHeap = _header->StringHeap;
 	}
 	else
 	{
 		classes = nullptr;
 		methods = nullptr;
+		constants = nullptr;
+		stringHeap = nullptr;
 	}
 }
 
@@ -127,7 +133,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 	}
 }
 
-void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr)
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr)
 {
 	FlashMemoryHeader hd;
 	hd.DataVersion = dataVersion;
@@ -136,6 +142,8 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
 	hd.Classes = classesPtr;
 	hd.Methods = methodsPtr;
+	hd.Constants = constantsPtr;
+	hd.StringHeap = stringHeapPtr;
 	storage->write(0, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;
 
