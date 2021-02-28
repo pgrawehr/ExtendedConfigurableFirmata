@@ -274,9 +274,13 @@ public:
 	void SendPackedInt64(int64_t value);
 
 	byte* GetString(int stringToken, int& length);
+	byte* GetString(byte* heap, int stringToken, int& length);
 	byte* GetConstant(int token);
 
+	void* CopyStringsToFlash();
+
 	stdSimple::vector<void*> _gcData;
+	uint32_t _gcAllocSize;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
@@ -291,12 +295,14 @@ public:
 
 	VariableList _largeStatics;
 
-	// Constant data fields (such as array initializers)
+	// Constant data fields (such as array initializers). Does not include the string heap
 	SortedConstantList _constants;
 
 	// The string heap. Just a bunch of strings. The token/length field is used to iterate trough it
-	byte* _stringHeap;
-	uint32_t _stringHeapSize;
+	byte* _stringHeapRam;
+	byte* _stringHeapFlash;
+	
+	uint32_t _stringHeapRamSize;
 };
 
 

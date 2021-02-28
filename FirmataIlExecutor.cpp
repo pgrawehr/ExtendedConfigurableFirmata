@@ -66,7 +66,10 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 {
 	_methodCurrentlyExecuting = nullptr;
-	_stringHeap = nullptr;
+	_stringHeapRam = nullptr;
+	_stringHeapRamSize = 0;
+	_stringHeapFlash = nullptr;
+	_gcAllocSize = 0;
 }
 
 void FirmataIlExecutor::Init()
@@ -80,6 +83,7 @@ void FirmataIlExecutor::Init()
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
+	_stringHeapFlash = (byte*)stringHeap;
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -264,7 +268,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				void* classesPtr = _classes.CopyListToFlash();
 				void* methodsPtr = _methods.CopyListToFlash();
 				void* constantPtr = _constants.CopyListToFlash();
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, nullptr);
+				void* stringPtr = CopyStringsToFlash();
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 				break;
@@ -305,14 +310,52 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 	return false;
 }
 
+void* FirmataIlExecutor::CopyStringsToFlash()
+{
+	if (_stringHeapFlash != nullptr)
+	{
+		throw ExecutionEngineException("String flash heap already written");
+	}
+	
+	// This is pretty straight-forward: We just copy the whole string heap to flash.
+	// Since it internally only uses relative addresses, we don't have to care about anything else.
+	byte* target = (byte*)FlashManager.FlashAlloc(_stringHeapRamSize);
+	FlashManager.CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
+	if (_stringHeapRam != nullptr)
+	{
+		free(_stringHeapRam);
+		_stringHeapRam = nullptr;
+		_stringHeapRamSize = 0;
+	}
+	
+	_stringHeapFlash = target;
+	return target;
+}
+
 byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 {
-	if (_stringHeap == nullptr)
+	byte* ret = GetString(_stringHeapRam, stringToken, length);
+	if (ret == nullptr)
+	{
+		ret = GetString(_stringHeapFlash, stringToken, length);
+	}
+
+	if (ret == nullptr)
 	{
 		throw ClrException(SystemException::NotSupported, stringToken);
 	}
+	
+	return ret;
+}
 
-	int* tokenPtr = (int*)_stringHeap;
+byte* FirmataIlExecutor::GetString(byte* heap, int stringToken, int& length)
+{
+	if (heap == nullptr)
+	{
+		return nullptr;
+	}
+
+	int* tokenPtr = (int*)heap;
 	int token = *tokenPtr;
 	length = stringToken & 0xFFFF;
 	while (token != 0 && token != stringToken)
@@ -327,7 +370,7 @@ byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 		return (byte*)AddBytes(tokenPtr, 4);
 	}
 
-	throw ClrException(SystemException::NotSupported, stringToken);
+	return nullptr;
 }
 
 /// <summary>
@@ -338,18 +381,18 @@ byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 /// <returns>Execution result</returns>
 ExecutionError FirmataIlExecutor::PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize)
 {
-	if (_stringHeap != nullptr)
+	if (_stringHeapRam != nullptr)
 	{
-		free(_stringHeap);
-		_stringHeap = nullptr;
-		_stringHeapSize = 0;
+		free(_stringHeapRam);
+		_stringHeapRam = nullptr;
+		_stringHeapRamSize = 0;
 	}
 	if (stringListSize > 0)
 	{
-		_stringHeapSize = stringListSize;
-		_stringHeap = (byte*)malloc(_stringHeapSize);
-		memset(_stringHeap, 0, _stringHeapSize);
-		if (_stringHeap == nullptr)
+		_stringHeapRamSize = stringListSize;
+		_stringHeapRam = (byte*)malloc(_stringHeapRamSize);
+		memset(_stringHeapRam, 0, _stringHeapRamSize);
+		if (_stringHeapRam == nullptr)
 		{
 			return ExecutionError::OutOfMemory;
 		}
@@ -361,17 +404,12 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 {
 	if (constantToken >= 0x10000)
 	{
+				// A string element
 		byte* data;
-		// A string element
-		if (_stringHeap == nullptr)
+		if (_stringHeapRam == nullptr)
 		{
-			_stringHeapSize = 10000;
-			_stringHeap = (byte*)malloc(_stringHeapSize); // Should not normally get here (because already pre-allocated)
-			if (_stringHeap == nullptr)
-			{
-				OutOfMemoryException::Throw("Not enough memory for string heap");
-			}
-			memset(_stringHeap, 0, _stringHeapSize);
+			// Must be preallocated
+			return ExecutionError::InvalidArguments;
 		}
 
 		uint32_t newStringLen = constantToken & 0xFFFF;
@@ -379,7 +417,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		{
 			return ExecutionError::InvalidArguments;
 		}
-		int* tokenPtr = (int*)_stringHeap;
+		int* tokenPtr = (int*)_stringHeapRam;
 		int token = *tokenPtr;
 		while (token != 0 && token != constantToken)
 		{
@@ -387,7 +425,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 			tokenPtr = AddBytes(tokenPtr, len + 4); // Including the token itself
 			token = *tokenPtr;
 		}
-		if (tokenPtr > (int*)AddBytes(_stringHeap, _stringHeapSize - currentEntryLength))
+		if (tokenPtr > (int*)AddBytes(_stringHeapRam, _stringHeapRamSize - currentEntryLength))
 		{
 			OutOfMemoryException::Throw("String Heap not large enough");
 		}
@@ -494,8 +532,11 @@ byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 	{
 		OutOfMemoryException::Throw("Out of memory allocating gc object");
 	}
-	
+
 	memset(ret, 0, bytes);
+
+	_gcAllocSize += bytes;
+	
 	_gcData.push_back(ret);
 	return ret;
 }
@@ -5028,11 +5069,12 @@ OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen)
 
 void FirmataIlExecutor::reset()
 {
-	if (_stringHeap != nullptr)
+	if (_stringHeapRam != nullptr)
 	{
 		// TODO: Find consecutive junks
-		free(_stringHeap);
-		_stringHeap = nullptr;
+		free(_stringHeapRam);
+		_stringHeapRam = nullptr;
+		_stringHeapRamSize = 0;
 	}
 	
 	_methods.clear(false);
@@ -5055,7 +5097,9 @@ void FirmataIlExecutor::reset()
 		_gcData[idx] = nullptr;
 	}
 
+	Firmata.sendStringf(F("Total GC memory used before clear: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
 	_gcData.clear(true);
+	_gcAllocSize = 0;
 	
 	Firmata.sendStringf(F("Execution memory cleared. Free bytes: 0x%x"), 4, freeMemory());
 }
