@@ -99,6 +99,7 @@ void FirmataIlExecutor::handleCapability(byte pin)
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
+		_stringHeapFlash = (byte*)stringHeap;
 	}
 #endif
 }
