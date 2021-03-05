@@ -2,7 +2,9 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+#include "MemoryManagement.h"
 #include "ObjectVector.h"
+#include "Exceptions.h"
 
 /// <summary>
 /// A vector that can contain values of different sizes. The number of items in the vector is fixed, though
@@ -24,28 +26,29 @@ public:
 		_size = 0;
 	}
 
-	bool InitDefault(int size, stdSimple::vector<VariableDescription, byte>& variableDescriptions)
+	bool InitDefault(int numDescriptions, VariableDescription* variableDescriptions)
 	{
 		_defaultSizesOnly = true;
 		if (_data != nullptr)
 		{
-			free(_data);
+			freeEx(_data);
 			_data = nullptr;
 		}
 
-		if (size > 0)
+		if (numDescriptions > 0)
 		{
-			_data = (Variable*)malloc(size * sizeof(Variable));
+			_data = (Variable*)mallocEx(numDescriptions * sizeof(Variable));
 			if (_data == nullptr)
 			{
-				throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
+				stdSimple::OutOfMemoryException::Throw("Out of memory initializing default variable description list");
 			}
 			
-			memset(_data, 0, size * sizeof(Variable));
+			memset(_data, 0, numDescriptions * sizeof(Variable));
 
 			int idx = 0;
-			for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+			for (int i = 0; i < numDescriptions; i++)
 			{
+				VariableDescription* start = variableDescriptions + i;
 				size_t fieldSize = start->fieldSize();
 				_data[idx].setSize((u16)fieldSize);
 				_data[idx].Type = start->Type;
@@ -57,19 +60,20 @@ public:
 		{
 			_data = nullptr;
 		}
-		_size = size;
+		
+		_size = numDescriptions;
 		return true;
 	}
 
-	bool InitFrom(stdSimple::vector<VariableDescription, byte> &variableDescriptions)
+	bool InitFrom(int numDescriptions, VariableDescription* variableDescriptions)
 	{
 		bool canUseDefaultSizes = true;
 		int totalSize = 0;
 		// Check whether the list contains any large value type objects. If not, we will be using constant field sizes of sizeof(Variable)
 		// In the same run, sum up all sizes
-		for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+		for (int i = 0; i < numDescriptions; i++)
 		{
-			size_t size = start->fieldSize();
+			size_t size = variableDescriptions[i].fieldSize();
 			if (size > sizeof(double))
 			{
 				canUseDefaultSizes = false;
@@ -79,17 +83,18 @@ public:
 
 		if (canUseDefaultSizes)
 		{
-			return InitDefault(variableDescriptions.size(), variableDescriptions);
+			return InitDefault(numDescriptions, variableDescriptions);
 		}
 
-		// This variable still contains the number of elements in the vector
-		_size = variableDescriptions.size();
+		// This variable contains the number of elements in the vector, even if the vector has variable-lenght entries
+		_size = numDescriptions;
 		_defaultSizesOnly = false;
 		totalSize += sizeof(VariableDescription);
-		_data = (Variable*)malloc(totalSize);
+		_data = (Variable*)mallocEx(totalSize);
 		if (_data == nullptr)
 		{
-			throw stdSimple::OutOfMemoryException::OutOfMemoryExceptionInstance;
+			stdSimple::OutOfMemoryException::Throw("Out of memory initalizing dynamic variable vector");
+			return false;
 		}
 		
 		memset(_data, 0, totalSize);
@@ -97,8 +102,9 @@ public:
 		Variable* currentField = _data;
 		byte* currentFieldPtr = (byte*)_data;
 		// Now init the data structure: It's a ordered list with "next" pointers in the form of the size fields
-		for (auto start = variableDescriptions.begin(); start != variableDescriptions.end(); ++start)
+		for (int i = 0; i < numDescriptions; i++)
 		{
+			VariableDescription* start = variableDescriptions + i;
 			size_t size = MAX(start->fieldSize(), 8);
 			currentField->Type = start->Type;
 			currentField->Marker = start->Marker;
@@ -114,7 +120,7 @@ public:
 	{
 		if (_data != nullptr)
 		{
-			free(_data);
+			freeEx(_data);
 		}
 		_data = nullptr;
 	}

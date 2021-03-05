@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <inttypes.h>
 #undef INPUT
@@ -47,6 +47,11 @@ public:
     inline size_t write(long n) { return write((uint8_t)n); }
     inline size_t write(unsigned int n) { return write((uint8_t)n); }
     inline size_t write(int n) { return write((uint8_t)n); }
+
+private:
+	int _currentDevice;
+	int _currentRegister;
+	byte _bytesInCurrentTransmission;
 };
 
 extern TwoWire Wire;

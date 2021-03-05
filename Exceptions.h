@@ -1,15 +1,6 @@
 ﻿// Exceptions.h
+#pragma once
 
-#ifndef _EXCEPTIONS_h
-#define _EXCEPTIONS_h
-
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
-#else
-	#include "WProgram.h"
-#endif
-
-#include "ConfigurableFirmata.h"
 enum class SystemException;
 
 namespace stdSimple
@@ -52,16 +43,11 @@ namespace stdSimple
 	class OutOfMemoryException : public ClrException
 	{
 	public:
-		OutOfMemoryException();
+		OutOfMemoryException(const char *);
 
-		/// <summary>
-		/// This one is pre-allocated because we obviously cannot create a new instance when we run into this problem
-		/// </summary>
-		static OutOfMemoryException OutOfMemoryExceptionInstance;
-
-		static void Throw()
+		static void Throw(const char* msg)
 		{
-			throw OutOfMemoryExceptionInstance;
+			throw OutOfMemoryException(msg);
 		}
 	};
 
@@ -73,7 +59,4 @@ namespace stdSimple
 
 	
 }
-
-
-#endif
 

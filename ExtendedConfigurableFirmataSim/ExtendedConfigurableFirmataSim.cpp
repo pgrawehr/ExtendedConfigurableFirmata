@@ -1,18 +1,30 @@
-// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
+﻿// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
 //
 
 #include <iostream>
+#include <conio.h>
 
 void setup();
 void loop();
+void shutdown();
 
 int main()
 {
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	setup();
 	while (true)
 	{
+		if (_kbhit())
+		{
+			int c = _getch();
+			if (c == 27)
+			{
+				break;
+			}
+		}
 		loop();
 	}
+	shutdown();
 }
 
 // Programm ausführen: STRG+F5 oder Menüeintrag "Debuggen" > "Starten ohne Debuggen starten"

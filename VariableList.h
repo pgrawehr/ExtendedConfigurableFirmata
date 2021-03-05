@@ -2,7 +2,10 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+
 #include "ObjectVector.h"
+#include "Exceptions.h"
+#include "SystemException.h"
 
 struct VariableListEntry
 {
@@ -55,8 +58,7 @@ public:
 			current = current->Next;
 		}
 
-		_first = nullptr;
-		return _first->Data; // Boom! todo: Throw
+		throw stdSimple::ClrException(SystemException::ClassNotFound, token);
 	}
 
 	bool contains(int token) const
@@ -87,7 +89,7 @@ public:
 		// Not found. Create new entry
 		// TODO: Should know how much we need to store the variable header alone
 		size_t size = sizeof(Variable) + entry.fieldSize() + sizeof(int) + sizeof(void*);
-		VariableListEntry* newMem = (VariableListEntry*)malloc(size);
+		VariableListEntry* newMem = (VariableListEntry*)mallocEx(size);
 		memset(newMem, 0, size);
 		newMem->Token = token;
 		newMem->Next = nullptr;
@@ -128,7 +130,7 @@ public:
 		// Not found. Create new entry
 		// TODO: Should know how much we need to store the variable header alone
 		size_t size = sizeof(Variable) + entry.fieldSize() + sizeof(int) + sizeof(void*);
-		VariableListEntry* newMem = (VariableListEntry*)malloc(size);
+		VariableListEntry* newMem = (VariableListEntry*)mallocEx(size);
 		memset(newMem, 0, size);
 		newMem->Data.setSize(entry.fieldSize()); // so that the copy operator knows it's fine to copy there
 		newMem->Data = entry;// performs a full copy
@@ -150,12 +152,12 @@ public:
 
 	void clear()
 	{
-		VariableListEntry* current = _first;;
+		VariableListEntry* current = _first;
 		while (current != nullptr)
 		{
 			VariableListEntry* last = current;
-			current = last->Next;
-			free(last);
+			current = current->Next;
+			freeEx(last);
 		}
 
 		_first = nullptr;

@@ -27,6 +27,10 @@
 #include "SystemException.h"
 #include "MethodFlags.h"
 #include "KnownTypeTokens.h"
+#include "ClassDeclaration.h"
+#include "VariableKind.h"
+#include "MethodBody.h"
+
 
 using namespace stdSimple;
 
@@ -46,6 +50,11 @@ enum class ExecutorCommand : byte
 	ClassDeclarationEnd = 9,
 	ConstantData = 10,
 	Interfaces = 11,
+	CopyToFlash = 12,
+	WriteFlashHeader = 13,
+	CheckFlashVersion = 14,
+	EraseFlash = 15,
+	SetConstantMemorySize = 16,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -70,135 +79,46 @@ enum class ExecutionError : byte
 
 #define GENERIC_TOKEN_MASK 0xFF800000
 #define NULLABLE_TOKEN_MASK 0x00800000
-
-
-struct Method
-{
-	// Our own token
-	int32_t token;
-	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
-	vector<int> declarationTokens;
-};
+#define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
+#define STRING_DATA_START 8 /* String type token, string length (in chars) */
+#define SIZEOF_CHAR (sizeof(uint16_t))
 
 class RuntimeException
 {
 public:
-	RuntimeException(SystemException type, Variable arg0)
-		: ExceptionArgs(1, 1)
+	static const int MaxStackTokens = 10;
+	RuntimeException()
+		: ExceptionObject(VariableKind::Void)
 	{
 		TokenOfException = 0;
+		ExceptionType = SystemException::None;
+		for (int i = 0; i < MaxStackTokens; i++)
+		{
+			StackTokens[i] = 0;
+			PerStackPc[i] = 0;
+		}
+	}
+	RuntimeException(SystemException type, Variable exceptionObject, int tokenOfException = 0)
+	{
+		TokenOfException = tokenOfException;
 		ExceptionType = type;
-		ExceptionArgs.at(0) = arg0;
+		ExceptionObject = exceptionObject;
+		for (int i = 0; i < MaxStackTokens; i++)
+		{
+			StackTokens[i] = 0;
+			PerStackPc[i] = 0;
+		}
 	}
 	
 	int TokenOfException;
 	SystemException ExceptionType;
-	vector<Variable> ExceptionArgs;
-	vector<int> StackTokens;
+	Variable ExceptionObject;
+	// List of method tokens for the stack list
+	int StackTokens[MaxStackTokens];
+	// For each of the above, the PC in the corresponding frame
+	short PerStackPc[MaxStackTokens];
 };
 
-class ClassDeclaration
-{
-public:
-	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
-	{
-		ClassToken = token;
-		ParentToken = parent;
-		ClassDynamicSize = dynamicSize;
-		ClassStaticSize = staticSize;
-		ValueType = valueType;
-	}
-
-	~ClassDeclaration()
-	{
-		fieldTypes.clear();
-		methodTypes.clear();
-	}
-
-	bool ValueType;
-	int32_t ClassToken;
-	int32_t ParentToken;
-	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
-	uint16_t ClassStaticSize; // Size of static members 
-
-	// Here, the value is the metadata token
-	vector<Variable> fieldTypes;
-	// List of indirectly callable methods of this class (ctors, virtual methods and interface implementations)
-	vector<Method> methodTypes;
-	// List of interfaces implemented by this class
-	vector<int> interfaceTokens;
-};
-
-class MethodBody
-{
-public:
-	MethodBody(byte flags, byte numArgs, byte maxStack)
-	{
-		methodToken = 0;
-		_methodFlags = flags;
-		methodLength = 0;
-		methodIl = nullptr;
-		_numArgs = numArgs;
-		_maxStack = maxStack;
-		next = nullptr;
-		codeReference = -1;
-		nativeMethod = NativeMethod::None;
-	}
-
-	~MethodBody()
-	{
-		Clear();
-	}
-
-private:
-	/// <summary>
-	/// Clear the current entry, so it can be reused.
-	/// </summary>
-	void Clear()
-	{
-		methodToken = 0;
-		if (methodIl != nullptr)
-		{
-			free(methodIl);
-			methodIl = nullptr;
-			methodLength = 0;
-		}
-
-		codeReference = -1;
-	}
-
-public:
-	byte NumberOfArguments() const
-	{
-		return _numArgs;
-	}
-
-	byte MaxExecutionStack() const
-	{
-		return _maxStack;
-	}
-
-	byte MethodFlags() const
-	{
-		return _methodFlags;
-	}
-
-	int32_t methodToken; // Primary method token (a methodDef token)
-	u16 methodLength;
-	u16 codeReference;
-	
-	vector<VariableDescription, byte> localTypes;
-	vector<VariableDescription, byte> argumentTypes;
-	byte* methodIl;
-	// Native method number
-	NativeMethod nativeMethod;
-	MethodBody* next;
-
-private:
-	byte _numArgs;
-	byte _maxStack;
-	byte _methodFlags;
-};
 
 class ExecutionState
 {
@@ -207,38 +127,30 @@ class ExecutionState
 	VariableDynamicStack _executionStack;
 	VariableVector _locals;
 	VariableVector _arguments;
-	u16 _codeReference;
+	u16 _taskId;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
 	ExecutionState* _next;
 	MethodBody* _executingMethod;
-	RuntimeException* _runtimeException;
 	VariableList _localStorage; // Memory allocated by localloc
 
 	u32 _memoryGuard;
 	
-	ExecutionState(u16 codeReference, u16 maxStack, MethodBody* executingMethod) :
+	ExecutionState(u16 taskId, u16 maxStack, MethodBody* executingMethod) :
 		_pc(0), _executionStack(10),
-		_locals(), _arguments(),
-		_runtimeException(nullptr)
+		_locals(), _arguments()
 	{
-		_locals.InitFrom(executingMethod->localTypes);
-		_arguments.InitFrom(executingMethod->argumentTypes);
-		_codeReference = codeReference;
+		_locals.InitFrom(executingMethod->NumberOfLocals(), executingMethod->GetLocalsIterator());
+		_arguments.InitFrom(executingMethod->NumberOfArguments(), executingMethod->GetArgumentTypesIterator());
+		_taskId = taskId;
 		_next = nullptr;
-		_runtimeException = nullptr;
 		_executingMethod = executingMethod;
 		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
 	{
 		_next = nullptr;
-		if (_runtimeException != nullptr)
-		{
-			delete _runtimeException;
-			_runtimeException = nullptr;
-		}
 		_memoryGuard = 0xDEADBEEF;
 	}
 	
@@ -277,10 +189,15 @@ class ExecutionState
 		
 		_pc = pc;
 	}
-	
-	int MethodIndex()
+
+	u16 CurrentPc()
 	{
-		return _codeReference;
+		return _pc;
+	}
+	
+	int TaskId()
+	{
+		return _taskId;
 	}
 };
 
@@ -301,19 +218,18 @@ public:
 
 	// These are used by HardwareAccess methods
 	static ClassDeclaration* GetClassDeclaration(Variable& obj);
-	static Variable GetField(ClassDeclaration& type, const Variable& instancePtr, int fieldNo);
+	Variable GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo);
  
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
-	ExecutionError LoadIlDataStream(u16 codeReference, u16 codeLength, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadIlDeclaration(u16 codeReference, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod, int token);
-	ExecutionError LoadMethodSignature(u16 codeReference, byte signatureType, byte argc, byte* argv);
+	ExecutionError LoadIlDataStream(int token, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadIlDeclaration(int token, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod);
+	ExecutionError LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv);
 	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
-	ExecutionError LoadConstant(ExecutorCommand executor_command, uint32_t constantToken, uint32_t totalLength, uint32_t offset, byte argc, byte* argv);
-	ExecutionError ReserveMemory(uint32_t classes, uint32_t methods, uint32_t constants);
+	ExecutionError PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize);
+	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
-	void ExceptionOccurred(ExecutionState* state, SystemException error, int32_t errorLocationToken);
 	
 	Variable& Ldsfld(int token);
 	Variable Ldsflda(int token);
@@ -323,59 +239,73 @@ public:
 	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
 	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
-	Variable Box(Variable& value1, ClassDeclaration& ty);
+	Variable Box(Variable& value, ClassDeclaration* ty);
 	
     MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     int AllocateArrayInstance(int token, int size, Variable& v1);
 
-    void DecodeParametersAndExecute(u16 codeReference, byte argc, byte* argv);
+    void DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
 	byte* AllocGcInstance(size_t bytes);
 	bool IsExecutingCode();
 	void KillCurrentTask();
-    RuntimeException* UnrollExecutionStack();
     void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
-    MethodState IsAssignableFrom(ClassDeclaration& typeToAssignTo, const Variable& object);
-    void SetField4(ClassDeclaration& type, const Variable& data, Variable& instance, int fieldNo);
+    MethodState IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object);
+    void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-    void* CreateInstance(ClassDeclaration& cls);
+    void CreateException(SystemException exception, Variable& managedException, int hintToken);
+    void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
-    ClassDeclaration& ResolveClassFromCtorToken(int32_t ctorToken);
-    ClassDeclaration& ResolveClassFromFieldToken(int32_t fieldToken);
+    ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
+    ClassDeclaration* ResolveClassFromFieldToken(int32_t fieldToken);
     static uint16_t SizeOfClass(ClassDeclaration* cls);
-    MethodBody* ResolveToken(MethodBody* code, int32_t token);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
-    void SendExecutionResult(u16 codeReference, RuntimeException* lastState, Variable returnValue, MethodState execResult);
-	MethodBody* GetMethodByToken(MethodBody* code, int32_t token);
-	MethodBody* GetMethodByCodeReference(u16 codeReference);
-	void AttachToMethodList(MethodBody* newCode);
+    void SendExecutionResult(u16 codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
+	MethodBody* GetMethodByToken(int32_t token);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
 
-	stdSimple::vector<void*> _gcData;
-	MethodBody* _firstMethod;
+	byte* GetString(int stringToken, int& length);
+	byte* GetString(byte* heap, int stringToken, int& length);
+	byte* GetConstant(int token);
+
+	void* CopyStringsToFlash();
+
+	uint32_t _instructionsExecuted;
+	uint32_t _taskStartTime;
+
+	stdSimple::vector<void*, size_t, 2000> _gcData;
+	uint32_t _gcAllocSize;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
 	ExecutionState* _methodCurrentlyExecuting;
+	RuntimeException _currentException;
 
-	stdSimple::map<u32, ClassDeclaration> _classes;
+	SortedClassList _classes;
+	SortedMethodList _methods;
 
 	// The list of static variables (global)
 	stdSimple::map<u32, Variable> _statics;
 
 	VariableList _largeStatics;
 
-	// Constant data fields (such as array initializers or strings)
-	stdSimple::map<u32, byte*> _constants;
+	// Constant data fields (such as array initializers). Does not include the string heap
+	SortedConstantList _constants;
+
+	// The string heap. Just a bunch of strings. The token/length field is used to iterate trough it
+	byte* _stringHeapRam;
+	byte* _stringHeapFlash;
+	
+	uint32_t _stringHeapRamSize;
 };
 
 

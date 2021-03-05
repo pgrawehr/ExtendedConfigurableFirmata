@@ -1,0 +1,337 @@
+﻿#pragma once
+
+#include <ConfigurableFirmata.h>
+#include "ObjectVector.h"
+#include "Variable.h"
+#include "KnownTypeTokens.h"
+#include "Exceptions.h"
+#include "MemoryManagement.h"
+#include "FlashMemoryManager.h"
+
+struct Method
+{
+private:
+	friend class SortedClassList;
+public:
+	Method(int methodToken, int numBaseTokens, int* baseTokens)
+	{
+		_methodToken = methodToken;
+		_numBaseTokens = numBaseTokens;
+		_baseTokens = baseTokens;
+	}
+
+	// Not a dtor, because the class instance must be copyable
+	void clear()
+	{
+		freeEx(_baseTokens);
+		_baseTokens = nullptr;
+	}
+
+	int32_t MethodToken() const
+	{
+		return _methodToken;
+	}
+
+	bool ImplementsMethod(int methodToken) const
+	{
+		for (int i = 0; i < _numBaseTokens; i++)
+		{
+			if (_baseTokens[i] == methodToken)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+private:
+	// Our own token
+	int32_t _methodToken;
+	// Other method tokens that could be seen meaning this method (i.e. from virtual base implementations)
+	int32_t _numBaseTokens;
+	int* _baseTokens;
+};
+
+// Hand-Made type info, because the arduino compiler doesn't support dynamic_cast (not even on the Due)
+enum class ClassDeclarationType
+{
+	None,
+	Dynamic,
+	Flash,
+};
+
+class ClassDeclaration
+{
+protected:
+	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
+	{
+		ClassToken = token;
+		ParentToken = parent;
+		ClassDynamicSize = dynamicSize;
+		ClassStaticSize = staticSize;
+		ValueType = valueType;
+	}
+
+
+	// this class shall not be copy-assigned
+	ClassDeclaration(const ClassDeclaration&) = delete;
+	ClassDeclaration(ClassDeclaration&&) = delete;
+	ClassDeclaration& operator=(const ClassDeclaration&) = delete;
+	ClassDeclaration& operator=(ClassDeclaration&&) = delete;
+
+public:
+	virtual ~ClassDeclaration()
+	{
+	}
+
+	/// <summary>
+	/// Get the field with the given index. Returns null if index is out of bounds
+	/// </summary>
+	virtual Variable* GetFieldByIndex(uint32_t idx) = 0;
+
+	virtual Method* GetMethodByIndex(uint32_t idx) = 0;
+
+	virtual bool ImplementsInterface(int token) = 0;
+
+	virtual ClassDeclarationType GetType() = 0;
+
+	bool ValueType;
+	int32_t ClassToken;
+	int32_t ParentToken;
+	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
+	uint16_t ClassStaticSize; // Size of static members 
+};
+
+class ClassDeclarationDynamic : public ClassDeclaration
+{
+public:
+	ClassDeclarationDynamic(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
+		: ClassDeclaration(token, parent, dynamicSize, staticSize, valueType)
+	{
+	}
+
+	virtual ~ClassDeclarationDynamic()
+	{
+		fieldTypes.clear();
+		// The struct Method has no dtor, because it must not contain virtual members and it must be blittable
+		for (size_t i = 0; i < methodTypes.size(); i++)
+		{
+			methodTypes[i].clear();
+		}
+		methodTypes.clear(true);
+		interfaceTokens.clear(true);
+	}
+
+	virtual Variable* GetFieldByIndex(uint32_t idx) override;
+
+	virtual Method* GetMethodByIndex(uint32_t idx) override;
+
+	virtual bool ImplementsInterface(int token) override;
+
+	virtual ClassDeclarationType GetType() override
+	{
+		return ClassDeclarationType::Dynamic;
+	}
+
+	// TODO: These are public for now, as they're initialized from outside. But this should be changed
+	// Here, the value is the metadata token
+	stdSimple::vector<Variable> fieldTypes;
+	// List of indirectly callable methods of this class (ctors, virtual methods and interface implementations)
+	stdSimple::vector<Method> methodTypes;
+	// List of interfaces implemented by this class
+	stdSimple::vector<int> interfaceTokens;
+};
+
+/// <summary>
+/// A class whose memory is in flash
+/// </summary>
+class ClassDeclarationFlash : public ClassDeclaration
+{
+	friend class SortedClassList;
+public:
+	ClassDeclarationFlash(ClassDeclarationDynamic* source)
+		: ClassDeclaration(source->ClassToken, source->ParentToken, source->ClassDynamicSize, source->ClassStaticSize, source->ValueType)
+	{
+		_fieldTypeCount = 0;
+		_fieldTypes = nullptr;
+		_methodTypesCount = 0;
+		_methodTypes = nullptr;
+		_interfaceTokenCount = 0;
+		_interfaceTokens = nullptr;
+	}
+
+	virtual ~ClassDeclarationFlash() override
+	{
+		// This is in flash - cannot delete
+	}
+
+	virtual Variable* GetFieldByIndex(uint32_t idx) override;
+
+	virtual Method* GetMethodByIndex(uint32_t idx) override;
+
+	virtual bool ImplementsInterface(int token) override;
+
+	virtual ClassDeclarationType GetType() override
+	{
+		return ClassDeclarationType::Flash;
+	}
+	
+private:
+	uint32_t _fieldTypeCount;
+	Variable* _fieldTypes; // Pointer to list
+	uint32_t _methodTypesCount;
+	Method* _methodTypes;
+	uint32_t _interfaceTokenCount;
+	int* _interfaceTokens;
+};
+
+template<class TBase>
+class SortedList
+{
+
+protected:
+	stdSimple::vector<TBase*> _ramEntries;
+	stdSimple::vector<TBase*> _flashEntries;
+public:
+	/// <summary>
+	/// This iterator iterates over both provided lists in sequence
+	/// </summary>
+	class Iterator : public stdSimple::complexIteratorBase<TBase>
+	{
+	private:
+		stdSimple::vector<TBase*>* _list;
+		stdSimple::vector<TBase*>* _list2;
+		size_t _currentIndex;
+	public:
+		Iterator(stdSimple::vector<TBase*>* list, stdSimple::vector<TBase*>* list2)
+		{
+			_list = list;
+			_list2 = list2;
+			// Start at the element before the start, so that the first Next() goes to the first element
+			_currentIndex = -1;
+		}
+
+		TBase* Current()
+		{
+			if (_currentIndex < _list->size())
+			{
+				return _list->at(_currentIndex);
+			}
+
+			return _list2->at(_currentIndex - _list->size());
+		}
+
+		bool Next()
+		{
+			return (++_currentIndex) < (_list->size() + _list2->size());
+		}
+
+		void Reset()
+		{
+			_currentIndex = -1;
+		}
+	};
+
+	SortedList()
+	{
+		// TODO: This needs a "Reserve" method, then _entries shall be replaced by two static arrays (one in flash, the other in RAM)
+	}
+
+	virtual ~SortedList()
+	{
+	}
+
+	void Insert(TBase* entry)
+	{
+		_ramEntries.push_back(entry);
+	}
+
+	virtual void* CopyListToFlash()
+	{
+		if (_flashEntries.size() == 0)
+		{
+			return nullptr;
+		}
+
+		int sizeToAlloc = _flashEntries.size() * sizeof(TBase*);
+		sizeToAlloc += sizeof(int); // for number of entries
+		byte* target = (byte*)FlashManager.FlashAlloc(sizeToAlloc);
+		int size = _flashEntries.size();
+		FlashManager.CopyToFlash(&size, target, sizeof(int));
+		FlashManager.CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*));
+		return target;
+	}
+
+	virtual void ReadListFromFlash(void* flashAddress)
+	{
+		if (flashAddress == nullptr)
+		{
+			return;
+		}
+
+		int size = *((int*)flashAddress);
+		_flashEntries.initFrom(size, (TBase*)AddBytes(flashAddress, sizeof(int)));
+	}
+
+	virtual void CopyContentsToFlash() = 0;
+
+	virtual void ThrowNotFoundException(int token) = 0;
+
+	virtual void clear(bool includingFlash) = 0;
+
+	Iterator GetIterator()
+	{
+		return Iterator(&_flashEntries, &_ramEntries);
+	}
+};
+
+class SortedClassList : public SortedList<ClassDeclaration>
+{
+public:
+	void CopyContentsToFlash() override;
+	void ThrowNotFoundException(int token) override;
+	void clear(bool includingFlash) override;
+	
+	/// <summary>
+	/// Gets the class declaration for a given token. Throws an exception if the token is not found, unless throwIfNotFound is false.
+	/// </summary>
+	/// <param name="token">Token to find</param>
+	/// <param name="throwIfNotFound">True (the default) to throw if the token was not found. Needs to be true also if token is possibly 0</param>
+	/// <returns>The class declaration for the class with the given token or null.</returns>
+	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
+	{
+		for (auto elem = GetIterator(); elem.Next();)
+		{
+			if (elem.Current()->ClassToken == token)
+			{
+				return elem.Current();
+			}
+		}
+
+		if (throwIfNotFound)
+		{
+			ThrowNotFoundException(token);
+		}
+
+		return nullptr;
+	}
+
+	ClassDeclaration* GetClassWithToken(KnownTypeTokens token)
+	{
+		// These must always be present
+		return GetClassWithToken((int)token, true);
+	}
+private:
+	ClassDeclarationFlash* CreateFlashDeclaration(ClassDeclarationDynamic* dynamic);
+
+};
+
+// The list of constants. Each element is prefixed with the token and the length
+class SortedConstantList : public SortedList<byte>
+{
+public:
+	void CopyContentsToFlash() override;
+	void ThrowNotFoundException(int token) override;
+	void clear(bool includingFlash) override;
+};

@@ -6,7 +6,8 @@
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
 #include "SelfTest.h"
-#include "FreeMemory.h"
+#include "FlashMemoryManager.h"
+
 // Use these defines to easily enable or disable certain modules
 
 /* Note: Currently no client support by dotnet/iot for these, so they're disabled by default */
@@ -322,3 +323,4 @@ void loop()
 
   firmataExt.report(reporting.elapsed());
 }
+

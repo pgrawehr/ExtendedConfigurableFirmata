@@ -4,6 +4,11 @@
 // Simulate an Arduino due. This has sizeof(int)=4, which is the same than for a 32bit windows exe
 #define __SAM3X8E__ 1
 
+// Enable the debug runtime in debug mode
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -27,11 +32,14 @@ void pinMode(int pin, int mode);
 void delay(int timeMs);
 void delayMicroseconds(int micros);
 int millis();
-int micros();
+unsigned long micros();
 byte digitalPinToBitMask(int pin);
 byte digitalPinToPort(int pin);
 byte* portModeRegister(int port);
 byte* portOutputRegister(int port);
+
+void noInterrupts();
+void interrupts();
 
 #define INPUT 0
 #define OUTPUT 1

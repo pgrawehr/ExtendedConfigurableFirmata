@@ -2,9 +2,11 @@
 #include <utility/Boards.h>
 
 #include "SimulatorImpl.h"
+#include "../SimFlashStorage.h"
+
 #undef INPUT
 #include <Windows.h>
-#include <Ws2tcpip.h>
+#include <WS2tcpip.h>
 
 class Serial Serial;
 class Serial SerialUSB;
@@ -53,7 +55,6 @@ void pinMode(int pin, int mode)
 	}
 }
 
-
 void delay(int timeMs)
 {
 	Sleep(timeMs);
@@ -70,9 +71,37 @@ int millis()
 	return GetTickCount();
 }
 
-int micros()
+CRITICAL_SECTION cs;
+
+void noInterrupts()
 {
-	return GetTickCount();
+	EnterCriticalSection(&cs);
+}
+
+void interrupts()
+{
+	LeaveCriticalSection(&cs);
+}
+
+unsigned long micros()
+{
+	const int ONEMILLION = 1000000;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	LARGE_INTEGER current;
+	QueryPerformanceCounter(&current);
+	LONGLONG ret;
+	if (freq.QuadPart >= ONEMILLION)
+	{
+		LONGLONG divisor = freq.QuadPart / ONEMILLION;
+		ret = (current.QuadPart / divisor);
+	}
+	else
+	{
+		LONGLONG multiplier = ONEMILLION / freq.QuadPart;
+		ret = (current.QuadPart * multiplier);
+	}
+	return (unsigned long)ret;
 }
 
 void Stream::begin()
@@ -115,6 +144,7 @@ NetworkConnection::NetworkConnection()
 	memset(_dataBuf, 0, DATA_BUF_SIZE);
 	_readOffset = 0;
 	_writeOffset = 0;
+	InitializeCriticalSection(&cs);
 }
 
 NetworkConnection::~NetworkConnection()
@@ -317,6 +347,14 @@ void NetworkConnection::flush()
 {
 }
 
-
+extern VirtualFlashMemory* storage;
+void shutdown()
+{
+	// Reset before shutdown, especially to clear the runtime memory, otherwise the
+	// list of memory leaks will be endless
+	Firmata.parse(SYSTEM_RESET); 
+	delete storage;
+	storage = nullptr;
+}
 
 

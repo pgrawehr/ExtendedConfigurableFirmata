@@ -2,8 +2,10 @@
 
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
+#include "MemoryManagement.h"
 #include "ObjectVector.h"
 #include "Variable.h"
+#include "Exceptions.h"
 
 /// <summary>
 /// A stack that can hold arbitrarily sized variables and auto-extends if needed
@@ -20,7 +22,13 @@ public:
 	VariableDynamicStack(int initialElements)
 	{
 		_bytesAllocated = (initialElements * sizeof(Variable)) + sizeof(void*);
-		_begin = (Variable*)malloc(_bytesAllocated);
+		_begin = (Variable*)mallocEx(_bytesAllocated);
+		if (_begin == nullptr)
+		{
+			stdSimple::OutOfMemoryException::Throw("Out of memory initializing dynamic stack");
+			return;
+		}
+		
 		memset(_begin, 0, _bytesAllocated);
 		_revPtr = (int*)AddBytes(_begin, -4); // Points before start, but won't be used until at least one element is on the stack
 		_sp = _begin;
@@ -30,7 +38,7 @@ public:
 	{
 		if (_begin != nullptr)
 		{
-			free(_begin);
+			freeEx(_begin);
 		}
 		_begin = nullptr;
 		_sp = nullptr;
@@ -61,6 +69,10 @@ public:
 		{
 			uint32_t newSize = _bytesAllocated + sizeUsed; // Extend so that it certainly matches
 			Variable* newBegin = (Variable*)realloc(_begin, newSize); // with this, also _sp and _revPtr become invalid
+			if (newBegin == nullptr)
+			{
+				stdSimple::OutOfMemoryException::Throw("Out of memory increasing dynamic stack");
+			}
 			int oldOffset = BytesUsed();
 			_sp = AddBytes(newBegin, oldOffset); // be sure to calculate in bytes
 			_revPtr = (int*)AddBytes(newBegin, oldOffset - 4);
@@ -82,6 +94,7 @@ public:
 		if (empty())
 		{
 			Firmata.sendString(F("FATAL: Execution stack underflow"));
+			throw stdSimple::ExecutionEngineException("Execution stack underflow");
 		}
 		Variable* lastElem = AddBytes(_sp, -*_revPtr);
 		return *lastElem;
@@ -96,6 +109,7 @@ public:
 		if (empty())
 		{
 			Firmata.sendString(F("FATAL: Execution stack underflow"));
+			throw stdSimple::ExecutionEngineException("Execution stack underflow");
 		}
 		Variable* lastElem = AddBytes(_sp, -*_revPtr);
 		_sp = lastElem;

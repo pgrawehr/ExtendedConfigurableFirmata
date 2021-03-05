@@ -88,7 +88,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\ExtendedConfigurableFirmata;$(ProjectDir)..\libraries\ConfigurableFirmata\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\libraries\Wire\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\libraries\SPI\src;$(ProjectDir)..\libraries\DHT_sensor_library;$(ProjectDir)..\libraries\Adafruit_Unified_Sensor;$(ProjectDir)..\libraries\ConfigurableFirmata\src\utility;$(ProjectDir)..\libraries\Servo\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino\avr;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino\USB;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\variants\arduino_due_x;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\DOCUME~1\Arduino\EXTEND~1;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\c++\4.8.3;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\c++\4.8.3\arm-none-eabi\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\lib\gcc\arm-none-eabi\4.8.3\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\arm-none-eabi\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\arm_none_eabi\include\;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\lib\gcc\arm-none-eabi\4.4.1\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\lib\gcc\arm-none-eabi\4.4.1\include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include\pio;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\ExtendedConfigurableFirmata;$(ProjectDir)..\libraries\ConfigurableFirmata\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\libraries\Wire\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\libraries\SPI\src;$(ProjectDir)..\libraries\DHT_sensor_library;$(ProjectDir)..\libraries\Adafruit_Unified_Sensor;$(ProjectDir)..\libraries\DueFlashStorage\src;$(ProjectDir)..\libraries\ConfigurableFirmata\src\utility;$(ProjectDir)..\libraries\Servo\src;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino\avr;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\cores\arduino\USB;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\variants\arduino_due_x;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\DOCUME~1\Arduino\EXTEND~1;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\c++\4.8.3;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\c++\4.8.3\arm-none-eabi\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\arm-none-eabi\include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\tools\arm-none-eabi-gcc\4.8.3-2014q1\lib\gcc\arm-none-eabi\4.8.3\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\arm-none-eabi\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\arm_none_eabi\include\;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\lib\gcc\arm-none-eabi\4.4.1\include;$(ProjectDir)..\..\..\..\..\Program Files (x86)\Arduino\hardware\tools\g++_arm_none_eabi\lib\gcc\arm-none-eabi\4.4.1\include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include\pio;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\CMSIS\CMSIS\Include\;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\libsam;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL;$(ProjectDir)..\..\..\AppData\Local\arduino15\packages\arduino\hardware\sam\1.6.12\system\CMSIS\Device\ATMEL\sam3xa\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>$(ProjectDir)__vm\.ExtendedConfigurableFirmata.vsarduino.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <IgnoreStandardIncludePath>true</IgnoreStandardIncludePath>
       <PreprocessorDefinitions>_VMDEBUG=1;DEBUG_STREAM;F_CPU=84000000L;ARDUINO=108013;ARDUINO_SAM_DUE;ARDUINO_ARCH_SAM;__SAM3X8E__;USB_VID=0x2341;USB_PID=0x003e;USBCON;__cplusplus=201103L;_VMICRO_INTELLISENSE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -107,15 +107,20 @@
     <None Include="opcode.def.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ClassDeclaration.h" />
+    <ClInclude Include="Ds1307.h" />
     <ClInclude Include="Exceptions.h" />
     <ClInclude Include="FirmataIlExecutor.h" />
     <ClInclude Include="FirmataStatusLed.h">
       <SubType>
       </SubType>
     </ClInclude>
+    <ClInclude Include="FlashMemoryManager.h" />
     <ClInclude Include="FlashMemoryStream.h" />
     <ClInclude Include="HardwareAccess.h" />
     <ClInclude Include="KnownTypeTokens.h" />
+    <ClInclude Include="MemoryManagement.h" />
+    <ClInclude Include="MethodBody.h" />
     <ClInclude Include="MethodFlags.h" />
     <ClInclude Include="NativeMethod.h" />
     <ClInclude Include="ObjectIterator.h" />
@@ -123,7 +128,10 @@
     <ClInclude Include="ObjectStack.h" />
     <ClInclude Include="ObjectVector.h" />
     <ClInclude Include="openum.h" />
+    <ClInclude Include="RtcBase.h" />
     <ClInclude Include="SelfTest.h" />
+    <ClInclude Include="SimFlashStorage.h" />
+    <ClInclude Include="SimulatorClock.h" />
     <ClInclude Include="Variable.h" />
     <ClInclude Include="VariableList.h" />
     <ClInclude Include="VariableVector.h" />
@@ -131,15 +139,23 @@
     <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="ClassDeclaration.cpp" />
+    <ClCompile Include="Ds1307.cpp" />
     <ClCompile Include="Exceptions.cpp" />
     <ClCompile Include="FirmataIlExecutor.cpp" />
     <ClCompile Include="FirmataStatusLed.cpp">
       <SubType>
       </SubType>
     </ClCompile>
+    <ClCompile Include="FlashMemoryManager.cpp" />
     <ClCompile Include="FlashMemoryStream.cpp" />
     <ClCompile Include="HardwareAccess.cpp" />
+    <ClCompile Include="MemoryManagement.cpp" />
+    <ClCompile Include="MethodBody.cpp" />
+    <ClCompile Include="RtcBase.cpp" />
     <ClCompile Include="SelfTest.cpp" />
+    <ClCompile Include="SimFlashStorage.cpp" />
+    <ClCompile Include="SimulatorClock.cpp" />
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
