@@ -279,6 +279,9 @@ public:
 
 	void* CopyStringsToFlash();
 
+	uint32_t _instructionsExecuted;
+	uint32_t _taskStartTime;
+
 	stdSimple::vector<void*, size_t, 2000> _gcData;
 	uint32_t _gcAllocSize;
 

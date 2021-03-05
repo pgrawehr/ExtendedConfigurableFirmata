@@ -20,6 +20,7 @@ class HardwareAccess
 	static int64_t _tickCountFrequency;
 	static uint32_t _lastTickCount;
 public:
+	static void Init();
 	static void UpdateClocks(); // Called regularly by the execution engine, to also keep track of overflows if no tickcount methods are being used for some time
 	static bool ExecuteHardwareAccess(FirmataIlExecutor* executor, ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable&
 	                                  result);

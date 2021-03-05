@@ -162,6 +162,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.cpp" />
     <ClCompile Include="..\ClassDeclaration.cpp" />
+    <ClCompile Include="..\Ds1307.cpp" />
     <ClCompile Include="..\Exceptions.cpp" />
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
     <ClCompile Include="..\FirmataStatusLed.cpp" />
@@ -169,8 +170,10 @@
     <ClCompile Include="..\HardwareAccess.cpp" />
     <ClCompile Include="..\MemoryManagement.cpp" />
     <ClCompile Include="..\MethodBody.cpp" />
+    <ClCompile Include="..\RtcBase.cpp" />
     <ClCompile Include="..\SelfTest.cpp" />
     <ClCompile Include="..\SimFlashStorage.cpp" />
+    <ClCompile Include="..\SimulatorClock.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
     <ClCompile Include="SimulatorImpl.cpp" />
     <ClCompile Include="SPI.cpp" />
@@ -201,6 +204,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.h" />
     <ClInclude Include="..\ClassDeclaration.h" />
+    <ClInclude Include="..\Ds1307.h" />
     <ClInclude Include="..\Exceptions.h" />
     <ClInclude Include="..\FirmataIlExecutor.h" />
     <ClInclude Include="..\FirmataStatusLed.h" />
@@ -218,8 +222,10 @@
     <ClInclude Include="..\ObjectVector.h" />
     <ClInclude Include="..\opcode.def.h" />
     <ClInclude Include="..\openum.h" />
+    <ClInclude Include="..\RtcBase.h" />
     <ClInclude Include="..\SelfTest.h" />
     <ClInclude Include="..\SimFlashStorage.h" />
+    <ClInclude Include="..\SimulatorClock.h" />
     <ClInclude Include="..\VariableKind.h" />
     <ClInclude Include="HardwareSerial.h" />
     <ClInclude Include="pgmspace.h" />

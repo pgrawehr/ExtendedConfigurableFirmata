@@ -72,6 +72,8 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_stringHeapRamSize = 0;
 	_stringHeapFlash = nullptr;
 	_gcAllocSize = 0;
+	_instructionsExecuted = 0;
+	_taskStartTime = millis();
 }
 
 void FirmataIlExecutor::Init()
@@ -79,6 +81,8 @@ void FirmataIlExecutor::Init()
 	// This method is expected to be called at least once on startup, but not necessarily after a connection
 	SelfTest test;
 	test.PerformSelfTest();
+
+	HardwareAccess::Init();
 
 	void* classes, *methods, *constants, *stringHeap;
 	FlashManager.Init(classes, methods, constants, stringHeap);
@@ -807,6 +811,21 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 		
 	}
 	Firmata.endSysex();
+
+	uint32_t taskEnd = millis();
+	int32_t delta = taskEnd - _taskStartTime;
+
+	// Overflow?
+	if (taskEnd < _taskStartTime)
+	{
+		delta = (0x7FFFFFFF - _taskStartTime) + taskEnd;
+	}
+	
+	if (delta > 30)
+	{
+		int32_t troughput = (_instructionsExecuted / delta) / 1000;
+		Firmata.sendStringf(F("Executed %d instructions in %dms (%d instructions/second)"), 12, _instructionsExecuted, delta, troughput);
+	}
 }
 
 void FirmataIlExecutor::SendPackedInt32(int32_t value)
@@ -835,6 +854,9 @@ void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, 
 	{
 		OutOfMemoryException::Throw("Out of memory starting task");
 	}
+	_instructionsExecuted = 0;
+	_taskStartTime = millis();
+	
 	_methodCurrentlyExecuting = rootState;
 	int idx = 0;
 	for (int i = 0; i < method->NumberOfArguments(); i++)
@@ -1519,11 +1541,6 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		// The memory address serves pretty fine as general hash code, as long as we don't have a heap compacting GC.
 		result.Int32 = (int)args[0].Object;
 		}
-		break;
-	case NativeMethod::DateTimeUtcNow:
-		result.Type = VariableKind::Int64;
-		result.setSize(8);
-		result.Int64 = 0x48d8d5bb26a9dc17; // 2020-02-20 16:18 UTC
 		break;
 	case NativeMethod::MemoryMarshalGetArrayDataReference:
 	{
@@ -3318,7 +3335,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		currentFrame = currentFrame->_next;
 	}
 
-	int instructionsExecuted = 0;
+	int instructionsExecutedThisLoop = 0;
 	int constrainedTypeToken = 0; // Only used for the CONSTRAINED. prefix
 	MethodBody* target = nullptr; // Used for the calli instruction
 	u16 PC = 0;
@@ -3342,10 +3359,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
-    while (instructionsExecuted < NUM_INSTRUCTIONS_AT_ONCE)
+    while (instructionsExecutedThisLoop < NUM_INSTRUCTIONS_AT_ONCE)
     {
     	immediatellyContinue: // Label used by prefix codes, to prevent interruption
-		instructionsExecuted++;
+		instructionsExecutedThisLoop++;
 		
 		u16   len;
         OPCODE  instr;
@@ -4673,6 +4690,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	}
 	catch(OutOfMemoryException& ox)
 	{
+		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ox.Message());
 		Variable v(VariableKind::Object);
@@ -4681,6 +4699,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	}
 	catch(ClrException& ex)
 	{
+		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ex.Message());
 		// TODO: Replace with correct exception handling/stack unwinding later
@@ -4690,12 +4709,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	}
 	catch(ExecutionEngineException& ee)
 	{
+		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
 		Variable v(VariableKind::Object);
 		CreateException(SystemException::ExecutionEngine, v, 0);
 		return MethodState::Aborted;
 	}
+	
+	_instructionsExecuted += instructionsExecutedThisLoop;
 	currentFrame->UpdatePc(PC);
 
 	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
@@ -4872,6 +4894,7 @@ void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 	if (ret == nullptr)
 	{
 		OutOfMemoryException::Throw("Out of memory creating class instance ");
+		return nullptr;
 	}
 
 	// Save a reference to the class declaration in the first entry of the newly created instance.

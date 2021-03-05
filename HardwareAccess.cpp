@@ -5,6 +5,16 @@
 #include "I2CFirmata.h"
 #include <Wire.h>
 
+#include "RtcBase.h"
+#include "Ds1307.h"
+#include "SimulatorClock.h"
+
+// Enable if a DS1307 hardware real-time-clock is attached via I2C
+#if !SIM
+Ds1307 TheClock;
+#else
+SimulatorClock TheClock;
+#endif
 
 // Reference the instance of the firmata i2c driver
 extern I2CFirmata i2c;
@@ -15,6 +25,14 @@ const int OPEN_ANALOG_PIN = A0;
 int64_t HardwareAccess::_tickCountFrequency = 1000000;
 int64_t HardwareAccess::_tickCount64 = 0; // Only upper 32 bits used
 uint32_t HardwareAccess::_lastTickCount = 0;
+
+
+
+void HardwareAccess::Init()
+{
+	// A place to put hardware-related initialization code.
+	TheClock.Init();
+}
 
 void HardwareAccess::UpdateClocks()
 {
@@ -210,6 +228,12 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			result.Object = orig; // Return the original destination object
 	}
 		break;
+	case NativeMethod::DateTimeUtcNow:
+		result.Type = VariableKind::Int64;
+		result.setSize(8);
+		result.Int64 = TheClock.ReadTime();
+		break;
+		
 	default:
 		return false;
 	}

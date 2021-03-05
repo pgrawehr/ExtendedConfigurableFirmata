@@ -1,15 +1,6 @@
 ﻿// Exceptions.h
+#pragma once
 
-#ifndef _EXCEPTIONS_h
-#define _EXCEPTIONS_h
-
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
-#else
-	#include "WProgram.h"
-#endif
-
-#include "ConfigurableFirmata.h"
 enum class SystemException;
 
 namespace stdSimple
@@ -68,7 +59,4 @@ namespace stdSimple
 
 	
 }
-
-
-#endif
 

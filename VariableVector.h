@@ -4,6 +4,7 @@
 #include <FirmataFeature.h>
 #include "MemoryManagement.h"
 #include "ObjectVector.h"
+#include "Exceptions.h"
 
 /// <summary>
 /// A vector that can contain values of different sizes. The number of items in the vector is fixed, though
@@ -93,6 +94,7 @@ public:
 		if (_data == nullptr)
 		{
 			stdSimple::OutOfMemoryException::Throw("Out of memory initalizing dynamic variable vector");
+			return false;
 		}
 		
 		memset(_data, 0, totalSize);

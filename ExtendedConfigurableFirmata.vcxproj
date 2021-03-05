@@ -108,6 +108,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ClassDeclaration.h" />
+    <ClInclude Include="Ds1307.h" />
     <ClInclude Include="Exceptions.h" />
     <ClInclude Include="FirmataIlExecutor.h" />
     <ClInclude Include="FirmataStatusLed.h">
@@ -127,8 +128,10 @@
     <ClInclude Include="ObjectStack.h" />
     <ClInclude Include="ObjectVector.h" />
     <ClInclude Include="openum.h" />
+    <ClInclude Include="RtcBase.h" />
     <ClInclude Include="SelfTest.h" />
     <ClInclude Include="SimFlashStorage.h" />
+    <ClInclude Include="SimulatorClock.h" />
     <ClInclude Include="Variable.h" />
     <ClInclude Include="VariableList.h" />
     <ClInclude Include="VariableVector.h" />
@@ -137,6 +140,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ClassDeclaration.cpp" />
+    <ClCompile Include="Ds1307.cpp" />
     <ClCompile Include="Exceptions.cpp" />
     <ClCompile Include="FirmataIlExecutor.cpp" />
     <ClCompile Include="FirmataStatusLed.cpp">
@@ -148,8 +152,10 @@
     <ClCompile Include="HardwareAccess.cpp" />
     <ClCompile Include="MemoryManagement.cpp" />
     <ClCompile Include="MethodBody.cpp" />
+    <ClCompile Include="RtcBase.cpp" />
     <ClCompile Include="SelfTest.cpp" />
     <ClCompile Include="SimFlashStorage.cpp" />
+    <ClCompile Include="SimulatorClock.cpp" />
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
