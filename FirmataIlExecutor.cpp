@@ -4880,7 +4880,8 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 
 /// <summary>
 /// Creates an instance of the given type.
-/// TODO: System.String needs special handling here, since its instances have a dynamic length (the string is coded inline)
+/// System.String needs special handling, since its instances have a dynamic length (the string is coded inline). This method shall therefore not be used to create instances of string
+/// (Use CreateInstanceOfClass instead)
 /// </summary>
 void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 {
