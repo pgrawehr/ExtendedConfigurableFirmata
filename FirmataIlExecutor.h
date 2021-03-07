@@ -206,6 +206,7 @@ class FirmataIlExecutor: public FirmataFeature
 {
   public:
     FirmataIlExecutor();
+    bool AutoStartProgram();
     boolean handlePinMode(byte pin, int mode) override;
     void handleCapability(byte pin) override;
     
@@ -245,7 +246,7 @@ public:
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     int AllocateArrayInstance(int token, int size, Variable& v1);
 
-    void DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv);
+    ExecutionError DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
 	byte* AllocGcInstance(size_t bytes);
@@ -306,6 +307,9 @@ public:
 	byte* _stringHeapFlash;
 	
 	uint32_t _stringHeapRamSize;
+
+	int _startupToken;
+	int _startupFlags;
 };
 
 

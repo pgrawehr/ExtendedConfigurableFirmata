@@ -73,7 +73,36 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_stringHeapFlash = nullptr;
 	_gcAllocSize = 0;
 	_instructionsExecuted = 0;
+	_startupToken = 0;
+	_startupFlags = 0;
 	_taskStartTime = millis();
+}
+
+bool FirmataIlExecutor::AutoStartProgram()
+{
+	if (_startupToken != 0)
+	{
+		// Auto-Load the program
+		MethodBody* method = GetMethodByToken(_startupToken);
+		if (method == nullptr)
+		{
+			Firmata.sendString(F("Startup method not found"));
+			return false;
+		}
+		ExecutionState* rootState = new ExecutionState(0, method->MaxExecutionStack(), method);
+		if (rootState == nullptr)
+		{
+			Firmata.sendString(F("Out of memory starting task"));
+			return false;
+		}
+		
+		_instructionsExecuted = 0;
+		_taskStartTime = millis();
+
+		_methodCurrentlyExecuting = rootState;
+	}
+	
+	return true;
 }
 
 void FirmataIlExecutor::Init()
@@ -85,11 +114,13 @@ void FirmataIlExecutor::Init()
 	HardwareAccess::Init();
 
 	void* classes, *methods, *constants, *stringHeap;
-	FlashManager.Init(classes, methods, constants, stringHeap);
+	FlashManager.Init(classes, methods, constants, stringHeap, _startupToken, _startupFlags);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
 	_stringHeapFlash = (byte*)stringHeap;
+
+	AutoStartProgram();
 }
 
 void FirmataIlExecutor::handleCapability(byte pin)
@@ -99,7 +130,7 @@ void FirmataIlExecutor::handleCapability(byte pin)
 	{
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
 		void* classes, * methods, * constants, * stringHeap;
-		FlashManager.Init(classes, methods, constants, stringHeap);
+		FlashManager.Init(classes, methods, constants, stringHeap, _startupToken, _startupFlags);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
@@ -184,8 +215,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 7), DecodePackedUint14(argv + 9), argc - 11, argv + 11));
 				break;
 			case ExecutorCommand::StartTask:
-				DecodeParametersAndExecute(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 2 + 5), argc - (5 + 2 + 2), argv + 5 + 2 + 2);
-				SendAckOrNack(subCommand, ExecutionError::None);
+			{
+				ExecutionError error = DecodeParametersAndExecute(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 2 + 5), argc - (5 + 2 + 2), argv + 5 + 2 + 2);
+				SendAckOrNack(subCommand, error);
+			}
 				break;
 			case ExecutorCommand::DeclareMethod:
 				if (argc < 6)
@@ -238,12 +271,16 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
 			case ExecutorCommand::EraseFlash:
+				KillCurrentTask();
+				_startupToken = 0;
+				_startupFlags = 0;
 				_classes.clear(true);
 				_methods.clear(true);
 				_constants.clear(true);
 				_stringHeapFlash = nullptr;
 				freeEx(_stringHeapRam);
 				_stringHeapRamSize = 0;
+				_startupToken = 0;
 				// Fall trough
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
@@ -280,7 +317,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				void* methodsPtr = _methods.CopyListToFlash();
 				void* constantPtr = _constants.CopyListToFlash();
 				void* stringPtr = CopyStringsToFlash();
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr);
+				_startupToken = DecodePackedUint32(argv + 2 + 10);
+				_startupFlags = DecodePackedUint32(argv + 2 + 15);
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, _startupToken, _startupFlags);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 				break;
@@ -823,7 +862,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 	
 	if (delta > 30)
 	{
-		int32_t troughput = (_instructionsExecuted / delta) / 1000;
+		int32_t troughput = _instructionsExecuted / (delta / 1000);
 		Firmata.sendStringf(F("Executed %d instructions in %dms (%d instructions/second)"), 12, _instructionsExecuted, delta, troughput);
 	}
 }
@@ -844,10 +883,14 @@ void FirmataIlExecutor::SendPackedInt64(int64_t value)
 }
 
 
-void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv)
 {
 	Variable result;
 	MethodBody* method = GetMethodByToken(methodToken);
+	if (method == nullptr)
+	{
+		return ExecutionError::InvalidArguments;
+	}
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
@@ -881,7 +924,7 @@ void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, 
 	if (execResult == MethodState::Running)
 	{
 		// The method is still running
-		return;
+		return ExecutionError::None;
 	}
 
 	TRACE(Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference));
@@ -890,6 +933,8 @@ void FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, 
 	// The method ended very quickly
 	delete _methodCurrentlyExecuting;
 	_methodCurrentlyExecuting = nullptr;
+
+	return ExecutionError::None;
 }
 
 void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
@@ -1436,7 +1481,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			throw ClrException("String indexer: Index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 		}
-		byte b = *AddBytes((byte*)self.Object, STRING_DATA_START + (index.Int32 * SIZEOF_CHAR)); // String elements are only byte??
+		uint16_t b = *AddBytes((uint16_t*)self.Object, STRING_DATA_START + (index.Int32 * SIZEOF_CHAR)); // Get char at given offset
 		result.Int32 = b;
 		result.Type = VariableKind::Uint32;
 		result.setSize(2);
