@@ -76,6 +76,9 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_startupToken = 0;
 	_startupFlags = 0;
 	_taskStartTime = millis();
+	_specialTypeListFlash = nullptr;
+	_specialTypeListRam = nullptr;
+	_specialTypeListRamLength = 0;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -114,7 +117,8 @@ void FirmataIlExecutor::Init()
 	HardwareAccess::Init();
 
 	void* classes, *methods, *constants, *stringHeap;
-	FlashManager.Init(classes, methods, constants, stringHeap, _startupToken, _startupFlags);
+	int* _specialTokens;
+	FlashManager.Init(classes, methods, constants, stringHeap, _specialTokens, _startupToken, _startupFlags);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
@@ -130,11 +134,13 @@ void FirmataIlExecutor::handleCapability(byte pin)
 	{
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
 		void* classes, * methods, * constants, * stringHeap;
-		FlashManager.Init(classes, methods, constants, stringHeap, _startupToken, _startupFlags);
+		int* specialTokenList;
+		FlashManager.Init(classes, methods, constants, stringHeap, specialTokenList, _startupToken, _startupFlags);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
 		_stringHeapFlash = (byte*)stringHeap;
+		_specialTypeListFlash = specialTokenList;
 	}
 #endif
 }
@@ -263,6 +269,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
 				break;
+			case ExecutorCommand::SpecialTokenList:
+				SendAckOrNack(subCommand, LoadSpecialTokens(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), argc - 12, argv + 12));
+				break;
 			case ExecutorCommand::SetConstantMemorySize:
 				SendAckOrNack(subCommand, PrepareStringLoad(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5)));
 				break;
@@ -281,6 +290,11 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				freeEx(_stringHeapRam);
 				_stringHeapRamSize = 0;
 				_startupToken = 0;
+				
+				_specialTypeListFlash = nullptr;
+				freeEx(_specialTypeListRam);
+				_specialTypeListRam = nullptr;
+				_specialTypeListRamLength = 0;
 				// Fall trough
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
@@ -317,12 +331,13 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				void* methodsPtr = _methods.CopyListToFlash();
 				void* constantPtr = _constants.CopyListToFlash();
 				void* stringPtr = CopyStringsToFlash();
+				int* specialTokenListPtr = CopySpecialTokenListToFlash();
 				_startupToken = DecodePackedUint32(argv + 2 + 10);
 				_startupFlags = DecodePackedUint32(argv + 2 + 15);
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, _startupToken, _startupFlags);
+				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, _startupToken, _startupFlags);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
-				break;
+			break;
 
 			case ExecutorCommand::CheckFlashVersion:
 				{
@@ -381,6 +396,28 @@ void* FirmataIlExecutor::CopyStringsToFlash()
 	_stringHeapFlash = target;
 	return target;
 }
+
+int* FirmataIlExecutor::CopySpecialTokenListToFlash()
+{
+	if (_specialTypeListFlash != nullptr)
+	{
+		throw ExecutionEngineException("Special Type list already written to flash");
+	}
+
+	// This is pretty straight-forward: We just copy the whole thing to flash
+	int* target = (int*)FlashManager.FlashAlloc(_specialTypeListRamLength * sizeof(int));
+	FlashManager.CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int));
+	if (_specialTypeListRam != nullptr)
+	{
+		freeEx(_specialTypeListRam);
+		_specialTypeListRam = nullptr;
+		_specialTypeListRamLength = 0;
+	}
+
+	_specialTypeListFlash = target;
+	return target;
+}
+
 
 byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 {
@@ -447,6 +484,36 @@ ExecutionError FirmataIlExecutor::PrepareStringLoad(uint32_t constantSize, uint3
 			return ExecutionError::OutOfMemory;
 		}
 	}
+	return ExecutionError::None;
+}
+
+ExecutionError FirmataIlExecutor::LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv)
+{
+	if (_specialTypeListRam == nullptr)
+	{
+		if (offset != 0)
+		{
+			return ExecutionError::InvalidArguments;
+		}
+		_specialTypeListRamLength = totalListLength + 1; // We need a terminating 0 element
+		_specialTypeListRam = (int*)mallocEx(_specialTypeListRamLength * sizeof(int));
+		memset(_specialTypeListRam, 0, _specialTypeListRamLength * sizeof(int));
+	}
+
+	if (offset + (argc / 5) > _specialTypeListRamLength)
+	{
+		return ExecutionError::InvalidArguments;
+	}
+	
+	int bytesLeft = argc;
+	while(bytesLeft >= 5)
+	{
+		_specialTypeListRam[offset] = DecodePackedUint32(argv);
+		bytesLeft -= 5;
+		argv += 5;
+		offset++;
+	}
+	
 	return ExecutionError::None;
 }
 
@@ -1113,7 +1180,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		ASSERT(args.size() == 2);
 		{
 			Variable type = args[0]; // type or type handle
-			Variable arguments = args[1]; // An array of types
+			Variable& arguments = args[1]; // An array of types
 			ASSERT(arguments.Type == VariableKind::ReferenceArray);
 			uint32_t* data = (uint32_t*)arguments.Object;
 			int32_t size = *(data + 1);
@@ -1146,8 +1213,27 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
 
-			// The sum of a generic type and its only type argument will yield the token for the combination
-			type.Int32 = genericToken + argumentType.Int32;
+			if ((argumentType.Int32 & (GENERIC_TOKEN_MASK | NULLABLE_TOKEN_MASK)) != 0)
+			{
+				// The argument is not a trivial type -> we have to search the extended type list to find the correct combined token.
+				int newToken = ReverseSearchSpecialTypeList(genericToken, arguments, _specialTypeListRam);
+				if (newToken == 0)
+				{
+					newToken = ReverseSearchSpecialTypeList(genericToken, arguments, _specialTypeListFlash);
+				}
+				if (newToken == 0)
+				{
+					// Still 0? That's bad.
+					throw ClrException(SystemException::ClassNotFound, genericToken); // Error here might be missleading, but we do not know the token that we can't construct. That's just the point.
+				}
+
+				type.Int32 = newToken;
+			}
+			else
+			{
+				// The sum of a generic type and its only type argument will yield the token for the combination
+				type.Int32 = genericToken + argumentType.Int32;
+			}
 			type.Type = VariableKind::RuntimeTypeHandle;
 			GetTypeFromHandle(currentFrame, result, type);
 			// result is returning the newly constructed type instance
@@ -1444,6 +1530,13 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result = args[0];
 		}
 		break;
+	case NativeMethod::UnsafeAsPointer:
+		{
+			ASSERT(args.size() == 1);
+			result = args[0];
+			result.Type = VariableKind::Uint32;
+		}
+		break;
 	case NativeMethod::ByReferenceCtor:
 		{
 		ASSERT(args.size() == 2); // this + object
@@ -1643,6 +1736,56 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
 
+}
+
+/// <summary>
+/// Finds the token that is the class constructed from all elements in tokenList. This is used for extended cases of Type.MakeGenericType()
+/// </summary>
+/// <param name="mainToken">Token of the main class (i.e. token of IEnumerable{T}, or Dictionary{TKey, TValue})</param>
+/// <param name="tokenList">A variable containing the array of concrete parameters for the generic variables</param>
+/// <param name="searchList">The list to search (either RAM or Flash)</param>
+/// <returns>The token that can be used to construct the combined type</returns>
+int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList)
+{
+	if (searchList != nullptr)
+	{
+		int entryLength = searchList[0];
+		int index = 0;
+		ClassDeclaration* typeOfType = _classes.GetClassWithToken(2);
+
+		while (entryLength > 0)
+		{
+			// Every entry has at least 4 values (the length, the token we're looking for, the main token and one sub-token)
+			if (searchList[index + 2] == mainToken)
+			{
+				int* data = (int*)tokenList.Object;
+				int32_t size = *(data + 1);
+				for (int param = 0; param < size; param++)
+				{
+					uint32_t parameter = *(data + param + ARRAY_DATA_START / 4); // Element of array
+					Variable argumentTypeInstance;
+					// First, get element of array (an object)
+					argumentTypeInstance.Uint32 = parameter;
+					argumentTypeInstance.Type = VariableKind::Object;
+					// then get its first field, which is the type token
+					Variable argumentType = GetField(typeOfType, argumentTypeInstance, 0);
+					if (argumentType.Int32 != searchList[index + 3 + param])
+					{
+						goto doContinue;
+					}
+				}
+
+				// If we get here, we have found one entry where the main token and all parameter tokens match.
+				// That means we have found the entry that MakeGenericType shall construct
+				return searchList[index + 1];
+			}
+			doContinue:
+			index += entryLength;
+			entryLength = searchList[index];
+		}
+	}
+
+	return 0;
 }
 
 Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo)
@@ -4787,7 +4930,7 @@ void FirmataIlExecutor::CreateException(SystemException exception, Variable& man
 	int idx = 0;
 	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
 	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(u16));
-	while (currentFrame->_next != NULL)
+	while (currentFrame != NULL)
 	{
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
@@ -5168,6 +5311,9 @@ void FirmataIlExecutor::reset()
 	_currentException.ExceptionObject.Type = VariableKind::Void;
 	_currentException.TokenOfException = 0;
 	_currentException.ExceptionType = SystemException::None;
+	
+	_specialTypeListRamLength = 0;
+	freeEx(_specialTypeListRam);
 
 	for (size_t idx = 0; idx < _gcData.size(); idx++)
 	{

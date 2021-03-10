@@ -33,8 +33,9 @@ public:
 	void* Constants;
 	void* StringHeap;
 	byte* EndOfHeap;
+	int* SpecialTokenList;
+	
 	int StartupToken;
-
 	// Bit 0: Auto-Restart task after crash
 	int StartupFlags;
 };
@@ -58,7 +59,7 @@ FlashMemoryManager::FlashMemoryManager()
 	}
 }
 
-void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int& startupToken, int& startupFlags)
+void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, int& startupToken, int& startupFlags)
 {
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
@@ -70,6 +71,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		stringHeap = _header->StringHeap;
 		startupToken = _header->StartupToken;
 		startupFlags = _header->StartupFlags;
+		specialTokenList = _header->SpecialTokenList;
 	}
 	else
 	{
@@ -79,6 +81,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		stringHeap = nullptr;
 		startupToken = 0;
 		startupFlags = 0;
+		specialTokenList = nullptr;
 	}
 }
 
@@ -141,7 +144,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 	}
 }
 
-void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int startupToken, int startupFlags)
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, int startupToken, int startupFlags)
 {
 	FlashMemoryHeader hd;
 	hd.DataVersion = dataVersion;
@@ -152,8 +155,10 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.Methods = methodsPtr;
 	hd.Constants = constantsPtr;
 	hd.StringHeap = stringHeapPtr;
+	hd.SpecialTokenList = specialTokenList;
 	hd.StartupToken = startupToken;
 	hd.StartupFlags = startupFlags;
+	
 	storage->write(0, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;
 

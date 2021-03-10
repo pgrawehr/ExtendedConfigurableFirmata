@@ -55,6 +55,7 @@ enum class ExecutorCommand : byte
 	CheckFlashVersion = 14,
 	EraseFlash = 15,
 	SetConstantMemorySize = 16,
+	SpecialTokenList = 17,
 	
 	Nack = 0x7e,
 	Ack = 0x7f,
@@ -229,7 +230,9 @@ public:
 	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
 	ExecutionError PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize);
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
+	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 
+    int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	
 	Variable& Ldsfld(int token);
@@ -279,6 +282,7 @@ public:
 	byte* GetConstant(int token);
 
 	void* CopyStringsToFlash();
+	int* CopySpecialTokenListToFlash();
 
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
@@ -307,6 +311,10 @@ public:
 	byte* _stringHeapFlash;
 	
 	uint32_t _stringHeapRamSize;
+
+	int* _specialTypeListRam;
+	int* _specialTypeListFlash;
+	uint32_t _specialTypeListRamLength;
 
 	int _startupToken;
 	int _startupFlags;

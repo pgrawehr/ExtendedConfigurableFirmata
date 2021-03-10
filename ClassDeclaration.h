@@ -335,3 +335,4 @@ public:
 	void ThrowNotFoundException(int token) override;
 	void clear(bool includingFlash) override;
 };
+
