@@ -117,12 +117,13 @@ void FirmataIlExecutor::Init()
 	HardwareAccess::Init();
 
 	void* classes, *methods, *constants, *stringHeap;
-	int* _specialTokens;
-	FlashManager.Init(classes, methods, constants, stringHeap, _specialTokens, _startupToken, _startupFlags);
+	int* specialTokens;
+	FlashManager.Init(classes, methods, constants, stringHeap, specialTokens, _startupToken, _startupFlags);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
 	_stringHeapFlash = (byte*)stringHeap;
+	_specialTypeListFlash = specialTokens;
 
 	AutoStartProgram();
 }
@@ -4776,6 +4777,27 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					tempVariable->Marker = 0x37;
 					memcpy(&tempVariable->Int32, value1.Object, size);
 					stack->push(*tempVariable);
+				}
+				break;
+				case CEE_STOBJ:
+				{
+					Variable& src = stack->top();
+					stack->pop();
+					Variable dest = stack->top();
+					stack->pop();
+					if (dest.Object == nullptr)
+					{
+						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+					}
+					if (dest.Type != VariableKind::AddressOfVariable)
+					{
+						throw ClrException("LDOBJ with invalid argument", SystemException::InvalidOperation, token);
+						return MethodState::Aborted;
+					}
+
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+					size = ty->ClassDynamicSize;
+					memcpy(dest.Object, &src.Int32, size);
 				}
 				break;
 				default:
