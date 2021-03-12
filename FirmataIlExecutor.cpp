@@ -739,7 +739,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, 
 	
 	// And attach to the list
 	_methods.Insert(method);
-	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, token, (int)flags));
+	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, methodToken, (int)flags));
 	return ExecutionError::None;
 }
 
@@ -834,7 +834,7 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLeng
 		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
 	}
 
-	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, codeReference, offset));
+	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, methodToken, offset));
 	return ExecutionError::None;
 }
 
@@ -928,7 +928,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 		delta = (0x7FFFFFFF - _taskStartTime) + taskEnd;
 	}
 	
-	if (delta > 30)
+	if (delta > 2000)
 	{
 		int32_t troughput = _instructionsExecuted / (delta / 1000);
 		Firmata.sendStringf(F("Executed %d instructions in %dms (%d instructions/second)"), 12, _instructionsExecuted, delta, troughput);
@@ -959,7 +959,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u1
 	{
 		return ExecutionError::InvalidArguments;
 	}
-	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, codeReference, method->maxStack));
+	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, methodToken, method->MaxExecutionStack()));
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
 	{
@@ -995,7 +995,6 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u1
 		return ExecutionError::None;
 	}
 
-	TRACE(Firmata.sendStringf(F("Code execution for %d has ended normally."), 2, codeReference));
 	SendExecutionResult(taskId, _currentException, result, execResult);
 	
 	// The method ended very quickly
@@ -1082,8 +1081,20 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 			// This implements System::Type::Equals(object)
 			result.Type = VariableKind::Boolean;
-			Variable type1 = args[0]; // type1.
-			Variable type2 = args[1]; // type2.
+			Variable& type1 = args[0]; // type1.
+			Variable& type2 = args[1]; // type2.
+			if (type1.Object == type2.Object)
+			{
+				result.Boolean = true;
+				break;
+			}
+
+			if (type1.Object == nullptr || type2.Object == nullptr)
+			{
+				// Due to the above, they cannot be equal if one is null
+				result.Boolean = false;
+				break;
+			}
 			ClassDeclaration* ty = _classes.GetClassWithToken(2);
 			Variable tok1 = GetField(ty, type1, 0);
 			Variable tok2 = GetField(ty, type2, 0);
@@ -1422,41 +1433,60 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		ASSERT(args.size() == 1);
 		{
 			// Get the type of the generic argument as an array. It is similar to GenericTypeDefinition, but returns the other part (for a single generic argument)
-			// Note: This function has a few other cases, which we do not handle here.
-			// In particular, we only support the case for one element
 			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
 			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
-			int token = tok1.Int32;
-			// If the token is a generic (open) type, we return "type"
-			if ((int)(token & GENERIC_TOKEN_MASK) == token)
+			int writableToken = tok1.Int32;
+			int* tokenList = &writableToken;
+			int arraySize = 1;
+			
+			// If the token is a generic (open) type, we return "self"
+			if ((int)(writableToken & GENERIC_TOKEN_MASK) == writableToken)
 			{
-				token = (int)KnownTypeTokens::Type;
+				writableToken = (int)KnownTypeTokens::Type;
+			}
+			else if ((writableToken & GENERIC_TOKEN_MASK) == GENERIC_TOKEN_MASK)
+			{
+				// This is token from our special list. The generic arguments need to be looked up.
+				int* tokenListEntry = GetSpecialTokenListEntry(writableToken);
+				int length = tokenListEntry[0];
+				arraySize = length - 3;
+				tokenList = tokenListEntry + 3;
 			}
 			else
 			{
 				// otherwise we return the type of the generic argument
-				token = token & ~GENERIC_TOKEN_MASK;
+				writableToken = writableToken & ~GENERIC_TOKEN_MASK;
 			}
 
-			if (_classes.GetClassWithToken(token) == nullptr)
+			AllocateArrayInstance((int)KnownTypeTokens::Type, arraySize, result);
+
+			int i = 0;
+			while (arraySize > 0)
 			{
-				throw ClrException(SystemException::ClassNotFound, token);
+				void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
+
+				Variable t1;
+				t1.Object = ptr;
+				t1.Type = VariableKind::Object;
+
+				int nextToken = *tokenList;
+				if (_classes.GetClassWithToken(nextToken) == nullptr)
+				{
+					throw ClrException(SystemException::ClassNotFound, nextToken);
+				}
+
+				tok1.Int32 = nextToken;
+				SetField4(ty, tok1, t1, 0);
+				uint32_t* data = (uint32_t*)result.Object;
+				// Set the element of the array to the type instance
+				*(data + 3 + i) = (uint32_t)ptr;
+
+				tokenList++; // go to next element
+				i++;
+				arraySize--;
 			}
-
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
-
-			Variable t1;
-			t1.Object = ptr;
-			t1.Type = VariableKind::Object;
-
-			tok1.Int32 = token;
-			SetField4(ty, tok1, t1, 0);
-			AllocateArrayInstance((int)KnownTypeTokens::Type, 1, result);
-			uint32_t* data = (uint32_t*)result.Object;
-			// Set the first (and for us, only) element of the array to the type instance
-			*(data + 3) = (uint32_t)ptr;
 		}
 		break;
 	case NativeMethod::BitOperationsLog2SoftwareFallback:
@@ -1789,6 +1819,37 @@ int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tok
 	return 0;
 }
 
+int* FirmataIlExecutor::GetSpecialTokenListEntry(int token)
+{
+	int* result = GetSpecialTokenListEntryCore(_specialTypeListFlash, token);
+	if (result == nullptr)
+	{
+		result = GetSpecialTokenListEntryCore(_specialTypeListRam, token);
+	}
+
+	if (result == nullptr)
+	{
+		throw ClrException("Unable to find special token", SystemException::ClassNotFound, token);
+	}
+
+	return result;
+}
+
+int* FirmataIlExecutor::GetSpecialTokenListEntryCore(int* tokenList, int token)
+{
+	while (*tokenList != 0)
+	{
+		int length = tokenList[0];
+		if (tokenList[1] == token)
+		{
+			return tokenList;
+		}
+	}
+	
+	return nullptr;
+}
+
+
 Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo)
 {
 	int idx = 0;
@@ -1797,6 +1858,11 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 	// offset += Variable::datasize() * fieldNo;
 	// but we still need the field handle for the type
 	byte* o = (byte*)instancePtr.Object;
+
+	if (o == nullptr)
+	{
+		throw ClrException("NullReferenceException accessing field", SystemException::NullReference, type->ClassToken);
+	}
 
 	vector<Variable*> allfields;
 	CollectFields(type, allfields);
@@ -3556,7 +3622,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		u16   len;
         OPCODE  instr;
 		
-		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method %d (token 0x%lx)"), 8, PC, currentMethod->codeReference, currentMethod->methodToken));
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method 0x%lx"), 6, PC, currentMethod->methodToken));
     	/*if (!stack->empty())
     	{
 			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
@@ -3739,7 +3805,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		            {
 					case CEE_UNALIGNED_: /*Ignore prefix, we don't need alignment. Just execute the actual instruction*/
 						PC--;
-						break;
+						goto immediatellyContinue;
 					case CEE_LDC_I4_S:
 						intermediate.Int32 = data;
 						intermediate.Type = VariableKind::Int32;
@@ -4362,7 +4428,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				target = nullptr;
 				constrainedTypeToken = 0;
-				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->codeReference));
+				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->methodToken));
 				break;
             }
 			case InlineType:
@@ -5025,7 +5091,7 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */)
 {
 	ClassDeclaration* cls = _classes.GetClassWithToken(typeToken);
-	TRACE(Firmata.sendString(F("Class to create is 0x"), cls.ClassToken));
+	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
 	// Compute sizeof(class)
 	size_t sizeOfClass = SizeOfClass(cls);
 	if (cls->ClassToken == (int)KnownTypeTokens::String)
@@ -5282,7 +5348,7 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 		}
 	}
 
-	TRACE(Firmata.sendString(F("Reference not found: "), codeReference));
+	TRACE(Firmata.sendString(F("Reference not found: "), token));
 	return nullptr;
 }
 

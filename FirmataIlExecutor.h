@@ -233,6 +233,8 @@ public:
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 
     int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
+    int* GetSpecialTokenListEntryCore(int* tokenList, int token);
+    int* GetSpecialTokenListEntry(int token);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	
 	Variable& Ldsfld(int token);
