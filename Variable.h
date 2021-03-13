@@ -191,12 +191,13 @@ struct VariableDescription
 		CommonInit();
 	}
 
-private: void CommonInit()
-{
-	Marker = 0x37;
-	Size = 0;
-	Type = VariableKind::Void;
-}
+	private:
+	void CommonInit()
+	{
+		Marker = 0x37;
+		Size = 0;
+		Type = VariableKind::Void;
+	}
 
 public:
 	size_t fieldSize() const

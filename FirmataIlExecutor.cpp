@@ -1073,9 +1073,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	{
 		return;
 	}
+
+	// Note: All methods should do some minimal parameter validation, at least the count.
+	// This lets us more quickly detect inconsistent builds (unsychronized enum values)
 	switch (method)
 	{
-	
 	case NativeMethod::TypeEquals:
 		ASSERT(args.size() == 2);
 		{
@@ -1769,6 +1771,42 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Void;
 		}
 		break;
+	case NativeMethod::ActivatorCreateInstance:
+		{
+			// This function has 6 arguments, but most of them are irrelevant or we don't care
+			ASSERT(args.size() == 6);
+			Variable& type = args[0];
+			ClassDeclaration* typeOfType = GetClassDeclaration(type);
+			ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
+			int typeToken = GetField(typeOfType, type, 0).Int32;
+			ClassDeclaration* typeToCreate = GetClassWithToken(typeToken);
+			Variable& argsArray = args[3];
+			int* data = (int*)argsArray.Object;
+			int argsLen = *(data + 1);
+			int idx = 0;
+			for (auto ctor = typeToCreate->GetMethodByIndex(idx); ctor != nullptr; ctor = typeToCreate->GetMethodByIndex(++idx))
+			{
+				auto declaration = GetMethodByToken(ctor->MethodToken());
+				if (declaration->MethodFlags() == (int)MethodFlags::Ctor && declaration->NumberOfArguments() == argsLen)
+				{
+					result.Type = VariableKind::Object;
+					result.Object = CreateInstanceOfClass(typeToken, 0);
+					/*int argNum = 0;
+					for (; argNum < argsLen; argNum++)
+					{
+						void* ptrToObject = (void*)*(data + ARRAY_DATA_START / 4 + argNum);
+						VariableDescription& desc = declaration->GetArgumentAt(argNum);
+						ClassDeclaration* ty = (ClassDeclaration*)*((int*)ptrToObject);
+						if (desc.Type == VariableKind::Object)
+						{
+							
+						}
+					}*/
+				}
+			}
+
+			throw ClrException(SystemException::ClassNotFound, typeToken);
+		}
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}

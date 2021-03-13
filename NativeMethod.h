@@ -112,4 +112,5 @@ enum class NativeMethod
     MemoryMarshalGetArrayDataReference = 106,
     ArrayCopyCore = 107,
     ArrayClear = 108,
+    ActivatorCreateInstance = 109,
 };

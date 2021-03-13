@@ -237,6 +237,11 @@ public:
     int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
+
+	ClassDeclaration* GetClassWithToken(int token)
+	{
+		return _classes.GetClassWithToken(token);
+	}
 	
 	Variable& Ldsfld(int token);
 	Variable Ldsflda(int token);
