@@ -79,6 +79,7 @@ enum class ExecutionError : byte
 };
 
 #define GENERIC_TOKEN_MASK 0xFF800000
+#define SPECIAL_TOKEN_MASK 0xFF000000
 #define NULLABLE_TOKEN_MASK 0x00800000
 #define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
 #define STRING_DATA_START 8 /* String type token, string length (in chars) */
@@ -233,8 +234,8 @@ public:
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 
     int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
-    int* GetSpecialTokenListEntryCore(int* tokenList, int token);
-    int* GetSpecialTokenListEntry(int token);
+    int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
+    int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 	
 	Variable& Ldsfld(int token);

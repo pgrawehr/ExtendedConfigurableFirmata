@@ -1197,10 +1197,6 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			uint32_t* data = (uint32_t*)arguments.Object;
 			int32_t size = *(data + 1);
 			ClassDeclaration* typeOfType = _classes.GetClassWithToken(2);
-			if (size != 1)
-			{
-				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
-			}
 			uint32_t parameter = *(data + ARRAY_DATA_START/4); // First element of array
 			Variable argumentTypeInstance;
 			// First, get element of array (an object)
@@ -1225,7 +1221,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
 
-			if ((argumentType.Int32 & (GENERIC_TOKEN_MASK | NULLABLE_TOKEN_MASK)) != 0)
+			if ((argumentType.Int32 & GENERIC_TOKEN_MASK) != 0 || size > 1)
 			{
 				// The argument is not a trivial type -> we have to search the extended type list to find the correct combined token.
 				int newToken = ReverseSearchSpecialTypeList(genericToken, arguments, _specialTypeListRam);
@@ -1383,27 +1379,37 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	break;
 	case NativeMethod::TypeGetGenericTypeDefinition:
 		{
+			// Given a constructed generic type, this returns the open generic type.
 			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
 			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
 			int token = tok1.Int32;
-			token = token & GENERIC_TOKEN_MASK;
-
-			if (token == 0)
+			if ((token & SPECIAL_TOKEN_MASK) == SPECIAL_TOKEN_MASK)
 			{
-				// Type was not generic -> throw InvalidOperationException
-				throw ClrException(SystemException::InvalidOperation, token);
+				int* tokenListEntry = GetSpecialTokenListEntry(token, true);
+				token = tokenListEntry[2];
 			}
+			else
+			{
+				token = token & GENERIC_TOKEN_MASK;
 
-			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
+				if (token == 0)
+				{
+					// Type was not generic -> throw InvalidOperationException
+					throw ClrException(SystemException::InvalidOperation, token);
+				}
+			}
 			
+			void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Type, 0);
+
 			result.Object = ptr;
 			result.Type = VariableKind::Object;
 
 			tok1.Int32 = token;
 			tok1.Type = VariableKind::Int32;
 			SetField4(ty, tok1, result, 0);
+		
 		}
 		break;
 	case NativeMethod::TypeIsEnum:
@@ -1432,7 +1438,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	case NativeMethod::TypeGetGenericArguments:
 		ASSERT(args.size() == 1);
 		{
-			// Get the type of the generic argument as an array. It is similar to GenericTypeDefinition, but returns the other part (for a single generic argument)
+			// Get the type of the generic argument as an array. It is similar to GetGenericTypeDefinition, but returns the other part (for a single generic argument)
 			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
 			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
@@ -1446,10 +1452,10 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			{
 				writableToken = (int)KnownTypeTokens::Type;
 			}
-			else if ((writableToken & GENERIC_TOKEN_MASK) == GENERIC_TOKEN_MASK)
+			else if ((writableToken & SPECIAL_TOKEN_MASK) == SPECIAL_TOKEN_MASK)
 			{
 				// This is token from our special list. The generic arguments need to be looked up.
-				int* tokenListEntry = GetSpecialTokenListEntry(writableToken);
+				int* tokenListEntry = GetSpecialTokenListEntry(writableToken, true);
 				int length = tokenListEntry[0];
 				arraySize = length - 3;
 				tokenList = tokenListEntry + 3;
@@ -1819,12 +1825,12 @@ int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tok
 	return 0;
 }
 
-int* FirmataIlExecutor::GetSpecialTokenListEntry(int token)
+int* FirmataIlExecutor::GetSpecialTokenListEntry(int token, bool searchWithMainToken)
 {
-	int* result = GetSpecialTokenListEntryCore(_specialTypeListFlash, token);
+	int* result = GetSpecialTokenListEntryCore(_specialTypeListFlash, token, searchWithMainToken);
 	if (result == nullptr)
 	{
-		result = GetSpecialTokenListEntryCore(_specialTypeListRam, token);
+		result = GetSpecialTokenListEntryCore(_specialTypeListRam, token, searchWithMainToken);
 	}
 
 	if (result == nullptr)
@@ -1835,15 +1841,19 @@ int* FirmataIlExecutor::GetSpecialTokenListEntry(int token)
 	return result;
 }
 
-int* FirmataIlExecutor::GetSpecialTokenListEntryCore(int* tokenList, int token)
+int* FirmataIlExecutor::GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken)
 {
+	// If searchWithMainToken is true, we search for the combined token, otherwise we search for the left type (the open type)
+	int compareIndex = searchWithMainToken ? 1 : 2;
 	while (*tokenList != 0)
 	{
 		int length = tokenList[0];
-		if (tokenList[1] == token)
+		if (tokenList[compareIndex] == token)
 		{
 			return tokenList;
 		}
+		
+		tokenList += length;
 	}
 	
 	return nullptr;
