@@ -270,6 +270,7 @@ public:
     MethodState IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object);
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
+    int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
     void CreateException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);

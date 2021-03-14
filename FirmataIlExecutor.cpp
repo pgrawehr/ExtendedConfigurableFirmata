@@ -1771,42 +1771,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Void;
 		}
 		break;
-	case NativeMethod::ActivatorCreateInstance:
-		{
-			// This function has 6 arguments, but most of them are irrelevant or we don't care
-			ASSERT(args.size() == 6);
-			Variable& type = args[0];
-			ClassDeclaration* typeOfType = GetClassDeclaration(type);
-			ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
-			int typeToken = GetField(typeOfType, type, 0).Int32;
-			ClassDeclaration* typeToCreate = GetClassWithToken(typeToken);
-			Variable& argsArray = args[3];
-			int* data = (int*)argsArray.Object;
-			int argsLen = *(data + 1);
-			int idx = 0;
-			for (auto ctor = typeToCreate->GetMethodByIndex(idx); ctor != nullptr; ctor = typeToCreate->GetMethodByIndex(++idx))
-			{
-				auto declaration = GetMethodByToken(ctor->MethodToken());
-				if (declaration->MethodFlags() == (int)MethodFlags::Ctor && declaration->NumberOfArguments() == argsLen)
-				{
-					result.Type = VariableKind::Object;
-					result.Object = CreateInstanceOfClass(typeToken, 0);
-					/*int argNum = 0;
-					for (; argNum < argsLen; argNum++)
-					{
-						void* ptrToObject = (void*)*(data + ARRAY_DATA_START / 4 + argNum);
-						VariableDescription& desc = declaration->GetArgumentAt(argNum);
-						ClassDeclaration* ty = (ClassDeclaration*)*((int*)ptrToObject);
-						if (desc.Type == VariableKind::Object)
-						{
-							
-						}
-					}*/
-				}
-			}
-
-			throw ClrException(SystemException::ClassNotFound, typeToken);
-		}
+	
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -3624,6 +3589,58 @@ bool ImplementsMethodDirectly(ClassDeclaration* cls, int32_t methodToken)
 	return false;
 }
 
+/// <summary>
+/// Checks whether a list of arguments possibly matches a method.
+/// This is a bit of guesswork, because our type information is to limited to find exact matches.
+/// Tested for constructor sonly
+/// </summary>
+int FirmataIlExecutor::MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray)
+{
+	int* data = (int*)argumentArray.Object;
+	int argsLen = *(data + 1);
+	bool isCtor = false;
+	if (declaration->MethodFlags() & (int)MethodFlags::Ctor)
+	{
+		// A ctor specifies an argument less than what it actually gets
+		if (declaration->NumberOfArguments() != argsLen + 1)
+		{
+			return false;
+		}
+		isCtor = true;
+	}
+	else
+	{
+		if (declaration->NumberOfArguments() != argsLen)
+		{
+			return false;
+		}
+	}
+	
+	for (int idx = 0; idx < argsLen; idx++)
+	{
+		void* object = (void*)*(data + idx + ARRAY_DATA_START / 4);
+		VariableDescription& desc = declaration->GetArgumentAt(idx + isCtor ? 1 : 0);
+		ClassDeclaration* ty = (ClassDeclaration*)*((int*)object);
+		bool typeMayMatch = false;
+		if (ty->ValueType && desc.Type != VariableKind::ReferenceArray && desc.Type != VariableKind::AddressOfVariable && desc.Type != VariableKind::Object)
+		{
+			typeMayMatch = true;
+		}
+		else if (!ty->ValueType && desc.Type == VariableKind::Object)
+		{
+			typeMayMatch = true;
+		}
+
+		if (!typeMayMatch)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -3682,34 +3699,121 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 			TRACE(Firmata.sendString(F("Executing special method "), (int)specialMethod));
 			Variable retVal;
-			ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
+    		if (specialMethod == NativeMethod::ActivatorCreateInstance)
+    		{
+    			// This very special function is directly handled here, because it needs to manipulate the call stack, so that
+    			// we can execute the called ctor.
+    			// This function has 6 arguments, but most of them are irrelevant or we don't care.
+				ASSERT(arguments->size() == 6);
+				Variable& type = arguments->at(0);
+				ClassDeclaration* typeOfType = GetClassDeclaration(type);
+				ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
+				int typeToken = GetField(typeOfType, type, 0).Int32;
+				ClassDeclaration* typeToCreate = GetClassWithToken(typeToken);
+    			if (typeToCreate->ValueType)
+    			{
+					throw ClrException("Cannot create value types using CreateInstance", SystemException::NotSupported, typeToken);
+    			}
+    			
+				Variable& argsArray = arguments->at(3);
+				ASSERT(argsArray.Type == VariableKind::ReferenceArray);
+				int* data = (int*)argsArray.Object;
+				int argsLen = *(data + 1);
+				int idx = 0;
+    			
+				ExecutionState* newState = nullptr;
+				void* newInstance = nullptr;
+				for (auto ctor = typeToCreate->GetMethodByIndex(idx); ctor != nullptr; ctor = typeToCreate->GetMethodByIndex(++idx))
+				{
+					auto declaration = GetMethodByToken(ctor->MethodToken());
+					if (declaration == nullptr) // token is not a method
+					{
+						continue;
+					}
+					if (declaration->MethodFlags() == (int)MethodFlags::Ctor && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
+					{
+						newInstance = CreateInstanceOfClass(typeToken, 0);
+						newState = new ExecutionState((u16)currentFrame->TaskId(), declaration->MaxExecutionStack(), declaration);
+						newState->ActivateState(&PC, &stack, &locals, &arguments);
+						int argNum = 0;
+						for (; argNum < argsLen; argNum++)
+						{
+							void* ptrToObject = (void*)*(data + ARRAY_DATA_START / 4 + argNum);
+							VariableDescription& desc = declaration->GetArgumentAt(argNum + 1);
+							ClassDeclaration* ty = (ClassDeclaration*)*((int*)ptrToObject);
+							if (desc.Type == VariableKind::Object)
+							{
+								arguments->at(argNum + 1).Object = ptrToObject;
+							}
+							else 
+							{
+								// Since the argument array is of type object[], we know we have to unbox here
+								memcpy(&arguments->at(argNum + 1).Int32, AddBytes(ptrToObject, sizeof(void*)), ty->ClassDynamicSize);
+							}
+						}
 
-    		// We're called into a "special" (built-in) method. 
-			// Perform a method return
-			ExecutionState* frame = rootState; // start at root
-			while (frame->_next != currentFrame)
-			{
-				frame = frame->_next;
-			}
-			// Remove the last frame and set the PC for the new current frame
-			frame->_next = nullptr;
-			
-			ExecutionState* exitingFrame = currentFrame; // Need to keep it until we have saved the return value
-			currentFrame = frame;
-			
-			// If the method we just terminated is not of type void, we push the result to the 
-			// stack of the calling method.
-			if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
-			{
-				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-				stack->push(retVal);
-			}
+						arguments->at(0).Object = newInstance;
+						break;
+					}
+				}
+
+				if (newInstance == nullptr)
+				{
+					freeEx(newState);
+					throw ClrException(SystemException::ClassNotFound, typeToken);
+				}
+
+				ExecutionState* frame = rootState; // start at root
+				while (frame->_next != currentFrame)
+				{
+					frame = frame->_next;
+				}
+
+				// Remove the last frame and set the PC for the new current frame. This will make it look like the ctor was called normally using a newobj instruction.
+				frame->_next = newState;
+    			// This is a bit ugly, but we have to get at the stack of our caller to push the new instance (we had already activated the new frame above)
+				frame->ActivateState(&PC, &stack, &locals, &arguments);
+				Variable v;
+				v.Type = VariableKind::Object;
+				v.Object = newInstance;
+				stack->push(v);
+    			// We replace the frame for the Activator method with the new ctor.
+				ExecutionState* exitingFrame = currentFrame;
+				currentFrame = newState;
+    			
+				newState->ActivateState(&PC, &stack, &locals, &arguments);
+				delete exitingFrame;
+    		}
 			else
 			{
-				currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
-			}
+				ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
+				// We're called into a "special" (built-in) method. 
+				// Perform a method return
+				ExecutionState* frame = rootState; // start at root
+				while (frame->_next != currentFrame)
+				{
+					frame = frame->_next;
+				}
+				// Remove the last frame and set the PC for the new current frame
+				frame->_next = nullptr;
 
-			delete exitingFrame;
+				ExecutionState* exitingFrame = currentFrame; // Need to keep it until we have saved the return value
+				currentFrame = frame;
+
+				// If the method we just terminated is not of type void, we push the result to the 
+				// stack of the calling method.
+				if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
+				{
+					currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+					stack->push(retVal);
+				}
+				else
+				{
+					currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
+				}
+
+				delete exitingFrame;
+			}
     		
 			currentMethod = currentFrame->_executingMethod;
 
