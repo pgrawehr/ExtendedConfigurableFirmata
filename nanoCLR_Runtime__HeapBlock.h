@@ -6,8 +6,6 @@
 #ifndef _NANOCLR_RUNTIME__HEAPBLOCK_H_
 #define _NANOCLR_RUNTIME__HEAPBLOCK_H_
 
-#include <ConfigurableFirmata.h>
-#include "CLR_types.h"
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define CLR_RT_HEAPBLOCK_RAW_ID(dataType, flags, size)                                                                 \
@@ -1331,7 +1329,10 @@ struct CLR_RT_HeapBlock
     //--//
 
     HRESULT SetReflection(const CLR_RT_ReflectionDef_Index &reflex);
+    HRESULT SetReflection(const CLR_RT_Assembly_Index &assm);
+    HRESULT SetReflection(const CLR_RT_TypeSpec_Index &sig);
     HRESULT SetReflection(const CLR_RT_TypeDef_Index &cls);
+    HRESULT SetReflection(const CLR_RT_FieldDef_Index &fd);
     HRESULT SetReflection(const CLR_RT_MethodDef_Index &md);
 
     HRESULT InitializeArrayReference(CLR_RT_HeapBlock &ref, int index);
@@ -1522,7 +1523,7 @@ struct CLR_RT_HeapBlock_Node : public CLR_RT_HeapBlock
         if (!prev && !next)
             return;
 
-        Firmata.sendString(F("Bad node!!\r\n"));
+        CLR_Debug::Printf("Bad node!!\r\n");
 
         NANOCLR_DEBUG_STOP();
     }
@@ -2124,7 +2125,7 @@ struct CLR_RT_HeapBlock_Timer : public CLR_RT_ObjectToEvent_Destination // EVENT
     static HRESULT ConfigureObject(CLR_RT_StackFrame &stack, CLR_UINT32 flags);
     static bool CheckDisposed(CLR_RT_StackFrame &stack);
 
-    void AdjustNextFixedExpire(const int &systemTime, bool fNext);
+    void AdjustNextFixedExpire(const SYSTEMTIME &systemTime, bool fNext);
 
     void Trigger();
     void Reschedule();
@@ -2480,7 +2481,7 @@ struct CLR_RT_Persistence_Manager
         CLR_UINT32 m_totalBytes;
         CLR_UINT32 m_totalSafeBytes;
 
-        // BlockStorageStream m_stream;
+        BlockStorageStream m_stream;
 
         BankHeader *m_bankHeader;
 
@@ -2550,7 +2551,7 @@ struct CLR_RT_Persistence_Manager
 
     //--//
 
-    // HAL_COMPLETION m_completion;
+    HAL_COMPLETION m_completion;
 
     unsigned int m_margin_BurstWrite;
     unsigned int m_margin_BlockErase;
@@ -2669,7 +2670,7 @@ struct CLR_RT_HeapBlock_NativeEventDispatcher : public CLR_RT_ObjectToEvent_Dest
     };
 
     // Pointer to Hardware driver methods
-    // CLR_RT_DriverInterruptMethods *driverMethods;
+    CLR_RT_DriverInterruptMethods *driverMethods;
     //--//
     // Pointer to custom data used by device drivers.
     void *pDrvCustomData;

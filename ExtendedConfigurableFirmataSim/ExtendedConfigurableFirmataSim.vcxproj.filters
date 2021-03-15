@@ -270,7 +270,7 @@
     <ClInclude Include="..\GarbageCollector.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="..\CLR_types.h">
+    <ClInclude Include="..\Core.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\nanoCLR_Runtime.h">

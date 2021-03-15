@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) .NET Foundation and Contributors
 // Portions Copyright (c) Microsoft Corporation.  All rights reserved.
 // See LICENSE file in the project root for full license information.
@@ -8,11 +8,11 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <nanoCLR_Types.h>
-#include <nanoCLR_Interop.h>
-#include <nanoCLR_ErrorCodes.h>
-#include <nanoSupport.h>
-#include <nanoWeak.h>
+#include "nanoCLR_Types.h"
+// #include <nanoCLR_Interop.h>
+// #include <nanoCLR_ErrorCodes.h>
+// #include <nanoSupport.h>
+// #include <nanoWeak.h>
 
 struct CLR_RADIAN
 {
@@ -881,7 +881,7 @@ struct CLR_RT_MethodDef_DebuggingInfo
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <nanoCLR_Runtime__HeapBlock.h>
+#include "nanoCLR_Runtime__HeapBlock.h"
 
 // TODO: Change this to an extern method that is defined in the HAL
 #if defined(PLATFORM_WINDOWS_EMULATOR)
@@ -2066,7 +2066,7 @@ struct CLR_RT_TypeDescriptor
     static HRESULT ExtractObjectAndDataType(CLR_RT_HeapBlock *&ref, CLR_DataType &dt);
 };
 
-#include <nanoCLR_Runtime__Serialization.h>
+// #include <nanoCLR_Runtime__Serialization.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -3339,8 +3339,8 @@ CT_ASSERT(sizeof(CLR_RT_EventCache::Payload) == 12)
 
 //--//
 
-#include <nanoCLR_Debugging.h>
-#include <nanoCLR_Profiling.h>
+// #include "nanoCLR_Debugging.h"
+// #include "nanoCLR_Profiling.h"
 //#include <nanoCLR_Messaging.h>
 
 //--//
@@ -3842,7 +3842,7 @@ CT_ASSERT(sizeof(CLR_RT_DataTypeLookup) == 16 + 4)
 
 #else
 
-!ERROR
+// !ERROR
 
 #endif
 
