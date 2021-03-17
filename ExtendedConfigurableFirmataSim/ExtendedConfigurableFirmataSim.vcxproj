@@ -167,6 +167,7 @@
     <ClCompile Include="..\FirmataIlExecutor.cpp" />
     <ClCompile Include="..\FirmataStatusLed.cpp" />
     <ClCompile Include="..\FlashMemoryManager.cpp" />
+    <ClCompile Include="..\GarbageCollector.cpp" />
     <ClCompile Include="..\HardwareAccess.cpp" />
     <ClCompile Include="..\MemoryManagement.cpp" />
     <ClCompile Include="..\MethodBody.cpp" />
@@ -210,6 +211,7 @@
     <ClInclude Include="..\FirmataStatusLed.h" />
     <ClInclude Include="..\FlashMemoryManager.h" />
     <ClInclude Include="..\FreeMemory.h" />
+    <ClInclude Include="..\GarbageCollector.h" />
     <ClInclude Include="..\HardwareAccess.h" />
     <ClInclude Include="..\KnownTypeTokens.h" />
     <ClInclude Include="..\MemoryManagement.h" />
