@@ -102,6 +102,9 @@
     <ClInclude Include="SimulatorClock.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="GarbageCollector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -144,6 +147,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SimulatorClock.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GarbageCollector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

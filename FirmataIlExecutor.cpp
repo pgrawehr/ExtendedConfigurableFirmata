@@ -71,7 +71,6 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_stringHeapRam = nullptr;
 	_stringHeapRamSize = 0;
 	_stringHeapFlash = nullptr;
-	_gcAllocSize = 0;
 	_instructionsExecuted = 0;
 	_startupToken = 0;
 	_startupFlags = 0;
@@ -365,7 +364,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		catch(OutOfMemoryException& ex)
 		{
 			Firmata.sendString(F("Out of memory loading data"));
-			Firmata.sendStringf(F("Total GC memory used: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
+			_gc.PrintStatistics();
 			Firmata.sendString(STRING_DATA, ex.Message());
 			
 			reset();
@@ -650,19 +649,7 @@ bool FirmataIlExecutor::IsExecutingCode()
 // TODO: Keep track, implement GC, etc...
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
-	byte* ret = (byte*)mallocEx(bytes);
-	if (ret == nullptr)
-	{
-		OutOfMemoryException::Throw("Out of memory allocating gc object");
-		return nullptr;
-	}
-
-	memset(ret, 0, bytes);
-
-	_gcAllocSize += bytes;
-	
-	_gcData.push_back(ret);
-	return ret;
+	return _gc.Allocate(bytes);
 }
 
 // Used if it is well known that a reference now runs out of scope
@@ -5133,7 +5120,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ox.Message());
-		Firmata.sendStringf(F("Total GC memory used: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
+		_gc.PrintStatistics();
 		Variable v(VariableKind::Object);
 		CreateException(SystemException::OutOfMemory, v, ox.ExceptionToken());
 		return MethodState::Aborted;
@@ -5161,6 +5148,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	_instructionsExecuted += instructionsExecutedThisLoop;
 	currentFrame->UpdatePc(PC);
 
+	// This performs a GC every 50'th instruction. We should find something better (hint: When an OutOfMemoryException is about to be
+	// thrown is a good idea, with every third mouse click not)
+	_gc.Collect(0, this);
+	
 	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
 	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
 	TRACE(Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), 4, startTime));
@@ -5568,19 +5559,7 @@ void FirmataIlExecutor::reset()
 	_specialTypeListRamLength = 0;
 	freeEx(_specialTypeListRam);
 
-	for (size_t idx = 0; idx < _gcData.size(); idx++)
-	{
-		void* ptr = _gcData[idx];
-		if (ptr != nullptr)
-		{
-			freeEx(ptr);
-		}
-		_gcData[idx] = nullptr;
-	}
-
-	Firmata.sendStringf(F("Total GC memory used before clear: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
-	_gcData.clear(true);
-	_gcAllocSize = 0;
+	_gc.Clear();
 	
 	Firmata.sendStringf(F("Execution memory cleared. Free bytes: 0x%x"), 4, freeMemory());
 }

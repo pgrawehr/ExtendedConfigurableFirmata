@@ -30,7 +30,7 @@
 #include "ClassDeclaration.h"
 #include "VariableKind.h"
 #include "MethodBody.h"
-
+#include "GarbageCollector.h"
 
 using namespace stdSimple;
 
@@ -206,6 +206,8 @@ class ExecutionState
 
 class FirmataIlExecutor: public FirmataFeature
 {
+	// Because we need to get all variables.
+	friend class GarbageCollector;
   public:
     FirmataIlExecutor();
     bool AutoStartProgram();
@@ -293,11 +295,9 @@ public:
 	void* CopyStringsToFlash();
 	int* CopySpecialTokenListToFlash();
 
+	GarbageCollector _gc;
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
-
-	stdSimple::vector<void*, size_t, 2000> _gcData;
-	uint32_t _gcAllocSize;
 
 	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
 	// and everything will be disposed afterwards.
