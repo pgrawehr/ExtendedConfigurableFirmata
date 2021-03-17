@@ -51,6 +51,14 @@ int64_t HardwareAccess::TickCount64()
 	return value;
 }
 
+void HardwareAccess::Reboot()
+{
+#if __SAM3X8E__ && !SIM
+	// This function is only available when compiling against the real Due SDK
+	rstc_start_software_reset(RSTC);
+#endif
+}
+
 
 /// <summary>
 /// This method contains the low-level implementations for hardware dependent methods.

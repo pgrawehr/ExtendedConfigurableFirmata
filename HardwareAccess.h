@@ -24,6 +24,8 @@ public:
 	static void UpdateClocks(); // Called regularly by the execution engine, to also keep track of overflows if no tickcount methods are being used for some time
 	static bool ExecuteHardwareAccess(FirmataIlExecutor* executor, ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable&
 	                                  result);
+
+	static void Reboot();
 private:
 	static int64_t TickCount64();
 };

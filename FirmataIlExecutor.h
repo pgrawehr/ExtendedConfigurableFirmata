@@ -327,6 +327,7 @@ public:
 
 	int _startupToken;
 	int _startupFlags;
+	bool _startedFromFlash;
 };
 
 

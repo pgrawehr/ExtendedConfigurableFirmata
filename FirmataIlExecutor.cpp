@@ -75,6 +75,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_instructionsExecuted = 0;
 	_startupToken = 0;
 	_startupFlags = 0;
+	_startedFromFlash = false;
 	_taskStartTime = millis();
 	_specialTypeListFlash = nullptr;
 	_specialTypeListRam = nullptr;
@@ -124,7 +125,10 @@ void FirmataIlExecutor::Init()
 	_constants.ReadListFromFlash(constants);
 	_stringHeapFlash = (byte*)stringHeap;
 	_specialTypeListFlash = specialTokens;
-
+	if (_startupToken != 0)
+	{
+		_startedFromFlash = true;
+	}
 	AutoStartProgram();
 }
 
@@ -361,6 +365,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		catch(OutOfMemoryException& ex)
 		{
 			Firmata.sendString(F("Out of memory loading data"));
+			Firmata.sendStringf(F("Total GC memory used: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
 			Firmata.sendString(STRING_DATA, ex.Message());
 			
 			reset();
@@ -696,6 +701,13 @@ void FirmataIlExecutor::report(bool elapsed)
 	// Check that we have an existing execution context, and if so continue there.
 	if (!IsExecutingCode())
 	{
+		if (_startupFlags & 1 && _startedFromFlash)
+		{
+			// If the startup flags bit 0 is set, restart, either trough hardware or trough software
+			HardwareAccess::Reboot();
+			reset();
+			AutoStartProgram();
+		}
 		return;
 	}
 
@@ -5121,6 +5133,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ox.Message());
+		Firmata.sendStringf(F("Total GC memory used: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
 		Variable v(VariableKind::Object);
 		CreateException(SystemException::OutOfMemory, v, ox.ExceptionToken());
 		return MethodState::Aborted;
