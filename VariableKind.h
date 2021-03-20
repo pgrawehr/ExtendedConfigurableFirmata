@@ -16,7 +16,6 @@ enum class VariableKind
     Int64 = 17,
     Uint64 = 18,
     Double = 20,
-    Reference = 32,
     RuntimeFieldHandle = 33,
     RuntimeTypeHandle = 34,
     AddressOfVariable = 35,

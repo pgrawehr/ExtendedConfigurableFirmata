@@ -47,7 +47,7 @@ public:
 
 	Variable& at(int token)
 	{
-		VariableListEntry* current = _first;;
+		VariableListEntry* current = _first;
 		while (current != nullptr)
 		{
 			if (current->Token == token)
@@ -59,6 +59,16 @@ public:
 		}
 
 		throw stdSimple::ClrException(SystemException::ClassNotFound, token);
+	}
+
+	VariableListEntry* first()
+	{
+		return _first;
+	}
+
+	VariableListEntry* next(VariableListEntry* entry)
+	{
+		return entry->Next;
 	}
 
 	bool contains(int token) const

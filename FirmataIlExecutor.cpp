@@ -2638,7 +2638,6 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		case VariableKind::AddressOfVariable:
 		case VariableKind::ReferenceArray:
 		case VariableKind::ValueArray:
-		case VariableKind::Reference:
 			intermediate.Boolean = value1.Object > value2.Object;
 			break;
 		case VariableKind::Int32:

@@ -41,6 +41,11 @@ public:
 
 	void Init(FirmataIlExecutor* referenceContainer);
 private:
+	void MarkAllFree();
+	void MarkAllFree(GcBlock& block);
+	void MarkStatics(FirmataIlExecutor* referenceContainer);
+	void MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer);
+
 	int _gcAllocSize;
 	stdSimple::vector<void*, size_t, 2000> _gcData;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;

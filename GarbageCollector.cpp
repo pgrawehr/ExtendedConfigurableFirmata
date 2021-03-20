@@ -218,7 +218,164 @@ void GarbageCollector::Clear()
 	_gcAllocSize = 0;
 }
 
+void GarbageCollector::MarkAllFree()
+{
+	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	{
+		MarkAllFree(_gcBlocks[idx1]);
+	}
+}
+
+void GarbageCollector::MarkAllFree(GcBlock& block)
+{
+	int blockLen = block.BlockSize;
+	int offset = 0;
+	short* hd = (short*)block.BlockStart;
+	while (offset < blockLen)
+	{
+		short entry = *hd;
+
+		int len;
+		if (entry < 0)
+		{
+			len = -entry;
+		}
+		else
+		{
+			len = entry;
+			*hd = -entry; // if it's negative, it's free.
+		}
+
+		hd = (short*)AddBytes(hd, len + 2);
+		offset = offset + len + 2;
+	}
+}
+
 int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContainer)
 {
+	MarkAllFree();
+	MarkStatics(referenceContainer);
 	return 0;
+}
+
+void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
+{
+	auto values = referenceContainer->_statics.values();
+
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		Variable& var = values.at(i);
+		MarkVariable(var, referenceContainer);
+	}
+
+	VariableListEntry* e = referenceContainer->_largeStatics.first();
+	while (e != nullptr)
+	{
+		Variable& ref = e->Data;
+		MarkVariable(ref, referenceContainer);
+		e = referenceContainer->_largeStatics.next(e);
+	}
+}
+
+/// <summary>
+/// Mark the given variable as "not free"
+/// </summary>
+void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer)
+{
+	// TODO: Check whether we also need to consider variables of type int (as they might actually be IntPtr types)
+	if (variable.Type != VariableKind::ReferenceArray && variable.Type != VariableKind::AddressOfVariable &&
+		variable.Type != VariableKind::Object && variable.Type != VariableKind::ValueArray)
+	{
+		return;
+	}
+
+	void* ptr = variable.Object;
+	short* hd = nullptr;
+	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	{
+		if (ptr < _gcBlocks[idx1].BlockStart || ptr > AddBytes(_gcBlocks[idx1].BlockStart, _gcBlocks[idx1].BlockSize))
+		{
+			// This pointer does not point to an object in this block.
+			continue;
+		}
+
+		GcBlock& block = _gcBlocks[idx1];
+		hd = (short*)AddBytes(ptr, -2);
+		if (variable.Type == VariableKind::AddressOfVariable)
+		{
+			// This is a managed pointer, it can point to within an object, so we need to scan the list
+			hd = (short*)block.BlockStart;
+			int offset = 0;
+			int blockLen = block.BlockSize;
+			while (offset < blockLen)
+			{
+				short entry = *hd;
+
+				int len = entry;
+				if (entry < 0)
+				{
+					len = -entry;
+				}
+
+				if (ptr > hd && ptr < AddBytes(hd, len + 2))
+				{
+					break;
+				}
+
+				hd = (short*)AddBytes(hd, len + 2);
+				offset = offset + len + 2;
+			}
+		}
+		break;
+	}
+
+	// Now ptr points to the object that is referenced and hd is its head
+	if (*hd > 0)
+	{
+		// this is already marked as used - don't continue, or we could end in an infinite loop
+		// if two objects contain a circular reference (besides that it would be a waste of performance)
+		return;
+	}
+	*hd = -*hd; // Mark as in use
+	ClassDeclaration* cls = referenceContainer->GetClassWithToken(*(int*)ptr);
+	int idx = 0;
+	Variable* fieldType = nullptr;
+	while ((fieldType = cls->GetFieldByIndex(idx)) != nullptr)
+	{
+		if (fieldType->Type == VariableKind::ReferenceArray || fieldType->Type == VariableKind::AddressOfVariable ||
+			fieldType->Type == VariableKind::Object || fieldType->Type != VariableKind::ValueArray)
+		{
+			vector<Variable*> allfields;
+			referenceContainer->CollectFields(cls, allfields);
+			int offset = sizeof(void*);
+			for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+			{
+				// The type of handle1 is Variable**, because we must make sure not to use copy operations above
+				Variable* handle = (*handle1);
+				// Ignore static member here
+				if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
+				{
+					continue;
+				}
+
+				if (handle->Int32 == fieldType->Int32) // the second type is the token
+				{
+					// Found the member
+					Variable referenceField;
+					referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+					referenceField.Type = handle->Type;
+					referenceField.setSize(handle->fieldSize());
+					// Create a variable object from a reference field that is stored in an object
+					referenceField.Object = *AddBytes((int**)ptr, offset);
+
+					// And recurse down this chain.
+					// TODO: Should avoid recursion here, as it may blow the stack
+					MarkVariable(referenceField, referenceContainer);
+				}
+
+				offset += handle->fieldSize();
+			}
+		}
+		idx++;
+	}
 }

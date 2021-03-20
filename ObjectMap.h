@@ -55,6 +55,11 @@ namespace stdSimple
 		{
 		}
 
+		vector<TValue>& values()
+		{
+			return _values;
+		}
+
 		TValue& at(const TKey &key)
 		{
 			for (size_t i = 0; i < _keys.size(); i++)
