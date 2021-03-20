@@ -121,6 +121,11 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 		// every object at least has a vtable)
 		return block.BlockStart;
 	}
+
+	if (size > block.FreeBytesInBlock)
+	{
+		return nullptr;
+	}
 	
 	int realSizeToReserve = size;
 	byte* ret = nullptr;
@@ -129,6 +134,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 	{
 		realSizeToReserve += 1;
 	}
+	// The +2 here is so that we don't create a zero-length block at the end
 	if (block.Tail + realSizeToReserve + 2 < block.BlockStart + block.BlockSize)
 	{
 		// There's room at the end of the block. Just use this.
@@ -140,6 +146,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 		hd = AddBytes(hd, 2 + realSizeToReserve);
 		*hd = -(availableToEnd - 2 - realSizeToReserve); // It's free memory, so write negative value
 		block.Tail = (byte*)hd;
+		block.FreeBytesInBlock -= realSizeToReserve + 2;
 		return ret;
 	}
 
@@ -165,10 +172,13 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 				*hd = realSizeToReserve;
 				hd = AddBytes(hd, 2 + realSizeToReserve);
 				*hd = entry - 2 - realSizeToReserve; // That's how much is left to the next header (hopefully)
+
+				block.FreeBytesInBlock -= realSizeToReserve + 2;
 				return ret;
 			}
 			ret = (byte*)AddBytes(hd, 2);
 			*hd = entry; // Reserve the whole block
+			block.FreeBytesInBlock -= entry + 1;
 			return ret;
 		}
 		hd = AddBytes(hd, (entry + 2));
