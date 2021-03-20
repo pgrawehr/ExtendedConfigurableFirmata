@@ -29,14 +29,17 @@ public:
 		_gcAllocSize = 0;
 	}
 
-	byte* TryAllocateFromBlock(GcBlock& block, size_t size);
-	byte* Allocate(size_t size);
+	byte* TryAllocateFromBlock(GcBlock& block, int size);
+	byte* Allocate(int size);
+	void ValidateBlocks();
 
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
 
 	void Clear();
 
 	void PrintStatistics();
+
+	void Init(FirmataIlExecutor* referenceContainer);
 private:
 	int _gcAllocSize;
 	stdSimple::vector<void*, size_t, 2000> _gcData;

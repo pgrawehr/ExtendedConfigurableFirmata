@@ -4,9 +4,28 @@
 #include "GarbageCollector.h"
 #include "SelfTest.h"
 
-#define DEFAULT_GC_BLOCK_SIZE 8096
+#define DEFAULT_GC_BLOCK_SIZE 8192
 
-byte* GarbageCollector::Allocate(size_t size)
+void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
+{
+	// this performs a GC self-test
+	byte* first = Allocate(20);
+	byte* second = Allocate(31);
+	byte* third = Allocate(40);
+	memset(first, 1, 20);
+	memset(second, 2, 31);
+	memset(third, 3, 40);
+
+	ValidateBlocks();
+	first = second = third = nullptr;
+	int collected = Collect(0, referenceContainer);
+	// ASSERT(collected > 90);
+
+	ValidateBlocks();
+}
+
+
+byte* GarbageCollector::Allocate(int size)
 {
 	byte* ret = nullptr;
 	for (size_t i = 0; i < _gcBlocks.size(); i++)
@@ -50,17 +69,62 @@ byte* GarbageCollector::Allocate(size_t size)
 
 		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
 	}
-	
-	_gcAllocSize += size;
 
-	_gcData.push_back(ret);
+	ValidateBlocks();
+	_gcAllocSize += size;
+	
 	return ret;
 }
 
-byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, size_t size)
+void GarbageCollector::ValidateBlocks()
 {
-	size_t realSizeToReserve = size;
+	for (size_t i = 0; i < _gcBlocks.size(); i++)
+	{
+		GcBlock& block = _gcBlocks[i];
+		int blockLen = block.BlockSize;
+		int offset = 0;
+		short* hd = (short*)block.BlockStart;
+		while (offset < blockLen)
+		{
+			short entry = *hd;
+			if (entry == 0)
+			{
+				throw ExecutionEngineException("0-Block in memory list. That shouldn't happen.");
+			}
+			if (entry < 0)
+			{
+				entry = -entry;
+			}
+			if (entry > blockLen)
+			{
+				// A single entry cannot be larger than the memory block - something is wrong.
+				throw ExecutionEngineException("Block list inconsistent");
+			}
+			
+			hd = (short*)AddBytes(hd, entry + 2);
+			offset = offset + entry + 2;
+		}
+
+		// At the end, the last block must end exactly at the block end.
+		if (offset != blockLen)
+		{
+			throw ExecutionEngineException("Memory list inconsistent");
+		}
+	}
+}
+
+byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
+{
+	if (size == 0)
+	{
+		// Allocating empty blocks always returns the same address (that's probably never going to happen, since
+		// every object at least has a vtable)
+		return block.BlockStart;
+	}
+	
+	int realSizeToReserve = size;
 	byte* ret = nullptr;
+	short* hd = nullptr;
 	if (realSizeToReserve % 2)
 	{
 		realSizeToReserve += 1;
@@ -68,15 +132,49 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, size_t size)
 	if (block.Tail + realSizeToReserve + 2 < block.BlockStart + block.BlockSize)
 	{
 		// There's room at the end of the block. Just use this.
-		short* hd = (short*)block.Tail;
+		hd = (short*)block.Tail;
 		short availableToEnd = -*hd;
 		ASSERT(*hd < 0 && (availableToEnd >= realSizeToReserve));
 		*hd = realSizeToReserve;
 		ret = (byte*)AddBytes(hd, 2);
 		hd = AddBytes(hd, 2 + realSizeToReserve);
-		*hd = availableToEnd - 2 - realSizeToReserve;
+		*hd = -(availableToEnd - 2 - realSizeToReserve); // It's free memory, so write negative value
+		block.Tail = (byte*)hd;
 		return ret;
 	}
+
+	// If we get here, the block has been filled for the first time, therefore move it's tail to the end
+	block.Tail = block.BlockStart + block.BlockSize;
+	// There's not enough room at the end of the block. Check whether we find a place within the block
+	hd = (short*)block.BlockStart;
+	while ((byte*)hd < block.BlockStart + block.BlockSize && *hd != 0)
+	{
+		short entry = (*hd);
+		if (entry >= 0)
+		{
+			hd = AddBytes(hd, (entry + 2));
+			continue;
+		}
+		entry = -entry;
+		if (entry >= realSizeToReserve && entry <= 2 * realSizeToReserve)
+		{
+			if (realSizeToReserve >= entry + 4)
+			{
+				// Split up the new block (but make sure we don't split away a 0-byte block)
+				ret = (byte*)AddBytes(hd, 2);
+				*hd = realSizeToReserve;
+				hd = AddBytes(hd, 2 + realSizeToReserve);
+				*hd = entry - 2 - realSizeToReserve; // That's how much is left to the next header (hopefully)
+				return ret;
+			}
+			ret = (byte*)AddBytes(hd, 2);
+			*hd = entry; // Reserve the whole block
+			return ret;
+		}
+		hd = AddBytes(hd, (entry + 2));
+	}
+
+	return nullptr;
 }
 
 

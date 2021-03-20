@@ -116,6 +116,8 @@ void FirmataIlExecutor::Init()
 
 	HardwareAccess::Init();
 
+	_gc.Init(this);
+
 	void* classes, *methods, *constants, *stringHeap;
 	int* specialTokens;
 	FlashManager.Init(classes, methods, constants, stringHeap, specialTokens, _startupToken, _startupFlags);
@@ -646,10 +648,15 @@ bool FirmataIlExecutor::IsExecutingCode()
 	return _methodCurrentlyExecuting != nullptr;
 }
 
-// TODO: Keep track, implement GC, etc...
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
-	return _gc.Allocate(bytes);
+	byte* ret = _gc.Allocate(bytes);
+	if (ret != nullptr)
+	{
+		memset(ret, 0, bytes);
+	}
+
+	return ret;
 }
 
 // Used if it is well known that a reference now runs out of scope
