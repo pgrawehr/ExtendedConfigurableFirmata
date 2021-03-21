@@ -240,9 +240,9 @@ public:
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 
-	ClassDeclaration* GetClassWithToken(int token)
+	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
 	{
-		return _classes.GetClassWithToken(token);
+		return _classes.GetClassWithToken(token, throwIfNotFound);
 	}
 	
 	Variable& Ldsfld(int token);
@@ -250,7 +250,7 @@ public:
     void Stsfld(int token, Variable& value);
     void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
 
-	byte* Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description);
+	byte* Ldfld(Variable& obj, int32_t token, VariableDescription& description);
 	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	Variable Box(Variable& value, ClassDeclaration* ty);

@@ -19,7 +19,7 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 	ValidateBlocks();
 	first = second = third = nullptr;
 	int collected = Collect(0, referenceContainer);
-	// ASSERT(collected > 90);
+	ASSERT(collected > 90);
 
 	ValidateBlocks();
 }
@@ -178,7 +178,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 			}
 			ret = (byte*)AddBytes(hd, 2);
 			*hd = entry; // Reserve the whole block
-			block.FreeBytesInBlock -= entry + 1;
+			block.FreeBytesInBlock -= entry + 2;
 			return ret;
 		}
 		hd = AddBytes(hd, (entry + 2));
@@ -251,16 +251,54 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 	}
 }
 
+int GarbageCollector::ComputeFreeBlockSizes()
+{
+	int totalFreed = 0;
+	for (size_t idx = 0; idx < _gcBlocks.size(); idx++)
+	{
+		int blockLen = _gcBlocks[idx].BlockSize;
+		int offset = 0;
+		short* hd = (short*)_gcBlocks[idx].BlockStart;
+		int blockFree = 0;
+		while (offset < blockLen)
+		{
+			short entry = *hd;
+
+			int len;
+			if (entry < 0)
+			{
+				len = -entry;
+				blockFree += -entry;
+			}
+			else
+			{
+				len = entry;
+			}
+
+			hd = (short*)AddBytes(hd, len + 2);
+			offset = offset + len + 2;
+		}
+		if (blockFree > _gcBlocks[idx].FreeBytesInBlock)
+		{
+			totalFreed += blockFree - _gcBlocks[idx].FreeBytesInBlock;
+			_gcBlocks[idx].FreeBytesInBlock = (short)blockFree;
+		}
+	}
+
+	return totalFreed;
+}
+
 int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContainer)
 {
 	MarkAllFree();
 	MarkStatics(referenceContainer);
-	return 0;
+	MarkStack(referenceContainer);
+	return ComputeFreeBlockSizes();;
 }
 
 void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 {
-	auto values = referenceContainer->_statics.values();
+	auto& values = referenceContainer->_statics.values();
 
 	for (size_t i = 0; i < values.size(); i++)
 	{
@@ -277,19 +315,95 @@ void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 	}
 }
 
+void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)
+{
+	ExecutionState* state = referenceContainer->_methodCurrentlyExecuting;
+	
+	while (state != nullptr)
+	{
+		uint16_t pc;
+		VariableDynamicStack* stack;
+		VariableVector* locals;
+		VariableVector* arguments;
+		state->ActivateState(&pc, &stack, &locals, &arguments);
+		int idx = 0;
+		VariableDynamicStack::Iterator stackIterator = stack->GetIterator();
+		Variable* var;
+		while ((var = stackIterator.next()) != nullptr)
+		{
+			MarkVariable(*var, referenceContainer);
+		}
+
+		for (int i = 0; i < locals->size(); i++)
+		{
+			Variable& v = locals->at(i);
+			MarkVariable(v, referenceContainer);
+		}
+
+		for (int i = 0; i < arguments->size(); i++)
+		{
+			Variable& v = arguments->at(i);
+			MarkVariable(v, referenceContainer);
+		}
+
+		state = state->_next;
+	}
+}
+
+/// <summary>
+/// Tests whether the given pointer could be an object pointer (means that it contains a value that could be an address in our heap)
+/// </summary>
+bool GarbageCollector::IsValidMemoryPointer(void* ptr)
+{
+	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	{
+		// Equality is not valid (an object cannot be at the beginning of the heap nor at the very end)
+		if (ptr > _gcBlocks[idx1].BlockStart && ptr < AddBytes(_gcBlocks[idx1].BlockStart, _gcBlocks[idx1].BlockSize))
+		{
+			// This pointer does not point to an object in this block.
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /// <summary>
 /// Mark the given variable as "not free"
 /// </summary>
 void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer)
 {
 	// TODO: Check whether we also need to consider variables of type int (as they might actually be IntPtr types)
-	if (variable.Type != VariableKind::ReferenceArray && variable.Type != VariableKind::AddressOfVariable &&
+	// It seems we don't need to follow AddressOfVariable instances, since they always point to an otherwise accessible block
+	if (variable.Type != VariableKind::ReferenceArray && /* variable.Type != VariableKind::AddressOfVariable &&*/
 		variable.Type != VariableKind::Object && variable.Type != VariableKind::ValueArray)
 	{
+		// A value type - but may contain pointers as well (we don't have full type info on these)
+		// To make things simpler, value types which contain reference types have their fields pointer-aligned
+		int* startPtr = (int*)&variable.Object;
+		for (int idx = 0; idx < variable.fieldSize() / (sizeof(void*)); idx++)
+		{
+			int* ptrToTest = startPtr + idx;
+			if (IsValidMemoryPointer((void*)*ptrToTest))
+			{
+				Variable referenceField;
+				referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+				referenceField.Type = VariableKind::AddressOfVariable;
+				referenceField.setSize(sizeof(void*));
+				// Create a variable object from a reference field that is stored in an object
+				referenceField.Object = (void*)*ptrToTest;
+				MarkVariable(referenceField, referenceContainer);
+			}
+		}
 		return;
 	}
 
 	void* ptr = variable.Object;
+	if (ptr == nullptr)
+	{
+		// Don't follow null pointers
+		return;
+	}
 	short* hd = nullptr;
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
 	{
@@ -329,6 +443,17 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 		break;
 	}
 
+	if (hd == nullptr)
+	{
+		// Can't really happen, since when object is non-null, there must have been at least one element allocated.
+		return;
+	}
+
+	if (*hd == 0)
+	{
+		throw ExecutionEngineException("Memory block with size 0 found");
+	}
+	
 	// Now ptr points to the object that is referenced and hd is its head
 	if (*hd > 0)
 	{
@@ -337,45 +462,85 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 		return;
 	}
 	*hd = -*hd; // Mark as in use
-	ClassDeclaration* cls = referenceContainer->GetClassWithToken(*(int*)ptr);
-	int idx = 0;
-	Variable* fieldType = nullptr;
-	while ((fieldType = cls->GetFieldByIndex(idx)) != nullptr)
+	ClassDeclaration* cls = *(ClassDeclaration**)ptr;
+
+	if (variable.Type == VariableKind::ReferenceArray)
 	{
-		if (fieldType->Type == VariableKind::ReferenceArray || fieldType->Type == VariableKind::AddressOfVariable ||
-			fieldType->Type == VariableKind::Object || fieldType->Type != VariableKind::ValueArray)
+		ptr = AddBytes(ptr, ARRAY_DATA_START);
+		int size = *AddBytes((int*)ptr, 4);
+		Variable referenceField;
+		referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+		referenceField.Type = VariableKind::Object;
+		referenceField.setSize(4);
+
+		for (int i = 0; i < size; i++)
 		{
-			vector<Variable*> allfields;
-			referenceContainer->CollectFields(cls, allfields);
-			int offset = sizeof(void*);
-			for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+			referenceField.Object = AddBytes(ptr, ARRAY_DATA_START + i * sizeof(void*));
+			MarkVariable(referenceField, referenceContainer);
+		}
+
+		return;
+	}
+	else if (variable.Type == VariableKind::ValueArray)
+	{
+		// The value types within the array could include further reference types, therefore try to extract that.
+		// Luckily, here we know the type of the values
+		ptr = AddBytes(ptr, ARRAY_DATA_START);
+		int size = *AddBytes((int*)ptr, 4);
+		int arrayFieldType = *AddBytes((int*)ptr, 8);
+		Variable referenceField;
+		ClassDeclaration* elementTypes = referenceContainer->GetClassWithToken(arrayFieldType, false);
+		if (elementTypes == nullptr)
+		{
+			// We might not have the declaration for simple value types
+			return;
+		}
+		referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+		referenceField.setSize(4);
+
+		for (int i = 0; i < size; i++)
+		{
+			void* elemStart = AddBytes(ptr, ARRAY_DATA_START + i * elementTypes->ClassDynamicSize);
+			int offset = 0;
+			int idx = 0;
+			for (auto handle = elementTypes->GetFieldByIndex(idx); handle != nullptr; handle = elementTypes->GetFieldByIndex(++idx))
 			{
-				// The type of handle1 is Variable**, because we must make sure not to use copy operations above
-				Variable* handle = (*handle1);
-				// Ignore static member here
-				if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
+				if (handle->Type == VariableKind::Object || handle->Type == VariableKind::ReferenceArray || handle->Type == VariableKind::ValueArray)
 				{
-					continue;
-				}
-
-				if (handle->Int32 == fieldType->Int32) // the second type is the token
-				{
-					// Found the member
-					Variable referenceField;
-					referenceField.Marker = VARIABLE_DEFAULT_MARKER;
 					referenceField.Type = handle->Type;
-					referenceField.setSize(handle->fieldSize());
-					// Create a variable object from a reference field that is stored in an object
-					referenceField.Object = *AddBytes((int**)ptr, offset);
-
-					// And recurse down this chain.
-					// TODO: Should avoid recursion here, as it may blow the stack
+					referenceField.Object = (void*)*AddBytes((int*)elemStart, offset);
 					MarkVariable(referenceField, referenceContainer);
 				}
 
 				offset += handle->fieldSize();
 			}
 		}
+
+		return;
+	}
+
+	// Iterate over the fields of a class
+	int idx = 0;
+	Variable* fieldType = nullptr;
+	int offset = sizeof(void*);
+	while ((fieldType = cls->GetFieldByIndex(idx)) != nullptr)
+	{
+		if ((fieldType->Type & VariableKind::StaticMember) != VariableKind::Void)
+		{
+			idx++;
+			continue;
+		}
+		if (fieldType->Type == VariableKind::Object || fieldType->Type == VariableKind::ReferenceArray || fieldType->Type == VariableKind::ValueArray)
+		{
+			Variable referenceField;
+			referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+			referenceField.Type = fieldType->Type;
+			referenceField.setSize(4);
+			referenceField.Object = (void*)*AddBytes((int*)ptr, offset);
+			MarkVariable(referenceField, referenceContainer);
+		}
+
+		offset += fieldType->fieldSize();
 		idx++;
 	}
 }

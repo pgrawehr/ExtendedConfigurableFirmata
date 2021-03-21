@@ -1974,12 +1974,11 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*
 /// <summary>
 /// Load a value from field "token" of instance "obj". Returns the pointer to the location of the value (which might have arbitrary size)
 /// </summary>
-/// <param name="currentMethod">The method being executed. For error handling only</param>
 /// <param name="obj">The instance which contains the field (can be an object, a reference to an object or a value type)</param>
 /// <param name="token">The field token</param>
 /// <param name="description">[Out] The description of the field returned</param>
 /// <returns>Pointer to the data of the field</returns>
-byte* FirmataIlExecutor::Ldfld(MethodBody* currentMethod, Variable& obj, int32_t token, VariableDescription& description)
+byte* FirmataIlExecutor::Ldfld(Variable& obj, int32_t token, VariableDescription& description)
 {
 	byte* o;
 	ClassDeclaration* vtable;
@@ -4214,7 +4213,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->pop();
 						
 						VariableDescription desc;
-						byte* dataPtr = Ldfld(currentMethod, obj, token, desc);
+						byte* dataPtr = Ldfld(obj, token, desc);
 
 						// Combine the variable again with its metadata, so we can put it back to the stack
 						EnsureStackVarSize(desc.fieldSize());

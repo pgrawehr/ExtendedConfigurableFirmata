@@ -19,6 +19,35 @@ private:
 	Variable* _sp; // the stack pointer (points to next element that will be used)
 	int* _revPtr; // points to the tail of the stack. This field contains the size of the previous element. It is always 4 bytes in front of _sp
 public:
+	class Iterator
+	{
+		Variable* _iter;
+		Variable* _begin;
+		int* _rev;
+	public:
+		Iterator(Variable* begin, Variable* sp, int* revPtr)
+		{
+			_begin = begin;
+			_iter = sp;
+			_rev = revPtr;
+		}
+
+		/// <summary>
+		/// Gets the next element in the stack (iterating in reverse).
+		/// The iteration starts before the first element.
+		/// Returns null at the end.
+		/// </summary>
+		Variable* next()
+		{
+			if (_iter == _begin)
+			{
+				return nullptr;
+			}
+			_iter = AddBytes(_iter, -*_rev);
+			_rev = (int*)AddBytes(_iter, -4);
+		}
+	};
+	
 	VariableDynamicStack(int initialElements)
 	{
 		_bytesAllocated = (initialElements * sizeof(Variable)) + sizeof(void*);
@@ -132,4 +161,11 @@ public:
 
 		return *iter;
 	}
+
+	Iterator GetIterator()
+	{
+		return Iterator(_begin, _sp, _revPtr);
+	}
+
+	
 };
