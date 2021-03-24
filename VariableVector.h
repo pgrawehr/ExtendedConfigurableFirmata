@@ -41,6 +41,7 @@ public:
 			if (_data == nullptr)
 			{
 				stdSimple::OutOfMemoryException::Throw("Out of memory initializing default variable description list");
+				return false;
 			}
 			
 			memset(_data, 0, numDescriptions * sizeof(Variable));

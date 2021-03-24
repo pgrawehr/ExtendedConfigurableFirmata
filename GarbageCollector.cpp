@@ -375,6 +375,10 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 {
 	// TODO: Check whether we also need to consider variables of type int (as they might actually be IntPtr types)
 	// It seems we don't need to follow AddressOfVariable instances, since they always point to an otherwise accessible block
+	if (variable.Type == VariableKind::Boolean || variable.Type == VariableKind::Double || variable.Type == VariableKind::Float || variable.Type == VariableKind::AddressOfVariable)
+	{
+		return;
+	}
 	if (variable.Type != VariableKind::ReferenceArray && /* variable.Type != VariableKind::AddressOfVariable &&*/
 		variable.Type != VariableKind::Object && variable.Type != VariableKind::ValueArray)
 	{
@@ -466,16 +470,28 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 
 	if (variable.Type == VariableKind::ReferenceArray)
 	{
-		ptr = AddBytes(ptr, ARRAY_DATA_START);
 		int size = *AddBytes((int*)ptr, 4);
 		Variable referenceField;
 		referenceField.Marker = VARIABLE_DEFAULT_MARKER;
 		referenceField.Type = VariableKind::Object;
+		int arrayFieldType = *AddBytes((int*)ptr, 8);
+		ClassDeclaration* elementTypes = referenceContainer->GetClassWithToken(arrayFieldType, false);
+		if (elementTypes != nullptr)
+		{
+			if (elementTypes->ValueType)
+			{
+				throw ClrException("Reference array containing value types?", SystemException::ArrayTypeMismatch, arrayFieldType);
+			}
+			if (elementTypes->ClassToken == (int)KnownTypeTokens::Array)
+			{
+				referenceField.Type = VariableKind::ReferenceArray;
+			}
+		}
 		referenceField.setSize(4);
 
 		for (int i = 0; i < size; i++)
 		{
-			referenceField.Object = AddBytes(ptr, ARRAY_DATA_START + i * sizeof(void*));
+			referenceField.Object = *AddBytes((void**)ptr, ARRAY_DATA_START + i * sizeof(void*));
 			MarkVariable(referenceField, referenceContainer);
 		}
 
@@ -485,7 +501,6 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 	{
 		// The value types within the array could include further reference types, therefore try to extract that.
 		// Luckily, here we know the type of the values
-		ptr = AddBytes(ptr, ARRAY_DATA_START);
 		int size = *AddBytes((int*)ptr, 4);
 		int arrayFieldType = *AddBytes((int*)ptr, 8);
 		Variable referenceField;
@@ -505,6 +520,10 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 			int idx = 0;
 			for (auto handle = elementTypes->GetFieldByIndex(idx); handle != nullptr; handle = elementTypes->GetFieldByIndex(++idx))
 			{
+				if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
+				{
+					continue;
+				}
 				if (handle->Type == VariableKind::Object || handle->Type == VariableKind::ReferenceArray || handle->Type == VariableKind::ValueArray)
 				{
 					referenceField.Type = handle->Type;

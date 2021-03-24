@@ -45,6 +45,7 @@ public:
 			}
 			_iter = AddBytes(_iter, -*_rev);
 			_rev = (int*)AddBytes(_iter, -4);
+			return _iter;
 		}
 	};
 	
