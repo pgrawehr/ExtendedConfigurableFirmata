@@ -26,7 +26,10 @@ class GarbageCollector
 public:
 	GarbageCollector()
 	{
-		_gcAllocSize = 0;
+		_totalAllocSize = 0;
+		_totalAllocations = 0;
+		_currentMemoryUsage = 0;
+		_maxMemoryUsage = 0;
 	}
 
 	byte* TryAllocateFromBlock(GcBlock& block, int size);
@@ -49,8 +52,11 @@ private:
 	bool IsValidMemoryPointer(void* ptr);
 	void MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer);
 
-	int _gcAllocSize;
-	stdSimple::vector<void*, size_t, 2000> _gcData;
+	int _totalAllocSize;
+	int _totalAllocations;
+	int _currentMemoryUsage;
+	int _maxMemoryUsage;
+	stdSimple::vector<void*, size_t, 2000> _gcData; // TODO: Remove
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };
 

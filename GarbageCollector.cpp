@@ -71,7 +71,8 @@ byte* GarbageCollector::Allocate(int size)
 	}
 
 	ValidateBlocks();
-	_gcAllocSize += size;
+	_totalAllocSize += size;
+	_totalAllocations++;
 	
 	return ret;
 }
@@ -187,10 +188,10 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 	return nullptr;
 }
 
-
 void GarbageCollector::PrintStatistics()
 {
-	Firmata.sendStringf(F("Total GC memory used: %d bytes in %d instances"), 8, _gcAllocSize, _gcData.size());
+	Firmata.sendStringf(F("Total GC memory allocated: %d bytes in %d instances"), 8, _totalAllocSize, _totalAllocations);
+	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), 8, _currentMemoryUsage, _maxMemoryUsage);
 }
 
 void GarbageCollector::Clear()
@@ -215,7 +216,11 @@ void GarbageCollector::Clear()
 	}
 
 	_gcData.clear(true);
-	_gcAllocSize = 0;
+	
+	_totalAllocSize = 0;
+	_totalAllocations = 0;
+	_currentMemoryUsage = 0;
+	_maxMemoryUsage = 0;
 }
 
 void GarbageCollector::MarkAllFree()
@@ -254,6 +259,7 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 int GarbageCollector::ComputeFreeBlockSizes()
 {
 	int totalFreed = 0;
+	int totalMemoryInUse = 0;
 	for (size_t idx = 0; idx < _gcBlocks.size(); idx++)
 	{
 		int blockLen = _gcBlocks[idx].BlockSize;
@@ -273,6 +279,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 			else
 			{
 				len = entry;
+				totalMemoryInUse += entry;
 			}
 
 			hd = (short*)AddBytes(hd, len + 2);
@@ -285,6 +292,11 @@ int GarbageCollector::ComputeFreeBlockSizes()
 		}
 	}
 
+	_currentMemoryUsage = totalMemoryInUse;
+	if (totalMemoryInUse > _maxMemoryUsage)
+	{
+		_maxMemoryUsage = totalMemoryInUse;
+	}
 	return totalFreed;
 }
 
