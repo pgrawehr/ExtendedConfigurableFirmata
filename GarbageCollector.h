@@ -43,6 +43,17 @@ public:
 	void PrintStatistics();
 
 	void Init(FirmataIlExecutor* referenceContainer);
+	int64_t TotalAllocatedBytes() const
+	{
+		return _totalAllocSize;
+	}
+
+	int64_t TotalMemory()
+	{
+		return _currentMemoryUsage;
+	}
+
+	int64_t AllocatedMemory();
 private:
 	void MarkAllFree();
 	void MarkAllFree(GcBlock& block);

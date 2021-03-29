@@ -1777,7 +1777,28 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Void;
 		}
 		break;
-	
+	case NativeMethod::GcCollect:
+		ASSERT(args.size() == 4); // Has 4 args, but they mostly are for optimization purposes
+		_gc.Collect(args[0].Int32, this);
+		result.Type = VariableKind::Void;
+		break;
+	case NativeMethod::GcGetTotalAllocatedBytes:
+		ASSERT(args.size() == 1);
+		result.Type = VariableKind::Int64;
+		result.Int64 = _gc.TotalAllocatedBytes();
+		break;
+	case NativeMethod::GcGetTotalMemory:
+		ASSERT(args.size() == 1);
+		result.Type = VariableKind::Int64;
+		result.Int64 = _gc.TotalMemory();
+		break;
+	case NativeMethod::GcTotalAvailableMemoryBytes:
+		{
+		ASSERT(args.size() == 0);
+		result.Type = VariableKind::Int64;
+		result.Int64 = _gc.AllocatedMemory();
+		break;
+		}
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}

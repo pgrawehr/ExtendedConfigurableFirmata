@@ -12,7 +12,7 @@
 class VariableVector
 {
 private:
-	size_t _size;
+	int _size;
 	// True if all elements within the vector are sizeof(Variable)
 	bool _defaultSizesOnly;
 	Variable* _data;
@@ -126,7 +126,7 @@ public:
 		_data = nullptr;
 	}
 
-	Variable& at(size_t index) const
+	Variable& at(int index) const
 	{
 		if (_defaultSizesOnly)
 		{
@@ -136,7 +136,7 @@ public:
 		{
 			Variable* variablePtr = _data;
 			byte* bytePtr = (byte*)_data;
-			size_t currentIndex = 0;
+			int currentIndex = 0;
 			while(currentIndex < index && variablePtr->Marker != 0)
 			{
 				bytePtr += MAX(variablePtr->fieldSize(), 8) + Variable::headersize();
@@ -155,17 +155,17 @@ public:
 		}
 	}
 
-	size_t size() const
+	int size() const
 	{
 		return _size;
 	}
 
-	Variable& operator[] (size_t index)
+	Variable& operator[] (int index)
 	{
 		return at(index);
 	}
 
-	Variable& operator[] (const size_t index) const
+	Variable& operator[] (const int index) const
 	{
 		return at(index);
 	}

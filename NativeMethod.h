@@ -113,4 +113,8 @@ enum class NativeMethod
     ArrayCopyCore = 107,
     ArrayClear = 108,
     ActivatorCreateInstance = 109,
+    GcCollect = 110,
+    GcGetTotalMemory = 111,
+    GcGetTotalAllocatedBytes = 112,
+    GcTotalAvailableMemoryBytes = 113,
 };

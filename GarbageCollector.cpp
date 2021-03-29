@@ -223,6 +223,20 @@ void GarbageCollector::Clear()
 	_maxMemoryUsage = 0;
 }
 
+/// <summary>
+/// Return the total size of the memory in the GC blocks.
+/// </summary>
+int64_t GarbageCollector::AllocatedMemory()
+{
+	int64_t memorySum = 0;
+	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	{
+		memorySum += _gcBlocks[idx1].BlockSize;
+	}
+
+	return memorySum;
+}
+
 void GarbageCollector::MarkAllFree()
 {
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
@@ -397,7 +411,7 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 		// A value type - but may contain pointers as well (we don't have full type info on these)
 		// To make things simpler, value types which contain reference types have their fields pointer-aligned
 		int* startPtr = (int*)&variable.Object;
-		for (int idx = 0; idx < variable.fieldSize() / (sizeof(void*)); idx++)
+		for (size_t idx = 0; idx < variable.fieldSize() / (sizeof(void*)); idx++)
 		{
 			int* ptrToTest = startPtr + idx;
 			if (IsValidMemoryPointer((void*)*ptrToTest))
