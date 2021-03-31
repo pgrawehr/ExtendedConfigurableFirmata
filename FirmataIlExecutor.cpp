@@ -28,8 +28,8 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
-// #define TRACE(x) x
-#define TRACE(x)
+#define TRACE(x) x
+// #define TRACE(x)
 
 #pragma warning (error:4244)
 
@@ -203,7 +203,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		}
 		subCommand = (ExecutorCommand)argv[1];
 
-		TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
+		// TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
@@ -3540,11 +3540,18 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 		return 0;
 	}
 
+	// Firmata.sendString(F("A"));
 	ClassDeclaration* arrType = _classes.GetClassWithToken(KnownTypeTokens::Array);
-	
-	*data = (uint32_t)arrType;
+
+	uint32_t ptrAsInt = (uint32_t)arrType;
+	// Firmata.sendString(F("B"));
+	*data = ptrAsInt; // Using this line crashes the CPU???
+	// memcpy(data, &ptrAsInt, sizeof(uint32_t));
+	//Firmata.sendString(F("B1"));
 	*(data + 1)= numberOfElements;
+	//Firmata.sendString(F("C"));
 	*(data + 2) = tokenOfArrayType;
+	//Firmata.sendString(F("D"));
 	result.Object = data;
 	return (int)sizeToAllocate;
 }
@@ -4641,23 +4648,23 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 						}
-						
+
+						Firmata.sendString(F("SA"));
 						uint32_t* data = (uint32_t*)value1.Object;
 						int32_t arraysize = *(data + 1);
 						int32_t targetType = *(data + 2);
+						Firmata.sendString(F("SB"));
 						if (token != targetType)
 						{
 							throw ClrException("Array type mismatch - Type of array does not match element to store", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
-							return MethodState::Aborted;
 						}
 						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 						int32_t index = value2.Int32;
 						if (index < 0 || index >= arraysize)
 						{
 							throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
-							return MethodState::Aborted;
 						}
-
+						Firmata.sendStringf(F("SC=%d"), 4, elemTy->ClassDynamicSize);
 						switch(elemTy->ClassDynamicSize)
 						{
 						case 1:
@@ -4680,7 +4687,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 8:
 						{
 							uint64_t* dataptr = (uint64_t*)data;
-							*(AddBytes(dataptr, 12) + index) = value3.Int64;
+							memcpy(AddBytes(dataptr, 12 + 8 * index), &value3.Int64, 8);
 							break;
 						}
 						default: // Arbitrary size of the elements in the array
@@ -4693,7 +4700,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 0: // That's fishy
 							throw ClrException("Cannot address array with element size 0", SystemException::ArrayTypeMismatch, token);
 						}
-						
+						Firmata.sendString(F("SD"));
 					}
 					break;
 				case CEE_LDELEM:
@@ -4754,8 +4761,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 8:
 						{
 							tempVariable->Type = VariableKind::Int64;
-							uint64_t* dataptr = (uint64_t*)data;
-							tempVariable->Int64 = *(AddBytes(dataptr, ARRAY_DATA_START) + index);
+							memcpy(&tempVariable->Int64, AddBytes(data, ARRAY_DATA_START + 8 * index), 8);
 							tempVariable->setSize(8);
 							break;
 						}
@@ -5375,7 +5381,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
 {
-	TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
+	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
 	ClassDeclarationDynamic* decl;

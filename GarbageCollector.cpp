@@ -4,7 +4,8 @@
 #include "GarbageCollector.h"
 #include "SelfTest.h"
 
-#define DEFAULT_GC_BLOCK_SIZE 8192
+#define DEFAULT_GC_BLOCK_SIZE 8192 /* This must be smaller than 32k, because we use only 2 bytes for the next pointer */
+#define ALLOCATE_ALLIGNMENT 4
 
 void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 {
@@ -20,14 +21,15 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 	first = second = third = nullptr;
 	int collected = Collect(0, referenceContainer);
 	ASSERT(collected > 90);
-
+	Allocate(64);
 	ValidateBlocks();
 }
 
 
-byte* GarbageCollector::Allocate(int size)
+byte* GarbageCollector::Allocate(uint32_t size)
 {
 	byte* ret = nullptr;
+	Firmata.sendStringf(F("Allocating %d bytes"), 4, size);
 	for (size_t i = 0; i < _gcBlocks.size(); i++)
 	{
 		ret = TryAllocateFromBlock(_gcBlocks[i], size);
@@ -40,7 +42,7 @@ byte* GarbageCollector::Allocate(int size)
 	if (ret == nullptr)
 	{
 		// Allocate a new block
-		int sizeToAllocate = MAX(DEFAULT_GC_BLOCK_SIZE, size + 4);
+		uint32_t sizeToAllocate = MAX(DEFAULT_GC_BLOCK_SIZE, size + 4);
 		void* newBlockPtr = nullptr;
 		while(newBlockPtr == nullptr && sizeToAllocate >= size)
 		{
@@ -73,7 +75,8 @@ byte* GarbageCollector::Allocate(int size)
 	ValidateBlocks();
 	_totalAllocSize += size;
 	_totalAllocations++;
-	
+
+	Firmata.sendStringf(F("Address is %lx"), 4, ret);
 	return ret;
 }
 
@@ -114,7 +117,7 @@ void GarbageCollector::ValidateBlocks()
 	}
 }
 
-byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
+byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 {
 	if (size == 0)
 	{
@@ -128,12 +131,12 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 		return nullptr;
 	}
 	
-	int realSizeToReserve = size;
+	uint32_t realSizeToReserve = size;
 	byte* ret = nullptr;
 	short* hd = nullptr;
-	if (realSizeToReserve % 2)
+	if ((realSizeToReserve % ALLOCATE_ALLIGNMENT) != 0)
 	{
-		realSizeToReserve += 1;
+		realSizeToReserve = (realSizeToReserve + ALLOCATE_ALLIGNMENT) & ~(ALLOCATE_ALLIGNMENT - 1);
 	}
 	// The +2 here is so that we don't create a zero-length block at the end
 	if (block.Tail + realSizeToReserve + 2 < block.BlockStart + block.BlockSize)
@@ -145,7 +148,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, int size)
 		*hd = realSizeToReserve;
 		ret = (byte*)AddBytes(hd, 2);
 		hd = AddBytes(hd, 2 + realSizeToReserve);
-		*hd = -(availableToEnd - 2 - realSizeToReserve); // It's free memory, so write negative value
+		*hd = -(availableToEnd - (int)realSizeToReserve - 2); // It's free memory, so write negative value
 		block.Tail = (byte*)hd;
 		block.FreeBytesInBlock -= realSizeToReserve + 2;
 		return ret;
@@ -316,10 +319,14 @@ int GarbageCollector::ComputeFreeBlockSizes()
 
 int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContainer)
 {
+	Firmata.sendString(F("Beginning GC"));
 	MarkAllFree();
 	MarkStatics(referenceContainer);
 	MarkStack(referenceContainer);
-	return ComputeFreeBlockSizes();;
+	Firmata.sendString(F("Marking done"));
+	int result = ComputeFreeBlockSizes();
+	Firmata.sendString(F("GC done"));
+	return result;
 }
 
 void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)

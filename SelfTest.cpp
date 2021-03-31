@@ -132,7 +132,7 @@ void SelfTest::ValidateExecutionStack()
 
 void SelfTest::UnalignedAccessWorks()
 {
-	int64_t* ptrStart = (int64_t*)malloc(20);
+	int64_t* ptrStart = (int64_t*)malloc(64);
 	volatile int64_t* ptr = ptrStart;
 	*ptr = -1;
 	volatile int64_t* ptr2 = ptr;
@@ -153,6 +153,14 @@ void SelfTest::UnalignedAccessWorks()
 	ASSERT(*ptr == 10, "64 Bit memory access error");
 	
 	free(ptrStart);
+
+	int* data = (int*)malloc(64);
+
+	int* data2 = AddBytes(data, 2);
+
+	*data2 = 4711;
+	
+	free(data);
 }
 
 void SelfTest::CompilerBehavior()

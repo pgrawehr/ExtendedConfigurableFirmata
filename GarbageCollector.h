@@ -32,8 +32,8 @@ public:
 		_maxMemoryUsage = 0;
 	}
 
-	byte* TryAllocateFromBlock(GcBlock& block, int size);
-	byte* Allocate(int size);
+	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
+	byte* Allocate(uint32_t size);
 	void ValidateBlocks();
 
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
