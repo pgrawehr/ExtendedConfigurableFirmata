@@ -28,9 +28,6 @@
 typedef byte BYTE;
 typedef uint32_t DWORD;
 
-#define TRACE(x) x
-// #define TRACE(x)
-
 #pragma warning (error:4244)
 
 // TODO: Remove opcodes we'll never support (i.e MONO from definition list)
@@ -3540,18 +3537,12 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 		return 0;
 	}
 
-	// Firmata.sendString(F("A"));
 	ClassDeclaration* arrType = _classes.GetClassWithToken(KnownTypeTokens::Array);
 
 	uint32_t ptrAsInt = (uint32_t)arrType;
-	// Firmata.sendString(F("B"));
-	*data = ptrAsInt; // Using this line crashes the CPU???
-	// memcpy(data, &ptrAsInt, sizeof(uint32_t));
-	//Firmata.sendString(F("B1"));
+	*data = ptrAsInt; // This crashes the CPU if the alignment of the new block does not match
 	*(data + 1)= numberOfElements;
-	//Firmata.sendString(F("C"));
 	*(data + 2) = tokenOfArrayType;
-	//Firmata.sendString(F("D"));
 	result.Object = data;
 	return (int)sizeToAllocate;
 }
@@ -4649,11 +4640,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 						}
 
-						Firmata.sendString(F("SA"));
 						uint32_t* data = (uint32_t*)value1.Object;
 						int32_t arraysize = *(data + 1);
 						int32_t targetType = *(data + 2);
-						Firmata.sendString(F("SB"));
 						if (token != targetType)
 						{
 							throw ClrException("Array type mismatch - Type of array does not match element to store", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
@@ -4664,7 +4653,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 						}
-						Firmata.sendStringf(F("SC=%d"), 4, elemTy->ClassDynamicSize);
+						
 						switch(elemTy->ClassDynamicSize)
 						{
 						case 1:
@@ -4700,7 +4689,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 0: // That's fishy
 							throw ClrException("Cannot address array with element size 0", SystemException::ArrayTypeMismatch, token);
 						}
-						Firmata.sendString(F("SD"));
 					}
 					break;
 				case CEE_LDELEM:

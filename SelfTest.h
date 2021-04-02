@@ -35,3 +35,6 @@ private:
 
 void ASSERT(bool x);
 void ASSERT(bool condition, const char* message);
+
+// #define TRACE(x) x
+#define TRACE(x)
