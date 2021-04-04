@@ -149,6 +149,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		uint16_t availableToEnd = hd->BlockSize;
 		ASSERT(hd->flags == BlockFlags::Free && (availableToEnd >= realSizeToReserve));
 		hd->BlockSize = (uint16_t)realSizeToReserve;
+		hd->flags = BlockFlags::Used;
 		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
 		hd = AddBytes(hd, ALLOCATE_ALLIGNMENT + realSizeToReserve);
 		BlockHd::SetBlockAtAddress(hd, availableToEnd - (int)realSizeToReserve - ALLOCATE_ALLIGNMENT, BlockFlags::Free); // It's free memory
