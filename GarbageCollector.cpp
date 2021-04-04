@@ -77,6 +77,10 @@ byte* GarbageCollector::Allocate(uint32_t size)
 	TRACE(Firmata.sendStringf(F("Address is 0x%lx"), 4, ret));
 
 	ASSERT(((uint32_t)ret % ALLOCATE_ALLIGNMENT) == 0);
+
+	BlockHd* hd = BlockHd::Cast(ret - (int32_t)ALLOCATE_ALLIGNMENT);
+	ASSERT(!hd->IsFree());
+	ASSERT(hd->Marker = BLOCK_MARKER);
 	
 	return ret;
 }
@@ -368,6 +372,14 @@ void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)
 		{
 			Variable& v = arguments->at(i);
 			MarkVariable(v, referenceContainer);
+		}
+
+		VariableListEntry* e = state->_localStorage.first();
+		while (e != nullptr)
+		{
+			Variable& ref = e->Data;
+			MarkVariable(ref, referenceContainer);
+			e = state->_localStorage.next(e);
 		}
 
 		state = state->_next;
