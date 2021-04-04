@@ -114,6 +114,9 @@ public:
 			_tail = newMem;
 		}
 
+		newMem->Data.setSize(entry.fieldSize());
+		newMem->Data.Marker = VARIABLE_DEFAULT_MARKER;
+		newMem->Data.Type = entry.Type;
 		return newMem->Data;
 	}
 
