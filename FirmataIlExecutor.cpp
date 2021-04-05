@@ -1774,6 +1774,29 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Void;
 		}
 		break;
+	case NativeMethod::EumToUInt64:
+		{
+		// The this pointer is passed via a double indirection to this method!
+		ASSERT(args.size() == 1);
+		result.Type = VariableKind::Int64;
+		result.setSize(8);
+		ClassDeclaration** reference = (ClassDeclaration**)args[0].Object;
+		ClassDeclaration* clsType = *reference;
+		if (clsType->ClassDynamicSize <= 4)
+		{
+			int* obj = (int*)AddBytes(reference, 4);
+			int32_t value = *obj;
+			result.Uint64 = value;
+		}
+		else
+		{
+			// Probably rare: Enum with 64 bit base type
+			int64_t* obj = (int64_t*)AddBytes(reference, 4);
+			int64_t value2 = *obj;
+			result.Uint64 = value2;
+		}
+		break;
+		}
 	case NativeMethod::GcCollect:
 		ASSERT(args.size() == 4); // Has 4 args, but they mostly are for optimization purposes
 		_gc.Collect(args[0].Int32, this);
@@ -2869,6 +2892,30 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			stack->push(intermediate);
 		}
 		break;
+	case CEE_LDIND_I8:
+		{
+			int64_t i8 = *((int64_t*)value1.Object);
+			intermediate.Type = VariableKind::Int64;
+			intermediate.Int64 = i8;
+			stack->push(intermediate);
+			break;
+		}
+	case CEE_LDIND_R8:
+	{
+		double r8 = *((double*)value1.Object);
+		intermediate.Type = VariableKind::Double;
+		intermediate.Double = r8;
+		stack->push(intermediate);
+		break;
+	}
+	case CEE_LDIND_R4:
+	{
+		float r4 = *((float*)value1.Object);
+		intermediate.Type = VariableKind::Float;
+		intermediate.Float = r4;
+		stack->push(intermediate);
+		break;
+	}
 	case CEE_LDIND_U1:
 		{
 			// Weird: The definition says that this loads as Int32 as well (and therefore does a sign-extension)
@@ -3149,42 +3196,17 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 	}
 	break;
-		// Luckily, the C++ compiler takes over the actual magic happening in these conversions
-	case CEE_CONV_I:
-	case CEE_CONV_I4:
-		intermediate.Type = VariableKind::Int32;
-		switch (value1.Type)
+	
+	case CEE_CONV_OVF_I1:
+		if (value1.Int64 > 0x7F || value1.Int64 < -128)
 		{
-		case VariableKind::Int32:
-			intermediate.Int32 = value1.Int32;
-			break;
-		case VariableKind::Uint32:
-			intermediate.Int32 = value1.Uint32;
-			break;
-		case VariableKind::Int64:
-			intermediate.Int32 = (int32_t)value1.Int64;
-			break;
-		case VariableKind::Float:
-			intermediate.Int32 = (int32_t)value1.Float;
-			break;
-		case VariableKind::Double:
-			intermediate.Int32 = (int32_t)value1.Double;
-			break;
-		case VariableKind::AddressOfVariable:
-			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-			intermediate.Int32 = (int32_t)value1.Int32;
-			intermediate.Type = VariableKind::AddressOfVariable;
-			break;
-		default: // The conv statement never throws
-			intermediate.Int32 = (int32_t)value1.Uint64;
-			break;
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
-		stack->push(intermediate);
-		break;
+		// Fall trough
 	case CEE_CONV_I1:
 	{
 		intermediate.Type = VariableKind::Int32;
-		// This first truncates to 16 bit and then sign-extends
+		// This first truncates to 8 bit and then sign-extends
 		int64_t v = (value1.Int64 & 0x00FF);
 		if (v >= 0x80)
 		{
@@ -3219,10 +3241,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	}
 		stack->push(intermediate);
 		break;
+	case CEE_CONV_OVF_U1:
+		if (value1.Int64 > 0xFF || value1.Int64 < 0)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_U1:
 	{
 		intermediate.Type = VariableKind::Int32;
-		// This first truncates to 16 bit and then sign-extends
+		// This first truncates to 8 bit and then sign-extends
 		uint64_t v = (value1.Uint64 & 0x00FF);
 		switch (value1.Type)
 		{
@@ -3250,9 +3278,15 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Uint32 = (uint8_t)v;
 			break;
 		}
-	}
 		stack->push(intermediate);
 		break;
+	}
+	case CEE_CONV_OVF_I2:
+		if (value1.Int64 > 0x7FFF || value1.Int64 < -32768)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_I2:
 		{
 			intermediate.Type = VariableKind::Int32;
@@ -3291,10 +3325,17 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
+	case CEE_CONV_OVF_U2_UN:
+	case CEE_CONV_OVF_U2:
+		if (value1.Int64 > 0xFFFF || value1.Int64 < 0)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_U2:
 	{
-		intermediate.Type = VariableKind::Int32;
-		// This first truncates to 16 bit and then sign-extends
+		intermediate.Type = VariableKind::Uint32;
+		// This first truncates to 16 bit and then zero-extends
 		uint64_t v = (value1.Uint64 & 0xFFFF);
 		switch (value1.Type)
 		{
@@ -3322,9 +3363,54 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Uint32 = (uint16_t)v;
 			break;
 		}
+		stack->push(intermediate);
+		break;
 	}
-	stack->push(intermediate);
-	break;
+	case CEE_CONV_OVF_I4:
+	if (value1.Int64 > 0x7FFFFFFF || value1.Int64 < -2147483648)
+	{
+		throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+	}
+	// Fall trough
+	// Luckily, the C++ compiler takes over the actual magic happening in these conversions
+	case CEE_CONV_I:
+	case CEE_CONV_I4:
+		intermediate.Type = VariableKind::Int32;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+			intermediate.Int32 = value1.Int32;
+			break;
+		case VariableKind::Uint32:
+			intermediate.Int32 = value1.Uint32;
+			break;
+		case VariableKind::Int64:
+			intermediate.Int32 = (int32_t)value1.Int64;
+			break;
+		case VariableKind::Float:
+			intermediate.Int32 = (int32_t)value1.Float;
+			break;
+		case VariableKind::Double:
+			intermediate.Int32 = (int32_t)value1.Double;
+			break;
+		case VariableKind::AddressOfVariable:
+			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
+			intermediate.Int32 = (int32_t)value1.Int32;
+			intermediate.Type = VariableKind::AddressOfVariable;
+			break;
+		default: // The conv statement never throws
+			intermediate.Int32 = (int32_t)value1.Uint64;
+			break;
+		}
+		stack->push(intermediate);
+		break;
+	case CEE_CONV_OVF_U:
+	case CEE_CONV_OVF_U4:
+		if (value1.Int64 > 0xFFFFFFFF || value1.Int64 < 0)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_U:
 	case CEE_CONV_U4:
 		intermediate.Type = VariableKind::Uint32;
@@ -3356,6 +3442,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
+	case CEE_CONV_OVF_I8:
+		if (value1.Type == VariableKind::Uint64 && value1.Int64 < 0)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_I8:
 		intermediate.Type = VariableKind::Int64;
 		switch(value1.Type)
@@ -3381,6 +3473,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
+	case CEE_CONV_OVF_U8:
+		if (value1.Type == VariableKind::Int64 && value1.Int64 < 0)
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		// Fall trough
 	case CEE_CONV_U8:
 		intermediate.Type = VariableKind::Uint64;
 		switch (value1.Type)
@@ -3586,7 +3684,14 @@ Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration* ty)
 	r.Object = ret;
 	r.Type = VariableKind::Object;
 	// Copy the value to the newly allocated boxed instance
-	memcpy(AddBytes(ret, sizeof(void*)), &value.Int32, value.fieldSize());
+	if (value.Type == VariableKind::AddressOfVariable)
+	{
+		memcpy(AddBytes(ret, sizeof(void*)), value.Object, value.fieldSize());
+	}
+	else
+	{
+		memcpy(AddBytes(ret, sizeof(void*)), &value.Int32, value.fieldSize());
+	}
 	return r;
 }
 

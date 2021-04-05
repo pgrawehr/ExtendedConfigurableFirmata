@@ -16,7 +16,8 @@ enum class SystemException
     ClassNotFound = 10,
     InvalidCast = 11,
     NotSupported = 12,
-    CustomException = 13,
-    FieldAccess = 14,
-    ExecutionEngine = 15,
+    FieldAccess = 13,
+    Overflow = 14,
+    CustomException = 20,
+    ExecutionEngine = 21,
 };
