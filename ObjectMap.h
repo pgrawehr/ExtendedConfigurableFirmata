@@ -70,10 +70,7 @@ namespace stdSimple
 				}
 			}
 
-			// Should we really enable exceptions?
-			// throw exception(F("Element not found"));
-			// This is a hack. It generates a null-reference
-			return *(TValue*)nullptr;
+			throw stdSimple::ExecutionEngineException("ObjectMap: index out of range");
 		}
 
 		bool contains(const TKey &key)

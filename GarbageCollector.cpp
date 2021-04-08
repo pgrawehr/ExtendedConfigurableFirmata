@@ -80,7 +80,7 @@ byte* GarbageCollector::Allocate(uint32_t size)
 
 	BlockHd* hd = BlockHd::Cast(ret - (int32_t)ALLOCATE_ALLIGNMENT);
 	ASSERT(!hd->IsFree());
-	ASSERT(hd->Marker = BLOCK_MARKER);
+	ASSERT(hd->Marker == BLOCK_MARKER);
 	
 	return ret;
 }
@@ -510,7 +510,7 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 		ClassDeclaration* elementTypes = referenceContainer->GetClassWithToken(arrayFieldType, false);
 		if (elementTypes != nullptr)
 		{
-			if (elementTypes->ValueType)
+			if (elementTypes->IsValueType())
 			{
 				throw ClrException("Reference array containing value types?", SystemException::ArrayTypeMismatch, arrayFieldType);
 			}

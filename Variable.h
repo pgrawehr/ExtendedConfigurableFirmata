@@ -109,6 +109,11 @@ public:
 		return *this;
 	}
 
+	bool isValueType()
+	{
+		return Type != VariableKind::Object && Type != VariableKind::ReferenceArray && Type != VariableKind::ValueArray && Type != VariableKind::AddressOfVariable;
+	}
+
 	Variable(VariableKind type)
 	{
 		CommonInit();
@@ -218,3 +223,142 @@ public:
 		return 4;
 	}
 };
+
+
+//==================================================================
+// Semantics: if val can be represented as the exact same value
+// when cast to Dst type, then FitsIn<Dst>(val) will return true;
+// otherwise FitsIn returns false.
+//
+// Dst and Src must both be integral types.
+//
+// It's important to note that most of the conditionals in this
+// function are based on static type information and as such will
+// be optimized away. In particular, the case where the signs are
+// identical will result in no code branches.
+
+#ifdef _PREFAST_
+#pragma warning(push)
+#pragma warning(disable:6326) // PREfast warning: Potential comparison of a constant with another constant
+#endif // _PREFAST_
+
+
+
+template <typename Dst, bool dstIsSigned, typename Src, bool srcIsSigned>
+inline bool FitsInInternal(Src val)
+{
+//#ifdef _MSC_VER
+//	static_assert_no_msg(!__is_class(Dst));
+//	static_assert_no_msg(!__is_class(Src));
+//#endif
+
+	if (srcIsSigned == dstIsSigned)
+	{   // Src and Dst are equally signed
+		if (sizeof(Src) <= sizeof(Dst))
+		{   // No truncation is possible
+			return true;
+		}
+		else
+		{   // Truncation is possible, requiring runtime check
+			return val == (Src)((Dst)val);
+		}
+	}
+	else if (srcIsSigned)
+	{   // Src is signed, Dst is unsigned
+#ifdef __GNUC__
+		// Workaround for GCC warning: "comparison is always
+		// false due to limited range of data type."
+		if (!(val == 0 || val > 0))
+#else
+		if (val < 0)
+#endif
+		{   // A negative number cannot be represented by an unsigned type
+			return false;
+		}
+		else
+		{
+			if (sizeof(Src) <= sizeof(Dst))
+			{   // No truncation is possible
+				return true;
+			}
+			else
+			{   // Truncation is possible, requiring runtime check
+				return val == (Src)((Dst)val);
+			}
+		}
+	}
+	else
+	{   // Src is unsigned, Dst is signed
+		if (sizeof(Src) < sizeof(Dst))
+		{   // No truncation is possible. Note that Src is strictly
+			// smaller than Dst.
+			return true;
+		}
+		else
+		{   // Truncation is possible, requiring runtime check
+#ifdef __GNUC__
+			// Workaround for GCC warning: "comparison is always
+			// true due to limited range of data type." If in fact
+			// Dst were unsigned we'd never execute this code
+			// anyway.
+			return ((Dst)val > 0 || (Dst)val == 0) &&
+#else
+			return ((Dst)val >= 0) &&
+#endif
+				(val == (Src)((Dst)val));
+		}
+	}
+}
+
+
+// Requires that Dst is an integral type, and that DstMin and DstMax are the
+// minimum and maximum values of that type, respectively.  Returns "true" iff
+// "val" can be represented in the range [DstMin..DstMax] (allowing loss of precision, but
+// not truncation).
+template <int64_t DstMin, uint64_t DstMax>
+inline bool FloatFitsInIntType(float val)
+{
+	float DstMinF = static_cast<float>(DstMin);
+	float DstMaxF = static_cast<float>(DstMax);
+	return DstMinF <= val && val <= DstMaxF;
+}
+
+template <int64_t DstMin, uint64_t DstMax>
+inline bool DoubleFitsInIntType(double val)
+{
+	double DstMinD = static_cast<double>(DstMin);
+	double DstMaxD = static_cast<double>(DstMax);
+	return DstMinD <= val && val <= DstMaxD;
+}
+
+template <typename Dst, bool dstIsSigned, int64_t dstMin, int64_t dstMax>
+inline bool FitsIn(Variable src)
+{
+	switch (src.Type)
+	{
+	case VariableKind::Uint64:
+		return FitsInInternal<Dst, dstIsSigned, uint64_t, true>(src.Uint64);
+	case VariableKind::Uint32:
+	case VariableKind::AddressOfVariable:
+	case VariableKind::Object:
+	case VariableKind::FunctionPointer:
+	case VariableKind::Reference:
+	case VariableKind::ReferenceArray:
+	case VariableKind::ValueArray:
+	case VariableKind::Boolean:
+		return FitsInInternal<Dst, dstIsSigned, uint32_t, true>(src.Uint32);
+	case VariableKind::Int32:
+		return FitsInInternal<Dst, dstIsSigned, int32_t, true>(src.Int32);
+	case VariableKind::Int64:
+		return FitsInInternal<Dst, dstIsSigned, int64_t, true>(src.Int64);
+	case VariableKind::Float:
+		return FloatFitsInIntType<dstMin, dstMax>(src.Float);
+	case VariableKind::Double:
+		return DoubleFitsInIntType<dstMin, dstMax>(src.Double);
+	default:
+		throw stdSimple::ExecutionEngineException("Unexpected case for FitsIn<>");
+	}
+	
+}
+
+

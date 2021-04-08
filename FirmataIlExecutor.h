@@ -274,6 +274,7 @@ public:
     Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
     void CreateException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);

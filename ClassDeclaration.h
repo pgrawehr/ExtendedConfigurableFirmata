@@ -8,6 +8,13 @@
 #include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
 
+enum class ClassProperties
+{
+	None = 0,
+	ValueType = 1,
+	Enum = 2,
+};
+
 struct Method
 {
 private:
@@ -64,13 +71,13 @@ enum class ClassDeclarationType
 class ClassDeclaration
 {
 protected:
-	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
+	ClassDeclaration(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, ClassProperties flags)
 	{
 		ClassToken = token;
 		ParentToken = parent;
 		ClassDynamicSize = dynamicSize;
 		ClassStaticSize = staticSize;
-		ValueType = valueType;
+		ClassFlags = flags;
 	}
 
 
@@ -96,7 +103,17 @@ public:
 
 	virtual ClassDeclarationType GetType() = 0;
 
-	bool ValueType;
+	bool IsValueType() const
+	{
+		return (int)ClassFlags & (int)ClassProperties::ValueType;
+	}
+
+	bool IsEnum() const
+	{
+		return (int)ClassFlags & (int)ClassProperties::Enum;
+	}
+
+	ClassProperties ClassFlags;
 	int32_t ClassToken;
 	int32_t ParentToken;
 	uint16_t ClassDynamicSize; // Including superclasses, but without vtable
@@ -106,8 +123,8 @@ public:
 class ClassDeclarationDynamic : public ClassDeclaration
 {
 public:
-	ClassDeclarationDynamic(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, bool valueType)
-		: ClassDeclaration(token, parent, dynamicSize, staticSize, valueType)
+	ClassDeclarationDynamic(int32_t token, int32_t parent, int16_t dynamicSize, int16_t staticSize, ClassProperties flags)
+		: ClassDeclaration(token, parent, dynamicSize, staticSize, flags)
 	{
 	}
 
@@ -151,7 +168,7 @@ class ClassDeclarationFlash : public ClassDeclaration
 	friend class SortedClassList;
 public:
 	ClassDeclarationFlash(ClassDeclarationDynamic* source)
-		: ClassDeclaration(source->ClassToken, source->ParentToken, source->ClassDynamicSize, source->ClassStaticSize, source->ValueType)
+		: ClassDeclaration(source->ClassToken, source->ParentToken, source->ClassDynamicSize, source->ClassStaticSize, source->ClassFlags)
 	{
 		_fieldTypeCount = 0;
 		_fieldTypes = nullptr;

@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <cwchar>
 #include <new>
+#include <math.h>
 
 typedef byte BYTE;
 typedef uint32_t DWORD;
@@ -525,7 +526,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 {
 	if (constantToken >= 0x10000)
 	{
-				// A string element
+		// A string element
 		byte* data;
 		if (_stringHeapRam == nullptr)
 		{
@@ -540,7 +541,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		}
 		int* tokenPtr = (int*)_stringHeapRam;
 		int token = *tokenPtr;
-		while (token != 0 && token != constantToken)
+		while (token != 0 && (uint32_t)token != constantToken)
 		{
 			int len = token & 0xFFFF;
 			tokenPtr = AddBytes(tokenPtr, len + 4); // Including the token itself
@@ -1069,6 +1070,14 @@ int TrailingZeroCount(uint32_t value)
 	return TrailingZeroTable[(uint32_t)(value * 0x077CB531u) >> 27];
 }
 
+ClassDeclaration* FirmataIlExecutor::GetTypeFromTypeInstance(Variable& ownTypeInstance)
+{
+	ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+	Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+	ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
+	return t1;
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
@@ -1131,7 +1140,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ClassDeclaration* ty = _classes.GetClassWithToken(ownToken.Int32);
 			// This is a shortcut for now
 			result.Type = VariableKind::Boolean;
-			if (ty->ValueType)
+			if (ty->IsValueType())
 			{
 				result.Boolean = false;
 			}
@@ -1181,7 +1190,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			}
 		
 			// TODO: Validate this operation on value types
-			if (ty->ValueType)
+			if (ty->IsValueType())
 			{
 				throw ClrException(SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
 			}
@@ -1417,6 +1426,33 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		
 		}
 		break;
+	case NativeMethod::EnumInternalGetValues:
+		{
+			ASSERT(args.size() == 1);
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+			ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
+			ASSERT(enumType->IsEnum());
+			// Number of static fields computed as total static size divided by underlying type size
+			int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
+			AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
+			uint64_t* data = (uint64_t*)AddBytes(result.Object, ARRAY_DATA_START);
+			int idx = 0;
+			for (int i = 0; i <= numberOfValues; i++) // One extra, because we later skip the actual value field and use only the static fields here
+			{
+				Variable* field = enumType->GetFieldByIndex(i);
+				if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
+				{
+					continue;
+				}
+
+				// Values are currently never > 32Bit (would need an extension to the class transfer protocol)
+				data[idx] = field->Uint64;
+				idx++;
+			}
+		break;
+		}
 	case NativeMethod::TypeIsEnum:
 		ASSERT(args.size() == 1);
 	{
@@ -1428,16 +1464,19 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			// IsEnum returns true for enum types, but not if the type itself is "System.Enum".
 			result.Boolean = t1->ParentToken == (int)KnownTypeTokens::Enum;
+			if (result.Boolean)
+			{
+				// Secondary verification
+				ASSERT(t1->IsEnum());
+			}
+			break;
 	}
 	case NativeMethod::TypeIsValueType:
 		{
-			Variable ownTypeInstance = args[0]; // A type instance
-			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
-			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
+			ClassDeclaration* t1 = GetTypeFromTypeInstance(args[0]);
 			result.Type = VariableKind::Boolean;
-			result.Boolean = t1->ValueType;
+			result.Boolean = t1->IsValueType();
 		}
 		break;
 	case NativeMethod::TypeGetGenericArguments:
@@ -1774,7 +1813,110 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Void;
 		}
 		break;
-	case NativeMethod::EumToUInt64:
+	case NativeMethod::ArrayInternalCreate:
+	{
+		ASSERT(args.size() == 4);
+		Variable& ownTypeInstance = args[0];
+		Variable& dimensions = args[1];
+		Variable& pLengths = args[2];
+		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+		if (typeClassDeclaration == nullptr)
+		{
+			throw ClrException("Unknown type for sizeof()", SystemException::NullReference, 0);
+		}
+
+		if (dimensions.Int32 != 1)
+		{
+			throw ClrException("Arrays with more than 1 dimension are not supported", SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+		}
+			
+		Variable token = GetField(typeClassDeclaration, ownTypeInstance, 0);
+		int* length = (int*)pLengths.Object;
+		AllocateArrayInstance(token.Int32, *length, result);
+		break;
+	}
+	case NativeMethod::ArraySetValue1:
+	{
+		// This operation is (for single-dimensional arrays) equivalent to STELEM with the given target type
+		ASSERT(args.size() == 3);
+		Variable& value1 = args[0];
+		if (value1.Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data + 1);
+		int32_t token = *(data + 2);
+		int32_t index = args[2].Int32;
+		if (index < 0 || index >= size)
+		{
+			throw ClrException("Index out of range in STELEM.I4 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+		}
+
+		ClassDeclaration* elemTy = GetClassWithToken(token);
+
+		if (value1.Type == VariableKind::ValueArray)
+		{
+			// If the target array is a value array, unbox the argument.
+			if (args[1].isValueType())
+			{
+				// The type of the value is object, so this must be a boxed value
+				throw ClrException(SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+			}
+			
+			void* boxPtr = args[1].Object;
+			void* boxedValue = AddBytes(boxPtr, sizeof(void*));
+			switch (elemTy->ClassDynamicSize)
+			{
+			case 1:
+			{
+				byte* dataptr = (byte*)data;
+				*(dataptr + ARRAY_DATA_START + index) = *(byte*)boxedValue;
+				break;
+			}
+			case 2:
+			{
+				short* dataptr = (short*)data;
+				*(dataptr + ARRAY_DATA_START / 2 + index) = *(short*)boxedValue;
+				break;
+			}
+			case 4:
+			{
+				*(data + ARRAY_DATA_START / 4 + index) = *(int*)boxedValue;
+				break;
+			}
+			case 8:
+			{
+				uint64_t* dataptr = (uint64_t*)data;
+				memcpy(AddBytes(dataptr, ARRAY_DATA_START + 8 * index), boxedValue, 8);
+				break;
+			}
+			default: // Arbitrary size of the elements in the array
+			{
+				byte* dataptr = (byte*)data;
+				byte* targetPtr = AddBytes(dataptr, ARRAY_DATA_START + (elemTy->ClassDynamicSize * index));
+				memcpy(targetPtr, boxedValue, elemTy->ClassDynamicSize);
+				break;
+			}
+			case 0: // That's fishy
+				throw ClrException("Cannot address array with element size 0", SystemException::ArrayTypeMismatch, token);
+			}
+		}
+		else
+		{
+			if (args[1].Type != VariableKind::Object && args[1].Type != VariableKind::ValueArray && args[1].Type != VariableKind::ReferenceArray)
+			{
+				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
+				// at least it should be a reference
+				throw ClrException("Array type mismatch", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+			}
+			// can only be an object now
+			*(data + ARRAY_DATA_START / 4 + index) = (uint32_t)args[1].Object;
+		}
+		break;
+	}
+	case NativeMethod::EnumToUInt64:
 		{
 		// The this pointer is passed via a double indirection to this method!
 		ASSERT(args.size() == 1);
@@ -1797,6 +1939,14 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		}
 		break;
 		}
+	case NativeMethod::EnumInternalBoxEnum:
+		{
+		ASSERT(args.size() == 2);
+		ClassDeclaration* ty = GetTypeFromTypeInstance(args[0]);
+		Variable& value = args[1];
+		result = Box(value, ty);
+		}
+		break;
 	case NativeMethod::GcCollect:
 		ASSERT(args.size() == 4); // Has 4 args, but they mostly are for optimization purposes
 		_gc.Collect(args[0].Int32, this);
@@ -2496,16 +2646,23 @@ default:\
 	throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
-#define MakeUnsigned() \
-	if (value1.Type == VariableKind::Int64 || value1.Type == VariableKind::Uint64)\
-	{\
-		value1.Type = VariableKind::Uint64;\
-	}\
-	else\
-	{\
-		value1.Type = VariableKind::Uint32;\
+Variable MakeUnsigned(Variable &value)
+{
+	if (value.Type == VariableKind::LargeValueType)
+	{
+		throw ClrException("MakeUnsigned on value type is illegal", SystemException::InvalidOperation, 0);
 	}
-
+	Variable copy = value;
+	if (copy.Type == VariableKind::Int64 || copy.Type == VariableKind::Uint64)
+	{
+		copy.Type = VariableKind::Uint64; 
+	}
+	else if (copy.Type == VariableKind::Int32)
+	{
+		copy.Type = VariableKind::Uint32;
+	}
+	return copy;
+}
 MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
 	OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
@@ -3163,6 +3320,34 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			}
 		}
 		break;
+	case CEE_LDELEM_I8:
+	{
+		if (value1.Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data + 1);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			throw ClrException("Index out of range in LDELEM.I8 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+		}
+
+		if (value1.Type == VariableKind::ValueArray)
+		{
+			intermediate.Type = VariableKind::Int64;
+			intermediate.Int64 = *AddBytes(data, ARRAY_DATA_START + index * 8);
+
+			stack->push(intermediate);
+		}
+		else
+		{
+			throw ClrException("Unsupported operation: LDELEM.i8 with a reference array", SystemException::NotSupported, currentFrame->_executingMethod->methodToken);
+		}
+	}
+	break;
 	case CEE_STELEM_REF:
 	case CEE_STELEM_I4:
 	{
@@ -3185,7 +3370,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		else
 		{
-			if (instr == CEE_STELEM_REF && (value3.Type != VariableKind::Object && value3.Type != VariableKind::ValueArray))
+			if (instr == CEE_STELEM_REF && (value3.Type != VariableKind::Object && value3.Type != VariableKind::ValueArray && value3.Type != VariableKind::ReferenceArray))
 			{
 				// STELEM.ref shall throw if the value type doesn't match the array type. We don't test the dynamic type, but
 				// at least it should be a reference
@@ -3196,15 +3381,24 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 	}
 	break;
-	
+	case CEE_CONV_OVF_I1_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<int8_t, true, 0, 127>(intermediate))
+		{
+			throw ClrException("Integer overflow converting to signed byte", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		goto CEE_CONV_I1_LABEL;
+
 	case CEE_CONV_OVF_I1:
-		if (value1.Int64 > 0x7F || value1.Int64 < -128)
+		if (!FitsIn<int8_t, true, -128, 127>(value1))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_I1:
 	{
+			CEE_CONV_I1_LABEL:
 		intermediate.Type = VariableKind::Int32;
 		// This first truncates to 8 bit and then sign-extends
 		int64_t v = (value1.Int64 & 0x00FF);
@@ -3241,16 +3435,25 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	}
 		stack->push(intermediate);
 		break;
-	case CEE_CONV_OVF_U1:
-		if (value1.Int64 > 0xFF || value1.Int64 < 0)
+	case CEE_CONV_OVF_U1_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<uint8_t, false, 0, 255>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_U1_LABEL;
+	case CEE_CONV_OVF_U1:
+		if (!FitsIn<uint8_t, false, 0, 255>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_U1:
 	{
-		intermediate.Type = VariableKind::Int32;
-		// This first truncates to 8 bit and then sign-extends
+			CEE_CONV_U1_LABEL:
+		intermediate.Type = VariableKind::Uint32;
+		// This truncates to 8 bit
 		uint64_t v = (value1.Uint64 & 0x00FF);
 		switch (value1.Type)
 		{
@@ -3258,20 +3461,20 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Uint32 = (unsigned int)v;
 			break;
 		case VariableKind::Uint32:
-			intermediate.Int32 = (unsigned int)v;
+			intermediate.Uint32 = (unsigned int)v;
 			break;
 		case VariableKind::Int64:
-			intermediate.Int32 = (unsigned int)v;
+			intermediate.Uint32 = (unsigned int)v;
 			break;
 		case VariableKind::Float:
-			intermediate.Int32 = (uint8_t)value1.Float;
+			intermediate.Uint32 = (uint8_t)value1.Float;
 			break;
 		case VariableKind::Double:
-			intermediate.Int32 = (uint8_t)value1.Double;
+			intermediate.Uint32 = (uint8_t)value1.Double;
 			break;
 		case VariableKind::AddressOfVariable:
 			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-			intermediate.Int32 = (int32_t)v;
+			intermediate.Uint32 = (int32_t)v;
 			intermediate.Type = VariableKind::AddressOfVariable;
 			break;
 		default: // The conv statement never throws
@@ -3281,14 +3484,24 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	}
-	case CEE_CONV_OVF_I2:
-		if (value1.Int64 > 0x7FFF || value1.Int64 < -32768)
+	case CEE_CONV_OVF_I2_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<int16_t, true, 0, 32767>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_I2_LABEL;
+		// Fall trough
+	case CEE_CONV_OVF_I2:
+		if (!FitsIn<int16_t, true, -32768, 32767>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_I2:
 		{
+			CEE_CONV_I2_LABEL:
 			intermediate.Type = VariableKind::Int32;
 			// This first truncates to 16 bit and then sign-extends
 			int64_t v = (value1.Int64 & 0xFFFF);
@@ -3326,14 +3539,23 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_U2_UN:
-	case CEE_CONV_OVF_U2:
-		if (value1.Int64 > 0xFFFF || value1.Int64 < 0)
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<uint16_t, false, 0, 0xFFFF>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_U2_LABEL;
+		// Fall trough
+	case CEE_CONV_OVF_U2:
+		if (!FitsIn<uint16_t, false, 0, 0xFFFF>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_U2:
 	{
+		CEE_CONV_U2_LABEL:
 		intermediate.Type = VariableKind::Uint32;
 		// This first truncates to 16 bit and then zero-extends
 		uint64_t v = (value1.Uint64 & 0xFFFF);
@@ -3366,15 +3588,27 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		stack->push(intermediate);
 		break;
 	}
+	case CEE_CONV_OVF_I_UN:
+	case CEE_CONV_OVF_I4_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<int32_t, true, 0, 0x7FFFFFFF>(intermediate))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		goto CEE_CONV_I4_LABEL;
+		// Fall trough
 	case CEE_CONV_OVF_I4:
-	if (value1.Int64 > 0x7FFFFFFF || value1.Int64 < -2147483648)
-	{
-		throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
-	}
+		if (!FitsIn<int32_t, true, -2147483648, 2147483647>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
+		// Fall trough
 	// Fall trough
 	// Luckily, the C++ compiler takes over the actual magic happening in these conversions
 	case CEE_CONV_I:
 	case CEE_CONV_I4:
+		CEE_CONV_I4_LABEL:
 		intermediate.Type = VariableKind::Int32;
 		switch (value1.Type)
 		{
@@ -3404,15 +3638,25 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
-	case CEE_CONV_OVF_U:
-	case CEE_CONV_OVF_U4:
-		if (value1.Int64 > 0xFFFFFFFF || value1.Int64 < 0)
+	case CEE_CONV_OVF_U_UN:
+	case CEE_CONV_OVF_U4_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<uint32_t, false, 0, 0xFFFFFFFF>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_U4_LABEL;
+		// Fall trough
+	case CEE_CONV_OVF_U4:
+		if (!FitsIn<uint32_t, false, 0, 0xFFFFFFFF>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_U:
 	case CEE_CONV_U4:
+		CEE_CONV_U4_LABEL:
 		intermediate.Type = VariableKind::Uint32;
 		switch (value1.Type)
 		{
@@ -3442,13 +3686,23 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
-	case CEE_CONV_OVF_I8:
-		if (value1.Type == VariableKind::Uint64 && value1.Int64 < 0)
+	case CEE_CONV_OVF_I8_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<int64_t, true, 0, 9223372036854775807>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_I8_LABEL;
+		// Fall trough
+	case CEE_CONV_OVF_I8:
+		if (!FitsIn<int64_t, true, -9223372036854775807, 9223372036854775807>(value1)) // There appears to be a problem with assigning the largest negative int64 value to a constant
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_I8:
+		CEE_CONV_I8_LABEL:
 		intermediate.Type = VariableKind::Int64;
 		switch(value1.Type)
 		{
@@ -3473,13 +3727,23 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		stack->push(intermediate);
 		break;
-	case CEE_CONV_OVF_U8:
-		if (value1.Type == VariableKind::Int64 && value1.Int64 < 0)
+	case CEE_CONV_OVF_U8_UN:
+		intermediate = MakeUnsigned(value1);
+		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
+		goto CEE_CONV_U8_LABEL;
+		// Fall trough
+	case CEE_CONV_OVF_U8:
+		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(value1))
+		{
+			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		[[fallthrough]];
 		// Fall trough
 	case CEE_CONV_U8:
+		CEE_CONV_U8_LABEL:
 		intermediate.Type = VariableKind::Uint64;
 		switch (value1.Type)
 		{
@@ -3601,7 +3865,7 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 	ClassDeclaration* ty = _classes.GetClassWithToken(tokenOfArrayType);
 	uint32_t* data;
 	uint64_t sizeToAllocate;
-	if (ty->ValueType)
+	if (ty->IsValueType())
 	{
 		
 		// Value types are stored directly in the array. Element 0 (of type int32) will contain the array type token (since arrays are also objects), index 1 the array length,
@@ -3683,14 +3947,21 @@ Variable FirmataIlExecutor::Box(Variable& value, ClassDeclaration* ty)
 	r.setSize(4);
 	r.Object = ret;
 	r.Type = VariableKind::Object;
+
+	// Check the size we need to box. The variable value might be 64 bit, even if the boxed class size can only contain 32 bits (ie. when boxing an enum in InternalBoxEnum)
+	int sizeToCopy = ty->ClassDynamicSize;
+	if (sizeToCopy > value.fieldSize())
+	{
+		sizeToCopy = value.fieldSize();
+	}
 	// Copy the value to the newly allocated boxed instance
 	if (value.Type == VariableKind::AddressOfVariable)
 	{
-		memcpy(AddBytes(ret, sizeof(void*)), value.Object, value.fieldSize());
+		memcpy(AddBytes(ret, sizeof(void*)), value.Object, sizeToCopy);
 	}
 	else
 	{
-		memcpy(AddBytes(ret, sizeof(void*)), &value.Int32, value.fieldSize());
+		memcpy(AddBytes(ret, sizeof(void*)), &value.Int32, sizeToCopy);
 	}
 	return r;
 }
@@ -3750,11 +4021,11 @@ int FirmataIlExecutor::MethodMatchesArgumentTypes(MethodBody* declaration, Varia
 		VariableDescription& desc = declaration->GetArgumentAt(idx + isCtor ? 1 : 0);
 		ClassDeclaration* ty = (ClassDeclaration*)*((int*)object);
 		bool typeMayMatch = false;
-		if (ty->ValueType && desc.Type != VariableKind::ReferenceArray && desc.Type != VariableKind::AddressOfVariable && desc.Type != VariableKind::Object)
+		if (ty->IsValueType() && desc.Type != VariableKind::ReferenceArray && desc.Type != VariableKind::AddressOfVariable && desc.Type != VariableKind::Object)
 		{
 			typeMayMatch = true;
 		}
-		else if (!ty->ValueType && desc.Type == VariableKind::Object)
+		else if (!ty->IsValueType() && desc.Type == VariableKind::Object)
 		{
 			typeMayMatch = true;
 		}
@@ -3838,7 +4109,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
 				int typeToken = GetField(typeOfType, type, 0).Int32;
 				ClassDeclaration* typeToCreate = GetClassWithToken(typeToken);
-    			if (typeToCreate->ValueType)
+    			if (typeToCreate->IsValueType())
     			{
 					throw ClrException("Cannot create value types using CreateInstance", SystemException::NotSupported, typeToken);
     			}
@@ -4239,23 +4510,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					case CEE_BGE_UN:
 					case CEE_BGE_UN_S:
-						MakeUnsigned();
+						value1 = MakeUnsigned(value1);
 						// fall trough
+						[[fallthrough]];
 					case CEE_BGE:
 					case CEE_BGE_S:
 						ComparisonOperation(>= );
 						break;
 					case CEE_BLE_UN:
 					case CEE_BLE_UN_S:
-						MakeUnsigned();
+						value1 = MakeUnsigned(value1);
 						// fall trough
+						[[fallthrough]];
 					case CEE_BLE:
 					case CEE_BLE_S:
 						ComparisonOperation(<= );
 						break;
 					case CEE_BGT_UN:
 					case CEE_BGT_UN_S:
-						MakeUnsigned();
+						value1 = MakeUnsigned(value1);
+						[[fallthrough]];
 						// fall trough
 					case CEE_BGT:
 					case CEE_BGT_S:
@@ -4263,15 +4537,16 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						break;
 					case CEE_BLT_UN:
 					case CEE_BLT_UN_S:
-						MakeUnsigned();
+						value1 = MakeUnsigned(value1);
 						// fall trough
+						[[fallthrough]];
 					case CEE_BLT:
 					case CEE_BLT_S:
 						ComparisonOperation(< );
 						break;
 					case CEE_BNE_UN:
 					case CEE_BNE_UN_S:
-						MakeUnsigned();
+						value1 = MakeUnsigned(value1);
 						ComparisonOperation(!= );
 						break;
 					case CEE_BRFALSE:
@@ -4408,6 +4683,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				ASSERT(methodTarget.Type == VariableKind::FunctionPointer);
 				target = (MethodBody*)methodTarget.Object;
 			}
+			[[fallthrough]];
 			// FALL TROUGH!
 			case InlineMethod:
             {
@@ -4453,7 +4729,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						ASSERT(instance.Type == VariableKind::AddressOfVariable);
 						// The reference points to an instance of type constrainedTypeToken
 						cls = _classes.GetClassWithToken(constrainedTypeToken);
-						if (cls->ValueType)
+						if (cls->IsValueType())
 						{
 							// This will be the this pointer for a method call on a value type (we'll have to do a real boxing if the
 							// callee is virtual (can be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
@@ -4513,6 +4789,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						cls = ((ClassDeclaration*)(*(int*)o));
 					}
 
+					Firmata.sendStringf(F("Callvirt on instance of class %lx"), 4, cls->ClassToken);
+
 					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray &&
 						instance.Type != VariableKind::ReferenceArray && instance.Type != VariableKind::AddressOfVariable)
 					{
@@ -4554,14 +4832,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				// we've probably not done the virtual function resolution correctly
 				if ((int)newMethod->MethodFlags() & (int)MethodFlags::Abstract)
 				{
-					throw ClrException("Call to abstract method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
+					throw ClrException("Call to abstract method", SystemException::MissingMethod, newMethod->methodToken);
 				}
 
 				if (instr == CEE_NEWOBJ)
 				{
 					cls = ResolveClassFromCtorToken(newMethod->methodToken);
 
-					if (cls->ValueType)
+					if (cls->IsValueType())
 					{
 						// If a value type is being created using a newobj instruction, an unboxed value is created and pushed as #0 on the stack
 						// we have to be careful to get it back on the ret.
@@ -4639,7 +4917,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 
 					// The first argument of the ctor being invoked is the new object
-					if (cls->ValueType)
+					if (cls->IsValueType())
 					{
 						// See above, newObjInstance actually points to the new unboxed Variable instance.
 						// Push it to the old method's stack, and pass a reference to it as argument.
@@ -4764,30 +5042,30 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						case 1:
 						{
 							byte* dataptr = (byte*)data;
-							*(dataptr + 12 + index) = (byte)value3.Int32;
+							*(dataptr + ARRAY_DATA_START + index) = (byte)value3.Int32;
 							break;
 						}
 						case 2:
 						{
 							short* dataptr = (short*)data;
-							*(dataptr + 6 + index) = (short)value3.Int32;
+							*(dataptr + ARRAY_DATA_START / 2 + index) = (short)value3.Int32;
 							break;
 						}
 						case 4:
 						{
-							*(data + 3 + index) = value3.Int32;
+							*(data + ARRAY_DATA_START / 3 + index) = value3.Int32;
 							break;
 						}
 						case 8:
 						{
 							uint64_t* dataptr = (uint64_t*)data;
-							memcpy(AddBytes(dataptr, 12 + 8 * index), &value3.Int64, 8);
+							memcpy(AddBytes(dataptr, ARRAY_DATA_START + 8 * index), &value3.Int64, 8);
 							break;
 						}
 						default: // Arbitrary size of the elements in the array
 						{
 							byte* dataptr = (byte*)data;
-							byte* targetPtr = AddBytes(dataptr, 12 + (elemTy->ClassDynamicSize * index));
+							byte* targetPtr = AddBytes(dataptr, ARRAY_DATA_START + (elemTy->ClassDynamicSize * index));
 							memcpy(targetPtr, &value3.Int32, elemTy->ClassDynamicSize);
 							break;
 						}
@@ -4957,7 +5235,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					Variable& value1 = stack->top();
 					stack->pop();
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
-					if (ty->ValueType)
+					if (ty->IsValueType())
 					{
 						Variable r = Box(value1, ty);
 						stack->push(r);
@@ -4981,7 +5259,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					Variable& value1 = stack->top();
 					stack->pop();
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
-					if (ty->ValueType)
+					if (ty->IsValueType())
 					{
 						// TODO: This requires special handling for types derived from Nullable<T>
 
@@ -5022,7 +5300,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
-					if (ty->ValueType)
+					if (ty->IsValueType())
 					{
 						size = ty->ClassDynamicSize;
 						memset(value1.Object, 0, size);
@@ -5107,7 +5385,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
 					size = ty->ClassDynamicSize;
 					EnsureStackVarSize(size);
-					if (ty->ValueType)
+					if (ty->IsValueType())
 					{
 						tempVariable->Type = (size > 8 ? VariableKind::LargeValueType : VariableKind::Int64);
 					}
@@ -5492,7 +5770,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 	else
 	{
 		// The only flag is currently "isvaluetype"
-		bool isValueType = flags != 0;
+		bool isValueType = flags & 1;
 		if (!isValueType)
 		{
 			// For reference types, the class size given is shifted by two (because it's always a multiple of 4).
@@ -5502,7 +5780,7 @@ ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classT
 
 		void* ptr = mallocEx(sizeof(ClassDeclarationDynamic));
 		
-		ClassDeclarationDynamic* newType = new(ptr) ClassDeclarationDynamic(classToken, parent, dynamicSize, staticSize, isValueType);
+		ClassDeclarationDynamic* newType = new(ptr) ClassDeclarationDynamic(classToken, parent, dynamicSize, staticSize, (ClassProperties)flags);
 		_classes.Insert(newType);
 		decl = newType;
 	}
