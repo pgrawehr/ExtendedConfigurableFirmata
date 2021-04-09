@@ -1835,6 +1835,53 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		AllocateArrayInstance(token.Int32, *length, result);
 		break;
 	}
+	case NativeMethod::ArrayGetLength:
+		{
+		ASSERT(args.size() == 1);
+		Variable& value1 = args[0];
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data + 1);
+		result.Int32 = size;
+		result.Type = VariableKind::Int32;
+		break;
+		}
+	case NativeMethod::ArrayGetValue1:
+		{
+		ASSERT(args.size() == 2);
+		Variable& value1 = args[0];
+		if (value1.Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t size = *(data + 1);
+		int32_t token = *(data + 2);
+		int32_t index = args[1].Int32;
+		if (index < 0 || index >= size)
+		{
+			throw ClrException("Index out of range in ArrayGetValue1 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+		}
+
+		ClassDeclaration* elemTy = GetClassWithToken(token);
+		
+		if (elemTy->IsValueType())
+		{
+			Variable* var = (Variable*)alloca(elemTy->ClassDynamicSize + sizeof(Variable));
+			memmove(&(var->Uint32), AddBytes(data, ARRAY_DATA_START + index * elemTy->ClassDynamicSize), elemTy->ClassDynamicSize);
+			var->Type = elemTy->ClassDynamicSize > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
+			var->setSize(elemTy->ClassDynamicSize);
+			var->Marker = VARIABLE_DEFAULT_MARKER;
+			result = Box(*var, elemTy);
+		}
+		else
+		{
+			// can only be an object now
+			result.Type = VariableKind::Object;
+			result.Object = (void*)*(AddBytes(data, ARRAY_DATA_START + index * sizeof(void*)));
+		}
+		break;
+		}
 	case NativeMethod::ArraySetValue1:
 	{
 		// This operation is (for single-dimensional arrays) equivalent to STELEM with the given target type
@@ -5053,7 +5100,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						}
 						case 4:
 						{
-							*(data + ARRAY_DATA_START / 3 + index) = value3.Int32;
+							*(data + ARRAY_DATA_START / 4 + index) = value3.Int32;
 							break;
 						}
 						case 8:
