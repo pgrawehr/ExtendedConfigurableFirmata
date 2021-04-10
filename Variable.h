@@ -94,7 +94,7 @@ public:
 		Uint64 = other.Uint64;
 		if (other._size > sizeof(Uint64) && this->Marker != VARIABLE_DECLARATION_MARKER && other.Marker != VARIABLE_DECLARATION_MARKER)
 		{
-			if (other.fieldSize() != _size)
+			if (other.fieldSize() > _size)
 			{
 				throw stdSimple::ExecutionEngineException("Insufficient space to copy instance. Internal memory management error.");
 			}

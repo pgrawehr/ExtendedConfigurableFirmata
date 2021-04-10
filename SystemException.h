@@ -18,6 +18,7 @@ enum class SystemException
     NotSupported = 12,
     FieldAccess = 13,
     Overflow = 14,
+    Io = 15,
     CustomException = 20,
     ExecutionEngine = 21,
 };
