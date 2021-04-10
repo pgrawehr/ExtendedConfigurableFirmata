@@ -13,6 +13,7 @@ enum class ClassProperties
 	None = 0,
 	ValueType = 1,
 	Enum = 2,
+	Array = 4,
 };
 
 struct Method
@@ -111,6 +112,11 @@ public:
 	bool IsEnum() const
 	{
 		return (int)ClassFlags & (int)ClassProperties::Enum;
+	}
+
+	bool IsArray() const
+	{
+		return (int)ClassFlags & (int)ClassProperties::Array;
 	}
 
 	ClassProperties ClassFlags;

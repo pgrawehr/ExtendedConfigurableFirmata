@@ -5393,15 +5393,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						stack->push(value1);
 						break;
 					}
-					// Our metadata list does not contain array[] types, therefore we assume this matches for now
-					if (value1.Type == VariableKind::ReferenceArray)
+
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+
+					// Our metadata list does not contain full information about array[] types, therefore we assume this matches for now
+					if ((value1.Type == VariableKind::ReferenceArray || value1.Type == VariableKind::ValueArray) && ty->IsArray())
 					{
 						// TODO: Verification possible when looking inside?
 						stack->push(value1);
 						break;
 					}
 					
-					ClassDeclaration* ty = _classes.GetClassWithToken(token);
 					if (IsAssignableFrom(ty, value1) == MethodState::Running)
 					{
 						// if the cast is fine, just return the original object
