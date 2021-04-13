@@ -41,17 +41,31 @@ uint8_t TwoWire::endTransmission(uint8_t stopTx)
 
 uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 {
+	_currentDevice = address;
+	// BME680 Chip ID
+	if (_currentDevice == 0x76)
+	{
+		// Chip ID
+		if (_currentRegister == 0xD0)
+		{
+			_replyBuffer.push(0x61);
+			return numBytes;
+		}
+		else
+		{
+			for (int i = 0; i < numBytes; i++)
+			{
+				_replyBuffer.push(0x0);
+			}
+			return numBytes;
+		}
+	}
 	return 0;
 }
 
 uint8_t TwoWire::requestFrom(int address, int numBytes)
 {
-	_currentRegister = address;
-	// TODO: For improved simulation, Simulate reply from a DS1307 RTC here
-	// if (_currentRegister == 0 && _currentDevice == 0x68)
-	// {
-	// }
-
+	_currentDevice = address;
 	return (byte)numBytes;
 }
 
@@ -69,17 +83,23 @@ size_t TwoWire::write(uint8_t data)
 
 int TwoWire::available()
 {
-	return 0;
+	return _replyBuffer.size();
 }
 
 int TwoWire::read()
 {
-	return 0;
+	int ret = _replyBuffer.front();
+	_replyBuffer.pop();
+	return ret;
 }
 
 int TwoWire::peek()
 {
-	return 0;
+	if (_replyBuffer.empty())
+	{
+		return 0;
+	}
+	return _replyBuffer.front();
 }
 
 void TwoWire::end()

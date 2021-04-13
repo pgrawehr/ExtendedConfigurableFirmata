@@ -5,6 +5,7 @@
 #include "I2CFirmata.h"
 #include <Wire.h>
 
+
 #include "RtcBase.h"
 #include "Ds1307.h"
 #include "SimulatorClock.h"
@@ -194,6 +195,79 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		Wire.endTransmission();
 		}
 		break;
+	case NativeMethod::ArduinoNativeI2cDeviceReadByte:
+		{
+			ASSERT(args.size() == 1);
+			Variable& self = args.at(0);
+			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
+			Variable address = executor->GetField(cls, self, 1);
+			// Since the implementation of I2CFirmata::handleI2CRequest is stateless, we can as well directly call the wire library. It's easier here.
+			// Note that this works only after an init
+			Wire.requestFrom((byte)address.Int32, (byte)1);
+			if (Wire.available() != 1)
+			{
+				throw ClrException(SystemException::Io, currentFrame->_executingMethod->methodToken);
+			}
+			result.Type = VariableKind::Int32;
+			result.Int32 = Wire.read();
+		}
+		break;
+	case NativeMethod::ArduinoNativeI2cDeviceReadSpan:
+		{
+			ASSERT(args.size() == 2);
+			Variable& self = args.at(0);
+			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
+			Variable address = executor->GetField(cls, self, 1);
+			Variable& span = args.at(1);
+			
+			// Span is a value type that contains a pointer and a length field (both as 32 bit fields). Let's hope the order matches
+			int targetLength = *AddBytes(&span.Int32, 4);
+			byte* tgt = (byte*)*AddBytes(&span.Int32, 0);
+			Wire.requestFrom((byte)address.Int32, (byte)targetLength);
+			if (Wire.available() != targetLength)
+			{
+				// Drop anything left
+				while (Wire.available())
+				{
+					Wire.read();
+				}
+				throw ClrException(SystemException::Io, currentFrame->_executingMethod->methodToken);
+			}
+
+			while (targetLength > 0)
+			{
+				*tgt = (byte)Wire.read();
+				tgt++;
+				targetLength--;
+			}
+			
+			result.Type = VariableKind::Void;
+		}
+		break;
+	case NativeMethod::ArduinoNativeI2cDeviceWriteSpan:
+	{
+		ASSERT(args.size() == 2);
+		Variable& self = args.at(0);
+		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
+		Variable address = executor->GetField(cls, self, 1);
+		Variable& span = args.at(1);
+
+		// Span is a value type that contains a pointer and a length field (both as 32 bit fields). Let's hope the order matches
+		int srcLength = *AddBytes(&span.Int32, 4);
+		byte* src = (byte*)*AddBytes(&span.Int32, 0);
+
+		Wire.beginTransmission((byte)address.Int32);
+		while (srcLength > 0)
+		{
+			Wire.write(*src);
+			src++;
+			srcLength--;
+		}
+		Wire.endTransmission();
+
+		result.Type = VariableKind::Void;
+	}
+	break;
 	case NativeMethod::InteropQueryPerformanceFrequency:
 		{
 		ASSERT(args.size() == 1);

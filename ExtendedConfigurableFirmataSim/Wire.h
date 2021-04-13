@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <inttypes.h>
+#include <queue>
 #undef INPUT
 
 #define BUFFER_LENGTH 32
@@ -52,6 +53,7 @@ private:
 	int _currentDevice;
 	int _currentRegister;
 	byte _bytesInCurrentTransmission;
+	std::queue<byte> _replyBuffer;
 };
 
 extern TwoWire Wire;
