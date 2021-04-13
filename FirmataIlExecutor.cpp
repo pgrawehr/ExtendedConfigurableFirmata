@@ -681,8 +681,18 @@ void FirmataIlExecutor::KillCurrentTask()
 	SendExecutionResult((u16)topLevelMethod, _currentException, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 	
-	delete _methodCurrentlyExecuting;
+	CleanStack(_methodCurrentlyExecuting);
 	_methodCurrentlyExecuting = nullptr;
+}
+
+void FirmataIlExecutor::CleanStack(ExecutionState* state)
+{
+	while (state != nullptr)
+	{
+		auto previous = state;
+		state = state->_next;
+		delete previous;
+	}
 }
 
 void FirmataIlExecutor::report(bool elapsed)
@@ -716,7 +726,7 @@ void FirmataIlExecutor::report(bool elapsed)
 	SendExecutionResult((u16)methodindex, _currentException, retVal, execResult);
 
 	// The method ended
-	delete _methodCurrentlyExecuting;
+	CleanStack(_methodCurrentlyExecuting);
 	_methodCurrentlyExecuting = nullptr;
 }
 
@@ -1002,7 +1012,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u1
 	SendExecutionResult(taskId, _currentException, result, execResult);
 	
 	// The method ended very quickly
-	delete _methodCurrentlyExecuting;
+	CleanStack(_methodCurrentlyExecuting);
 	_methodCurrentlyExecuting = nullptr;
 
 	return ExecutionError::None;
@@ -1552,6 +1562,12 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Int32 = TrailingZeroCount(args[0].Uint32);
 		result.Type = VariableKind::Int32;
 		}
+		break;
+	case NativeMethod::BitConverterDoubleToInt64Bits:
+		ASSERT(args.size() == 1);
+		result.setSize(8);
+		result.Type = VariableKind::Int64;
+		result.Int64 = args[0].Int64; // Using the wrong union element here does what we want: A binary conversion from double to int64
 		break;
 	case NativeMethod::UnsafeNullRef:
 		{
@@ -5077,14 +5093,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							throw ClrException("Array type mismatch - Type of array does not match element to store", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 						}
+
 						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 						int32_t index = value2.Int32;
 						if (index < 0 || index >= arraysize)
 						{
 							throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 						}
+
+						int sizeOfElement = elemTy->ClassDynamicSize;
+						if (!elemTy->IsValueType())
+						{
+							// If the element to store is a reference, we expect a reference array. If the class around us is generic, the compiler might have inserted STELEM, even though STELEM.ref would be better
+							if (value1.Type == VariableKind::ValueArray)
+							{
+								throw ClrException("Array type mismatch - storing reference type in value array?", SystemException::ArrayTypeMismatch, elemTy->ClassToken);
+							}
+							sizeOfElement = 4;
+						}
 						
-						switch(elemTy->ClassDynamicSize)
+						switch(sizeOfElement)
 						{
 						case 1:
 						{
@@ -5769,7 +5797,7 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 /// </summary>
 void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 {
-	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
+	Firmata.sendString(F("Class to create is 0x"), cls->ClassToken);
 	// The constructor that was called belongs to this class
 	// Compute sizeof(class)
 	size_t sizeOfClass = SizeOfClass(cls);

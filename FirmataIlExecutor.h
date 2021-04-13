@@ -148,20 +148,14 @@ class ExecutionState
 		_taskId = taskId;
 		_next = nullptr;
 		_executingMethod = executingMethod;
-		_memoryGuard = 0xCCCCCCCC;
 	}
 	~ExecutionState()
 	{
 		_next = nullptr;
-		_memoryGuard = 0xDEADBEEF;
 	}
 	
 	void ActivateState(u16* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
 	{
-		if (_memoryGuard != 0xCCCCCCCC)
-		{
-			Firmata.sendString(F("FATAL: MEMORY CORRUPTED: (should be 0xCCCCCCCC): "), _memoryGuard);
-		}
 		*pc = _pc;
 		*stack = &_executionStack;
 		*locals = &_locals;
@@ -184,11 +178,6 @@ class ExecutionState
 		
 	void UpdatePc(u16 pc)
 	{
-		if (_memoryGuard != 0xCCCCCCCC)
-		{
-			Firmata.sendString(F("FATAL: MEMORY CORRUPTED2: (should be 0xCCCCCCCC): "), _memoryGuard);
-		}
-		
 		_pc = pc;
 	}
 
@@ -224,7 +213,11 @@ public:
 	// These are used by HardwareAccess methods
 	static ClassDeclaration* GetClassDeclaration(Variable& obj);
 	Variable GetField(ClassDeclaration* type, const Variable& instancePtr, int fieldNo);
- 
+	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
+	{
+		return _classes.GetClassWithToken(token, throwIfNotFound);
+	}
+
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
 	ExecutionError LoadIlDataStream(int token, u16 codeLength, u16 offset, byte argc, byte* argv);
@@ -240,11 +233,6 @@ public:
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 
-	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
-	{
-		return _classes.GetClassWithToken(token, throwIfNotFound);
-	}
-	
 	Variable& Ldsfld(int token);
 	Variable Ldsflda(int token);
     void Stsfld(int token, Variable& value);
@@ -265,7 +253,8 @@ public:
 	byte* AllocGcInstance(size_t bytes);
 	bool IsExecutingCode();
 	void KillCurrentTask();
-    void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
+	void CleanStack(ExecutionState* state);
+	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
 	void InvalidOpCode(u16 pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
