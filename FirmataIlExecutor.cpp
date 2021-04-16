@@ -2032,6 +2032,13 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Int64 = _gc.AllocatedMemory();
 		break;
 		}
+	case NativeMethod::StringCtorSpan:
+		{
+			// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
+			ASSERT(args.size() == 2);
+			result = args[0];
+		break;
+		}
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -2742,7 +2749,6 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
 		// TODO: Extract the string from the argument
 		throw ClrException("Custom exception", SystemException::CustomException, exceptionType->ClassToken);
-		return MethodState::Aborted;
 	}
 	case CEE_NOP:
 		break;
@@ -4915,6 +4921,29 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						tempVariable->Type = size > 8 ? VariableKind::LargeValueType : VariableKind::Int64;
 						newObjInstance = tempVariable;
 					}
+					else if (cls->ClassToken == (int)KnownTypeTokens::String)
+					{
+						// Strings are rarely created using NEWOBJ, but there are some ctors that are actually called directly
+						if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorSpan)
+						{
+							// The ctor MiniString(ReadOnlySpan<char>) was called
+							Variable& span = stack->top();
+							int length = *AddBytes(&span.Int32, 4);
+							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							*AddBytes((int*)newObjInstance, 4) = length;
+							short* dataPtr = (short*)*AddBytes(&span.Object, 0);
+							// Copy data from span to string
+							for (int c = 0; c < length; c++)
+							{
+								*AddBytes((short*)newObjInstance, 8 + c * sizeof(short)) = *dataPtr;
+								dataPtr++;
+							}
+						}
+						else
+						{
+							throw ClrException("Unsupported string ctor called", SystemException::MissingMethod, newMethod->methodToken);
+						}
+					}
 					else
 					{
 						newObjInstance = CreateInstance(cls);
@@ -5722,7 +5751,7 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 }
 
 /// <summary>
-/// Creates a class directly by its type (used i.e. to create instances of System::Type)
+/// Creates a class directly by its type (used i.e. to create instances of System::Type or System::String)
 /// </summary>
 void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */)
 {
