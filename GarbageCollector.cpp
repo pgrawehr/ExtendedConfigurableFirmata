@@ -421,7 +421,8 @@ bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 				hd = AddBytes(hd, entrySize + ALLOCATE_ALLIGNMENT);
 				offset = offset + entrySize + ALLOCATE_ALLIGNMENT;
 			}
-			
+
+			// Gets here when the value was within the range of this block, but apparently only by accident
 			return false;
 		}
 	}
@@ -576,9 +577,33 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 	}
 
 	// Iterate over the fields of a class
-	int idx = 0;
-	Variable* fieldType = nullptr;
 	int offset = sizeof(void*);
+	vector<Variable*> allfields;
+	referenceContainer->CollectFields(cls, allfields);
+	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	{
+		Variable* handle = (*handle1);
+		// Ignore static member here
+		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
+		{
+			continue;
+		}
+
+		if (!handle->isValueType())
+		{
+			// TODO: Quite ugly that we have to do a full variable extraction to follow the reference chain
+			Variable referenceField;
+			referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+			referenceField.Type = handle->Type;
+			referenceField.setSize(4);
+			referenceField.Object = (void*)*AddBytes((int*)ptr, offset);
+			MarkVariable(referenceField, referenceContainer);
+		}
+		
+		offset += handle->fieldSize();
+	}
+
+	/*
 	while ((fieldType = cls->GetFieldByIndex(idx)) != nullptr)
 	{
 		if ((fieldType->Type & VariableKind::StaticMember) != VariableKind::Void)
@@ -599,4 +624,5 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 		offset += fieldType->fieldSize();
 		idx++;
 	}
+	*/
 }

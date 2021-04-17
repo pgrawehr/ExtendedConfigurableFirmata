@@ -5,7 +5,7 @@
 #ifdef SIM
 
 #define IFLASH_ADDR 0
-#define IFLASH1_SIZE (256 * 1024)
+#define IFLASH1_SIZE (300 * 1024)
 #endif
 
 // This class simulates flash by memory. This is not within the #ifdef SIM to simplify development.

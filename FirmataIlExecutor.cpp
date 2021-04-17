@@ -5715,6 +5715,11 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 	byte* o = (byte*)object.Object;
 	ClassDeclaration* sourceType = (ClassDeclaration*)(*(int32_t*)o);
 	// If the types are the same, they're assignable
+	if ((int)sourceType == 0xaaaaaaaa)
+	{
+		throw ExecutionEngineException("Type test on deleted object - this is a GC error");
+	}
+	
 	if (sourceType->ClassToken == typeToAssignTo->ClassToken)
 	{
 		return MethodState::Running;
