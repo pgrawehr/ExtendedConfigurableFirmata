@@ -112,6 +112,8 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 {
 	if (_endOfHeap + bytes + MEMORY_ALLOCATION_ALIGNMENT >= _flashEnd)
 	{
+		size_t free = _flashEnd - _endOfHeap;
+		Firmata.sendStringf(F("Not enough flash to reserve %li bytes, only %li free"), 4, bytes, free);
 		OutOfMemoryException::Throw("Out of flash memory");
 	}
 	

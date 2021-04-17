@@ -273,7 +273,12 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 	}
 }
 
-int GarbageCollector::ComputeFreeBlockSizes()
+/// <summary>
+/// Computes the "result" of the garbage collect operation (how much memory was freed, how much total memory is now available etc.)
+/// </summary>
+/// <param name="wipeMemory">Set to true to wipe any free blocks (typically used for debugging, to quicker see if the GC does something odd)</param>
+/// <returns>The number of bytes freed</returns>
+int GarbageCollector::ComputeFreeBlockSizes(bool wipeMemory)
 {
 	int totalFreed = 0;
 	int totalMemoryInUse = 0;
@@ -290,6 +295,10 @@ int GarbageCollector::ComputeFreeBlockSizes()
 			if (hd->IsFree())
 			{
 				blockFree += entryLength;
+				if (wipeMemory)
+				{
+					memset(AddBytes(hd, sizeof(BlockHd)), 0xaa, entryLength);
+				}
 			}
 			else
 			{
@@ -320,7 +329,7 @@ int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContai
 	MarkAllFree();
 	MarkStatics(referenceContainer);
 	MarkStack(referenceContainer);
-	int result = ComputeFreeBlockSizes();
+	int result = ComputeFreeBlockSizes(true);
 	TRACE(Firmata.sendString(F("GC done")));
 	return result;
 }
@@ -396,8 +405,24 @@ bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 		// Equality is not valid (an object cannot be at the beginning of the heap nor at the very end)
 		if (ptr > _gcBlocks[idx1].BlockStart && ptr < AddBytes(_gcBlocks[idx1].BlockStart, _gcBlocks[idx1].BlockSize))
 		{
-			// This pointer does point to an object in this block.
-			return true;
+			// This pointer does point to an object in this block. Check that it points to a valid object start address
+			BlockHd* hd = _gcBlocks[idx1].BlockStart;
+			int offset = 0;
+			int blockLen = _gcBlocks[idx1].BlockSize;
+			while (offset < blockLen)
+			{
+				int entrySize = hd->BlockSize;
+
+				if (AddBytes(hd, ALLOCATE_ALLIGNMENT) == ptr)
+				{
+					return true;
+				}
+
+				hd = AddBytes(hd, entrySize + ALLOCATE_ALLIGNMENT);
+				offset = offset + entrySize + ALLOCATE_ALLIGNMENT;
+			}
+			
+			return false;
 		}
 	}
 
@@ -409,7 +434,6 @@ bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 /// </summary>
 void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer)
 {
-	// TODO: Check whether we also need to consider variables of type int (as they might actually be IntPtr types)
 	// It seems we don't need to follow AddressOfVariable instances, since they always point to an otherwise accessible block
 	if (variable.Type == VariableKind::Boolean || variable.Type == VariableKind::Double || variable.Type == VariableKind::Float || variable.Type == VariableKind::AddressOfVariable)
 	{
@@ -418,7 +442,7 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 	if (variable.Type != VariableKind::ReferenceArray && /* variable.Type != VariableKind::AddressOfVariable &&*/
 		variable.Type != VariableKind::Object && variable.Type != VariableKind::ValueArray)
 	{
-		// A value type - but may contain pointers as well (we don't have full type info on these)
+		// A value type (of any kind or length) - may contain pointers as well (we don't have full type info on these)
 		// To make things simpler, value types which contain reference types have their fields pointer-aligned
 		int* startPtr = (int*)&variable.Object;
 		for (size_t idx = 0; idx < variable.fieldSize() / (sizeof(void*)); idx++)
@@ -428,7 +452,7 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 			{
 				Variable referenceField;
 				referenceField.Marker = VARIABLE_DEFAULT_MARKER;
-				referenceField.Type = VariableKind::AddressOfVariable;
+				referenceField.Type = VariableKind::Object;
 				referenceField.setSize(sizeof(void*));
 				// Create a variable object from a reference field that is stored in an object
 				referenceField.Object = (void*)*ptrToTest;
@@ -454,27 +478,8 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 			continue;
 		}
 
-		GcBlock& block = _gcBlocks[idx1];
 		hd = BlockHd::Cast(AddBytes(ptr, -((int32_t)ALLOCATE_ALLIGNMENT)));
-		if (variable.Type == VariableKind::AddressOfVariable)
-		{
-			// This is a managed pointer, it can point to within an object, so we need to scan the list
-			hd = block.BlockStart;
-			int offset = 0;
-			int blockLen = block.BlockSize;
-			while (offset < blockLen)
-			{
-				int entrySize = hd->BlockSize;
-
-				if (ptr > hd && ptr < AddBytes(hd, entrySize + ALLOCATE_ALLIGNMENT))
-				{
-					break;
-				}
-
-				hd = AddBytes(hd, entrySize + ALLOCATE_ALLIGNMENT);
-				offset = offset + entrySize + ALLOCATE_ALLIGNMENT;
-			}
-		}
+		
 		break;
 	}
 

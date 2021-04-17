@@ -112,7 +112,7 @@ public:
 private:
 	void MarkAllFree();
 	void MarkAllFree(GcBlock& block);
-	int ComputeFreeBlockSizes();
+	int ComputeFreeBlockSizes(bool wipeMemory);
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
 	void MarkStack(FirmataIlExecutor* referenceContainer);
 	bool IsValidMemoryPointer(void* ptr);

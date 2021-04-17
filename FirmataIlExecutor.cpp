@@ -2219,6 +2219,10 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*
 {
 	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
 	// vector must be sorted base-class members first
+	if ((int)vtable == 0xaaaaaaaa)
+	{
+		throw ExecutionEngineException("Accessing deleted object - this is a GC error");
+	}
 	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
 	{
 		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
