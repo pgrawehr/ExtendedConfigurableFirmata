@@ -260,7 +260,7 @@ public:
     int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object);
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
-    Variable GetVariableDescription(ClassDeclaration* vtable, int32_t token);
+    Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
@@ -318,6 +318,9 @@ public:
 	int _startupToken;
 	int _startupFlags;
 	bool _startedFromFlash;
+
+	// An empty instance of type Variable, used for error returns where a "null reference" would be required
+	Variable _clearVariable;
 };
 
 

@@ -2039,6 +2039,67 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result = args[0];
 		break;
 		}
+	case NativeMethod::MathCeiling:
+		{
+		result = args[0]; // Copy input type
+		result.Double = ceil(result.Double);
+		break;
+		}
+	case NativeMethod::MathFloor:
+	{
+		result = args[0]; // Copy input type
+		result.Double = floor(result.Double);
+		break;
+	}
+	case NativeMethod::MathLog:
+	{
+		result = args[0]; // Copy input type
+		result.Double = log(result.Double);
+		break;
+	}
+	case NativeMethod::MathLog2:
+	{
+		result = args[0]; // Copy input type
+		result.Double = log2(result.Double);
+		break;
+	}
+	case NativeMethod::MathLog10:
+	{
+		result = args[0]; // Copy input type
+		result.Double = log10(result.Double);
+		break;
+	}
+	case NativeMethod::MathSin:
+	{
+		result = args[0]; // Copy input type
+		result.Double = sin(result.Double);
+		break;
+	}
+	case NativeMethod::MathCos:
+	{
+		result = args[0]; // Copy input type
+		result.Double = cos(result.Double);
+		break;
+	}
+	case NativeMethod::MathTan:
+	{
+		result = args[0]; // Copy input type
+		result.Double = tan(result.Double);
+		break;
+	}
+	case NativeMethod::MathSqrt:
+	{
+		result = args[0]; // Copy input type
+		result.Double = sqrt(result.Double);
+		break;
+	}
+	case NativeMethod::MathPow:
+	{
+		ASSERT(args.size() == 2);
+		result = args[0]; // Copy input type
+		result.Double = pow(args[0].Double, args[1].Double);
+		break;
+	}
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -2161,6 +2222,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 			// TODO: This is just wrong: Use a reference instead (not critical as long as this method is only
 			// used from native methods, where the actual size of the arguments is known)
 			Variable v;
+			ASSERT(handle->fieldSize() <= 8);
 			memcpy(&v.Object, (o + offset), handle->fieldSize());
 			v.Type = handle->Type;
 			return v;
@@ -2191,12 +2253,12 @@ ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 /// <summary>
 /// Gets the variable description for a field (of type Variable, because it includes the token as value)
 /// </summary>
-Variable FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int32_t token)
+Variable& FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int32_t token)
 {
 	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
 	{
 		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
-		Variable v = GetVariableDescription(parent, token);
+		Variable& v = GetVariableDescription(parent, token);
 		if (v.Type != VariableKind::Void)
 		{
 			return v;
@@ -2212,7 +2274,7 @@ Variable FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, int
 		}
 	}
 
-	return Variable(); // Not found
+	return _clearVariable;
 }
 
 void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector)
@@ -2737,6 +2799,25 @@ Variable MakeUnsigned(Variable &value)
 	}
 	return copy;
 }
+
+Variable MakeSigned(Variable& value)
+{
+	if (value.Type == VariableKind::LargeValueType)
+	{
+		throw ClrException("MakeUnsigned on value type is illegal", SystemException::InvalidOperation, 0);
+	}
+	Variable copy = value;
+	if (copy.Type == VariableKind::Int64 || copy.Type == VariableKind::Uint64)
+	{
+		copy.Type = VariableKind::Int64;
+	}
+	else if (copy.Type == VariableKind::Uint32)
+	{
+		copy.Type = VariableKind::Int32;
+	}
+	return copy;
+}
+
 MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
 	OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
@@ -3821,7 +3902,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		switch (value1.Type)
 		{
 		case VariableKind::Int32:
-			intermediate.Uint64 = value1.Int32;
+			intermediate.Uint64 = value1.Uint32; // This should zero-extend
 			break;
 		case VariableKind::Uint32:
 			intermediate.Uint64 = value1.Uint32;
@@ -4296,8 +4377,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		if (PC >= currentMethod->MethodLength())
 		{
 			// Except for a hacking attempt, this may happen if a branch instruction missbehaves
-			Firmata.sendString(F("Security violation: Attempted to execute code past end of method"));
-			return MethodState::Aborted;
+			throw ExecutionEngineException("Security violation: Attempted to execute code past end of method");
 		}
 
 		instr = DecodeOpcode(&pCode[PC], &len);
@@ -4584,37 +4664,41 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_BGE_UN:
 					case CEE_BGE_UN_S:
 						value1 = MakeUnsigned(value1);
-						// fall trough
-						[[fallthrough]];
+						ComparisonOperation(>= );
+						break;
 					case CEE_BGE:
 					case CEE_BGE_S:
+						value1 = MakeSigned(value1);
 						ComparisonOperation(>= );
 						break;
 					case CEE_BLE_UN:
 					case CEE_BLE_UN_S:
 						value1 = MakeUnsigned(value1);
-						// fall trough
-						[[fallthrough]];
+						ComparisonOperation(<= );
+						break;
 					case CEE_BLE:
 					case CEE_BLE_S:
+						value1 = MakeSigned(value1);
 						ComparisonOperation(<= );
 						break;
 					case CEE_BGT_UN:
 					case CEE_BGT_UN_S:
 						value1 = MakeUnsigned(value1);
-						[[fallthrough]];
-						// fall trough
+						ComparisonOperation(> );
+						break;
 					case CEE_BGT:
 					case CEE_BGT_S:
+						value1 = MakeSigned(value1);
 						ComparisonOperation(> );
 						break;
 					case CEE_BLT_UN:
 					case CEE_BLT_UN_S:
 						value1 = MakeUnsigned(value1);
-						// fall trough
-						[[fallthrough]];
+						ComparisonOperation(< );
+						break;
 					case CEE_BLT:
 					case CEE_BLT_S:
+						value1 = MakeSigned(value1);
 						ComparisonOperation(< );
 						break;
 					case CEE_BNE_UN:
@@ -4724,7 +4808,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						Variable& obj = stack->top();
 						stack->pop();
 						ClassDeclaration* ty = ResolveClassFromFieldToken(token);
-						Variable desc = GetVariableDescription(ty, token);
+						Variable& desc = GetVariableDescription(ty, token);
 						if (desc.Type == VariableKind::Void)
 						{
 							throw ClrException(SystemException::FieldAccess, token);
@@ -4862,7 +4946,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						cls = ((ClassDeclaration*)(*(int*)o));
 					}
 
-					Firmata.sendStringf(F("Callvirt on instance of class %lx"), 4, cls->ClassToken);
+					TRACE(Firmata.sendStringf(F("Callvirt on instance of class %lx"), 4, cls->ClassToken));
 
 					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray &&
 						instance.Type != VariableKind::ReferenceArray && instance.Type != VariableKind::AddressOfVariable)
