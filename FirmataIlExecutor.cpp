@@ -5673,11 +5673,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// The string data is stored inline in the class data junk
 					uint16_t* stringData = (uint16_t*)AddBytes(classInstance, STRING_DATA_START);
 					int i = 0;
-					for (; i < length; i++)
+					byte* stringIterator = string;
+					while(stringIterator < string + length)
 					{
-						// memcpy(classInstance + STRING_DATA_START, string, length);
-						stringData[i] = utf8_to_unicode(string);
+						// Several bytes in the input might make up a byte in the output
+						stringData[i] = utf8_to_unicode(stringIterator);
+						i++;
 					}
+					
+					length = i; // We waste a bit of memory here, but that's hopefully negligible over the added complexity if we need to calculate the required size in an extra step
 					stringData[i] = 0; // Add terminating 0 (the constant array does not include these)
 					ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
 					
