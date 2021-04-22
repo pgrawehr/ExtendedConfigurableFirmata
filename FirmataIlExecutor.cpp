@@ -5923,7 +5923,7 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 /// </summary>
 void* FirmataIlExecutor::CreateInstance(ClassDeclaration* cls)
 {
-	Firmata.sendString(F("Class to create is 0x"), cls->ClassToken);
+	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
 	// The constructor that was called belongs to this class
 	// Compute sizeof(class)
 	size_t sizeOfClass = SizeOfClass(cls);
