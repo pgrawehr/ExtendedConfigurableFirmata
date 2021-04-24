@@ -134,4 +134,5 @@ enum class NativeMethod
     MathCos = 128,
     MathTan = 129,
     MathSqrt = 130,
+    DebugWriteLine = 131,
 };

@@ -237,6 +237,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			while (targetLength > 0)
 			{
 				*tgt = (byte)Wire.read();
+
 				tgt++;
 				targetLength--;
 			}

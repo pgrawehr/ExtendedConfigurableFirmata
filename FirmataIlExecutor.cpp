@@ -182,6 +182,46 @@ uint16_t utf8_to_unicode(byte*& coded)
 	return (uint16_t)charcode;
 }
 
+int unicode_to_utf8(int charcode, byte*& output)
+{
+	if (charcode < 128)
+	{
+		*output = (byte)charcode;
+		output++;
+		return 1;
+	}
+	else
+	{
+		*output = 0;
+		int first_bits = 6;
+		const int other_bits = 6;
+		int first_val = 0xC0;
+		int t = 0;
+		int result = 0;
+		int bytesUsed = 0;
+		while (charcode >= (1 << first_bits))
+		{
+			t = 128 | (charcode & ((1 << other_bits) - 1));
+			charcode >>= other_bits;
+			first_val |= 1 << (first_bits);
+			first_bits--;
+			// Shift existing output to the right
+			memmove(output + 1, output, bytesUsed);
+			*output = (byte)t;
+
+			bytesUsed++;
+		}
+		t = first_val | charcode;
+		
+		memmove(output + 1, output, bytesUsed);
+		*output = (byte)t;
+		bytesUsed++;
+		output += bytesUsed;
+		return bytesUsed;
+	}
+}
+
+
 
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 {
@@ -1148,7 +1188,8 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			ClassDeclaration* ty = _classes.GetClassWithToken(ownToken.Int32);
-			// This is a shortcut for now
+			
+			// This is a shortcut for now. This should test whether the given type is a reference type or a value type with embedded references.
 			result.Type = VariableKind::Boolean;
 			if (ty->IsValueType())
 			{
@@ -1156,11 +1197,14 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			}
 			else
 			{
-				// result.Boolean = true;
-				// TODO: The above is better, but let's find about a bug first
-				throw ClrException(SystemException::InvalidCast, ownToken.Int32);
+				result.Boolean = true;
 			}
 		}
+		break;
+	case NativeMethod::RuntimeHelpersIsBitwiseEquatable:
+		// I think our implementation allows this to work for all types
+		result.Type = VariableKind::Boolean;
+		result.Boolean = true;
 		break;
 	case NativeMethod::TypeGetTypeFromHandle:
 		ASSERT(args.size() == 1);
@@ -2100,6 +2144,27 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Double = pow(args[0].Double, args[1].Double);
 		break;
 	}
+	case NativeMethod::DebugWriteLine:
+		{
+		ASSERT(args.size() == 1);
+		Variable& string = args.at(0);
+		uint16_t* input = (uint16_t*)string.Object;
+		int length = *AddBytes(input, 4);
+		int outLength = 0;
+		byte* outbuf = (byte*)alloca(length * 4 + 2);
+		byte* outStart = outbuf;
+		input = AddBytes(input, STRING_DATA_START);
+			for(int i = 0; i < length; i++)
+			{
+				uint16_t charToEncode = *input;
+				input++;
+				outLength += unicode_to_utf8(charToEncode, outbuf);
+			}
+
+			*outbuf = 0;
+		Firmata.sendString(STRING_DATA, (char*)outStart);
+		break;
+		}
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -2818,8 +2883,28 @@ Variable MakeSigned(Variable& value)
 	return copy;
 }
 
+/// <summary>
+/// This returns the object reference from value if it is an address, otherwise the start of the object
+/// </summary>
+/// <param name="value"></param>
+/// <returns></returns>
+void* GetRealTargetAddress(const Variable& value)
+{
+	if (value.Type == VariableKind::AddressOfVariable || value.Type == VariableKind::Uint32 || value.Type == VariableKind::Int32) // Not all operations correctly keep the type of addresses (TODO)
+	{
+		return value.Object;
+	}
+	else if (value.Type == VariableKind::Object)
+	{
+		// This is undocumented, but we seem to need it to make String.Format with value types work correctly
+		return AddBytes(value.Object, sizeof(void*)); // Point to the data, not the object header
+	}
+
+	throw ExecutionEngineException("Unsupported source type for indirect memory addressing");
+}
+
 MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
-	OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
+                                                      OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
 	Variable intermediate;
 	switch (instr)
@@ -3181,7 +3266,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_I1:
 		{
-			int8_t b = *((int8_t*)value1.Object);
+			int8_t b = *((int8_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = b;
 			stack->push(intermediate);
@@ -3189,7 +3274,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_I2:
 		{
-			int16_t s = *((int16_t*)value1.Object);
+			int16_t s = *((int16_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = s;
 			stack->push(intermediate);
@@ -3197,7 +3282,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_I4:
 		{
-			int32_t i = *((int32_t*)value1.Object);
+			int32_t i = *((int32_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = i;
 			stack->push(intermediate);
@@ -3205,7 +3290,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_I8:
 		{
-			int64_t i8 = *((int64_t*)value1.Object);
+			int64_t i8 = *((int64_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int64;
 			intermediate.Int64 = i8;
 			stack->push(intermediate);
@@ -3213,7 +3298,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 	case CEE_LDIND_R8:
 	{
-		double r8 = *((double*)value1.Object);
+		double r8 = *((double*)GetRealTargetAddress(value1));
 		intermediate.Type = VariableKind::Double;
 		intermediate.Double = r8;
 		stack->push(intermediate);
@@ -3221,7 +3306,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	}
 	case CEE_LDIND_R4:
 	{
-		float r4 = *((float*)value1.Object);
+		float r4 = *((float*)GetRealTargetAddress(value1));
 		intermediate.Type = VariableKind::Float;
 		intermediate.Float = r4;
 		stack->push(intermediate);
@@ -3230,7 +3315,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_LDIND_U1:
 		{
 			// Weird: The definition says that this loads as Int32 as well (and therefore does a sign-extension)
-			byte b = *((byte*)value1.Object);
+			byte b = *((byte*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = b;
 			stack->push(intermediate);
@@ -3238,7 +3323,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_U2:
 		{
-			uint16_t s = *((uint16_t*)value1.Object);
+			uint16_t s = *((uint16_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = s;
 			stack->push(intermediate);
@@ -3246,7 +3331,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_U4:
 		{
-			uint32_t i = *((uint32_t*)value1.Object);
+			uint32_t i = *((uint32_t*)GetRealTargetAddress(value1));
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = i;
 			stack->push(intermediate);
@@ -3254,7 +3339,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_LDIND_REF:
 		{
-			uint32_t* pTarget = (uint32_t*)value1.Object;
+			uint32_t* pTarget = (uint32_t*)GetRealTargetAddress(value1);
 			intermediate.Object = (void*)*pTarget;
 			intermediate.Type = VariableKind::Object;
 			stack->push(intermediate);
@@ -4458,6 +4543,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					
 					break;
 				}
+				else if (instr == CEE_READONLY_)
+				{
+					// We can ignore this, I think.
+					goto immediatellyContinue;
+				}
 
 				MethodState errorState = MethodState::Running;
 				byte numArgumentsToPop = pgm_read_byte(OpcodePops + instr);
@@ -5144,14 +5234,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						{
 							argumentCount--;
 							Variable& v = oldStack->top();
-							////if (argumentCount == 0 && v.Type == VariableKind::AddressOfVariable)
+							////if (argumentCount == 0 && instr == CEE_CALLVIRT && v.Type == VariableKind::Object && cls != nullptr && cls->IsValueType())
 							////{
-							////	// TODO: The "this" pointer of a value type is passed by reference (it is loaded using a ldarga instruction)
-							////	// But for us, it nevertheless points to an object variable slot. (Why?) Therefore, unbox the reference.
-							////	// There are a few more special cases to consider it seems, especially when the called method is virtual, see §8.6.1.5
+							////	// If we're calling into a value type method with an interface (boxed object) that has not been converted to an address, we need to do this now
+							////	// I cannot find where this should happen, but string.Format() on built-in value types is failing without this
 							////	Variable v2;
-							////	v2.Object = (void*)(*((uint32_t*)v.Object));
-							////	v2.Type = VariableKind::Object;
+							////	v2.Object = &v.Object;
+							////	v2.Type = VariableKind::AddressOfVariable;
 							////	arguments->at(0) = v2;
 							////}
 							////else
@@ -5417,7 +5506,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						// can only be an object now
 						v1.Object = (data + ARRAY_DATA_START/4 + index);
-						v1.Type = VariableKind::Object;
+						v1.Type = VariableKind::AddressOfVariable;
 					}
 					stack->push(v1);
 					break;
@@ -6144,6 +6233,7 @@ OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen)
 
 void FirmataIlExecutor::reset()
 {
+	KillCurrentTask(); // TODO: Or skip if running? At least we must not clear the memory while the task runs
 	if (_stringHeapRam != nullptr)
 	{
 		// TODO: Find consecutive junks
