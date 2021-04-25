@@ -51,6 +51,26 @@ uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 			_replyBuffer.push(0x61);
 			return numBytes;
 		}
+		else if (_currentRegister == 0xE9 && numBytes == 2) // Calibration register T1
+		{
+			_replyBuffer.push(0xab); // 26027
+			_replyBuffer.push(0x65);
+		}
+		else if (_currentRegister == 0x8A && numBytes == 2) // Calibration register T2
+		{
+			_replyBuffer.push(0xeb); // 26603
+			_replyBuffer.push(0x67);
+		}
+		else if (_currentRegister == 0x8C && numBytes == 1) // Calibration register T3
+		{
+			_replyBuffer.push(0x3); // 3
+		}
+		else if (_currentRegister == 0x22 && numBytes == 3) // Raw temperature register
+		{
+			_replyBuffer.push(0x78); // 7896832
+			_replyBuffer.push(0x7F);
+			_replyBuffer.push(0x0);
+		}
 		else
 		{
 			for (int i = 0; i < numBytes; i++)
@@ -65,8 +85,7 @@ uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 
 uint8_t TwoWire::requestFrom(int address, int numBytes)
 {
-	_currentDevice = address;
-	return (byte)numBytes;
+	return requestFrom((byte)address, (byte)numBytes);
 }
 
 

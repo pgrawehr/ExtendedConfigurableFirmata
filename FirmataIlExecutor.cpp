@@ -5670,7 +5670,35 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					EnsureStackVarSize(size);
 					if (ty->IsValueType())
 					{
-						tempVariable->Type = (size > 8 ? VariableKind::LargeValueType : VariableKind::Int64);
+						if (size > 8)
+						{
+							tempVariable->Type = VariableKind::LargeValueType;
+						}
+						else if (ty->ClassToken == (int)KnownTypeTokens::Int32)
+						{
+							tempVariable->Type = VariableKind::Int32;
+						}
+						else if (ty->ClassToken == (int)KnownTypeTokens::Uint32)
+						{
+							tempVariable->Type = VariableKind::Uint32;
+						}
+						else if (ty->ClassToken == (int)KnownTypeTokens::Int64)
+						{
+							tempVariable->Type = VariableKind::Int64;
+						}
+						else if (ty->ClassToken == (int)KnownTypeTokens::Uint64)
+						{
+							tempVariable->Type = VariableKind::Uint64;
+						}
+						// Fallback cases
+						else if (size >= 4)
+						{
+							tempVariable->Type = VariableKind::Int64;
+						}
+						else
+						{
+							tempVariable->Type = VariableKind::Int32;
+						}
 					}
 					else
 					{
