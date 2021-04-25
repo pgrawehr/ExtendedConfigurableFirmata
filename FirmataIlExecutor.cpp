@@ -5053,9 +5053,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						throw ClrException("Virtual function call on something that is not an object", SystemException::InvalidCast, currentFrame->_executingMethod->methodToken);
 					}
 
-					int idx = 0;
 					while (cls->ParentToken >= 1) // System.Object does not inherit methods from anywhere
 					{
+						int idx = 0;
 						for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
 						{
 							// The method is being called using the static type of the target
@@ -5124,6 +5124,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							{
 								*AddBytes((short*)newObjInstance, 8 + c * sizeof(short)) = *dataPtr;
 								dataPtr++;
+							}
+						}
+						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharCount)
+						{
+							// The ctor MiniString(char c, int count) was called
+							int length = stack->top().Int32;
+							int c = stack->nth(1).Int32;
+							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							*AddBytes((int*)newObjInstance, 4) = length;
+							for (int i = 0; i < length; i++)
+							{
+								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = (uint16_t)c;
 							}
 						}
 						else
