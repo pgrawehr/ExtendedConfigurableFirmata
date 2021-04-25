@@ -38,3 +38,6 @@ void ASSERT(bool condition, const char* message);
 
 // #define TRACE(x) x
 #define TRACE(x)
+
+// GC debug level. 0 = off, 10 = Extra cautions (and extra slow)
+#define GC_DEBUG_LEVEL 1
