@@ -2076,6 +2076,13 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Int64 = _gc.AllocatedMemory();
 		break;
 		}
+	case NativeMethod::StringCtorCharCount:
+	{
+		// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
+		ASSERT(args.size() == 3);
+		result = args[0];
+		break;
+	}
 	case NativeMethod::StringCtorSpan:
 		{
 			// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
@@ -2346,10 +2353,12 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*
 {
 	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
 	// vector must be sorted base-class members first
+#if GC_DEBUG_LEVEL >= 2
 	if ((int)vtable == 0xaaaaaaaa)
 	{
 		throw ExecutionEngineException("Accessing deleted object - this is a GC error");
 	}
+#endif
 	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
 	{
 		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
@@ -5868,7 +5877,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	// This performs a GC every 50'th instruction. We should find something better (hint: When an OutOfMemoryException is about to be
 	// thrown is a good idea, with every third mouse click not)
-	_gc.Collect(0, this);
+	_gc.Collect(2, this);
 	
 	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
 	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
@@ -5920,11 +5929,12 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 	byte* o = (byte*)object.Object;
 	ClassDeclaration* sourceType = (ClassDeclaration*)(*(int32_t*)o);
 	// If the types are the same, they're assignable
+#if GC_DEBUG_LEVEL >= 2
 	if ((int)sourceType == 0xaaaaaaaa)
 	{
 		throw ExecutionEngineException("Type test on deleted object - this is a GC error");
 	}
-	
+#endif
 	if (sourceType->ClassToken == typeToAssignTo->ClassToken)
 	{
 		return MethodState::Running;

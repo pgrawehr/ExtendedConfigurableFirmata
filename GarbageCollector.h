@@ -85,6 +85,8 @@ public:
 		_totalAllocations = 0;
 		_currentMemoryUsage = 0;
 		_maxMemoryUsage = 0;
+		_numAllocsSinceLastGc = 0;
+		_bytesAllocatedSinceLastGc = 0;
 	}
 
 	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
@@ -112,7 +114,7 @@ public:
 private:
 	void MarkAllFree();
 	void MarkAllFree(GcBlock& block);
-	int ComputeFreeBlockSizes(bool wipeMemory);
+	int ComputeFreeBlockSizes();
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
 	void MarkStack(FirmataIlExecutor* referenceContainer);
 	bool IsValidMemoryPointer(void* ptr);
@@ -122,7 +124,8 @@ private:
 	int _totalAllocations;
 	int _currentMemoryUsage;
 	int _maxMemoryUsage;
-	stdSimple::vector<void*, size_t, 2000> _gcData; // TODO: Remove
+	int _numAllocsSinceLastGc;
+	int _bytesAllocatedSinceLastGc;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };
 

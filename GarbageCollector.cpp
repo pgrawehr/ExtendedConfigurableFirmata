@@ -70,9 +70,13 @@ byte* GarbageCollector::Allocate(uint32_t size)
 		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
 	}
 
+#if GC_DEBUG_LEVEL >= 2
 	ValidateBlocks();
+#endif
 	_totalAllocSize += size;
 	_totalAllocations++;
+	_bytesAllocatedSinceLastGc += size;
+	_numAllocsSinceLastGc++;
 
 	TRACE(Firmata.sendStringf(F("Address is 0x%lx"), 4, ret));
 
@@ -96,6 +100,7 @@ void GarbageCollector::ValidateBlocks()
 		while (offset < blockLen)
 		{
 			int size = hd->BlockSize;
+#if GC_DEBUG_LEVEL >= 1
 			if (size <= 0)
 			{
 				throw ExecutionEngineException("Invalid block size in memory list. That shouldn't happen.");
@@ -111,7 +116,7 @@ void GarbageCollector::ValidateBlocks()
 			{
 				throw ExecutionEngineException("Block marker missing.");
 			}
-			
+#endif
 			hd = AddBytes(hd, size + ALLOCATE_ALLIGNMENT);
 			offset = offset + size + ALLOCATE_ALLIGNMENT;
 		}
@@ -217,22 +222,12 @@ void GarbageCollector::Clear()
 
 	_gcBlocks.clear();
 	
-	for (size_t idx = 0; idx < _gcData.size(); idx++)
-	{
-		void* ptr = _gcData[idx];
-		if (ptr != nullptr)
-		{
-			freeEx(ptr);
-		}
-		_gcData[idx] = nullptr;
-	}
-
-	_gcData.clear(true);
-	
 	_totalAllocSize = 0;
 	_totalAllocations = 0;
 	_currentMemoryUsage = 0;
 	_maxMemoryUsage = 0;
+	_bytesAllocatedSinceLastGc = 0;
+	_numAllocsSinceLastGc = 0;
 }
 
 /// <summary>
@@ -278,7 +273,7 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 /// </summary>
 /// <param name="wipeMemory">Set to true to wipe any free blocks (typically used for debugging, to quicker see if the GC does something odd)</param>
 /// <returns>The number of bytes freed</returns>
-int GarbageCollector::ComputeFreeBlockSizes(bool wipeMemory)
+int GarbageCollector::ComputeFreeBlockSizes()
 {
 	int totalFreed = 0;
 	int totalMemoryInUse = 0;
@@ -295,10 +290,11 @@ int GarbageCollector::ComputeFreeBlockSizes(bool wipeMemory)
 			if (hd->IsFree())
 			{
 				blockFree += entryLength;
-				if (wipeMemory)
+#if GC_DEBUG_LEVEL >= 2
 				{
 					memset(AddBytes(hd, sizeof(BlockHd)), 0xaa, entryLength);
 				}
+#endif
 			}
 			else
 			{
@@ -325,12 +321,22 @@ int GarbageCollector::ComputeFreeBlockSizes(bool wipeMemory)
 
 int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContainer)
 {
+	if (generation >= 2)
+	{
+		// If the generation is given as 2, we skip the GC run if we think not much memory has been allocated
+		if (_numAllocsSinceLastGc < 100 && _bytesAllocatedSinceLastGc < 5000)
+		{
+			return 0;
+		}
+	}
 	TRACE(Firmata.sendString(F("Beginning GC")));
 	MarkAllFree();
 	MarkStatics(referenceContainer);
 	MarkStack(referenceContainer);
-	int result = ComputeFreeBlockSizes(true);
+	int result = ComputeFreeBlockSizes();
 	TRACE(Firmata.sendString(F("GC done")));
+	_numAllocsSinceLastGc = 0;
+	_bytesAllocatedSinceLastGc = 0;
 	return result;
 }
 
