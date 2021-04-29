@@ -27,6 +27,7 @@
 #include "SystemException.h"
 #include "MethodFlags.h"
 #include "KnownTypeTokens.h"
+#include "ExecutorCommand.h"
 #include "ClassDeclaration.h"
 #include "VariableKind.h"
 #include "MethodBody.h"
@@ -35,31 +36,6 @@
 using namespace stdSimple;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
-
-enum class ExecutorCommand : byte
-{
-	None = 0,
-	DeclareMethod = 1,
-	SetMethodTokens = 2,
-	LoadIl = 3,
-	StartTask = 4,
-	ResetExecutor = 5,
-	KillTask = 6,
-	MethodSignature = 7,
-	ClassDeclaration = 8,
-	ClassDeclarationEnd = 9,
-	ConstantData = 10,
-	Interfaces = 11,
-	CopyToFlash = 12,
-	WriteFlashHeader = 13,
-	CheckFlashVersion = 14,
-	EraseFlash = 15,
-	SetConstantMemorySize = 16,
-	SpecialTokenList = 17,
-	
-	Nack = 0x7e,
-	Ack = 0x7f,
-};
 
 enum class MethodState
 {
