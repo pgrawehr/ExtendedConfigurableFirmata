@@ -47,8 +47,8 @@ FlashMemoryManager::FlashMemoryManager()
 #else
 	storage = new DueFlashStorage();
 #endif
-	_endOfHeap = _startOfHeap = storage->readAddress(0); // This just returns the start of the flash memory used by this manager
-	_flashEnd = _startOfHeap + IFLASH1_SIZE;
+	_endOfHeap = _startOfHeap = storage->getFirstFreeBlock(); // This just returns the start of the flash memory used by this manager
+	_flashEnd = storage->readAddress(0) + IFLASH0_SIZE + IFLASH1_SIZE;
 	_header = (FlashMemoryHeader*)_startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = true;
@@ -140,7 +140,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 		throw ExecutionEngineException("Flash memory address out of bounds");
 	}
 
-	if (!storage->write((byte*)flashTarget - _startOfHeap, (byte*)src, length))
+	if (!storage->write((byte*)flashTarget, (byte*)src, length))
 	{
 		throw ExecutionEngineException("Error writing flash");
 	}
@@ -161,7 +161,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.StartupToken = startupToken;
 	hd.StartupFlags = startupFlags;
 	
-	storage->write(0, (byte*)&hd, sizeof(FlashMemoryHeader));
+	storage->write(_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;
 
 	int bytesUsed = _endOfHeap - _startOfHeap;
