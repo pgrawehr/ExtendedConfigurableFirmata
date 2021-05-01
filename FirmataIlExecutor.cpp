@@ -1860,8 +1860,8 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		Variable& length = args[4];
 		ASSERT(srcArray.Type == VariableKind::ReferenceArray || srcArray.Type == VariableKind::ValueArray);
 		ASSERT(dstArray.Type == VariableKind::ReferenceArray || dstArray.Type == VariableKind::ValueArray);
-		ClassDeclaration* srcType = GetClassDeclaration(srcArray);
-		ClassDeclaration* dstType = GetClassDeclaration(dstArray);
+		ClassDeclaration* srcType = GetClassWithToken(*AddBytes((int32_t*)srcArray.Object, 8));
+		ClassDeclaration* dstType = GetClassWithToken(*AddBytes((int32_t*)srcArray.Object, 8));
 			if (srcType != dstType)
 			{
 				throw ClrException(SystemException::ArrayTypeMismatch, srcType->ClassToken);
