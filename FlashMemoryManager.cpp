@@ -43,7 +43,7 @@ public:
 FlashMemoryManager::FlashMemoryManager()
 {
 #ifdef SIM
-	storage = new VirtualFlashMemory(IFLASH1_SIZE);
+	storage = new VirtualFlashMemory(IFLASH0_SIZE + IFLASH1_SIZE);
 #else
 	storage = new DueFlashStorage();
 #endif

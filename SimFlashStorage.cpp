@@ -26,8 +26,19 @@ byte* VirtualFlashMemory::readAddress(uint32_t address)
 	return AddBytes(_memoryBasePtr, address);
 }
 
+byte* VirtualFlashMemory::getFirstFreeBlock()
+{
+	return (byte*)_memoryBasePtr;
+}
+
+
 boolean VirtualFlashMemory::write(uint32_t address, byte* data, uint32_t dataLength)
 {
 	memcpy(_memoryBasePtr + address, data, dataLength);
 	return true;
+}
+
+boolean VirtualFlashMemory::write(byte* address, byte* data, uint32_t dataLength)
+{
+	return write(address - _memoryBasePtr, data, dataLength);
 }
