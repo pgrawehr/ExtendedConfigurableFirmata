@@ -70,6 +70,10 @@ byte* GarbageCollector::Allocate(uint32_t size)
 		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
 	}
 
+	if (ret == nullptr)
+	{
+		OutOfMemoryException::Throw("Out of GC memory.");
+	}
 #if GC_DEBUG_LEVEL >= 2
 	ValidateBlocks();
 #endif
@@ -151,7 +155,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		realSizeToReserve = (realSizeToReserve + ALLOCATE_ALLIGNMENT) & ~(ALLOCATE_ALLIGNMENT - 1);
 	}
 	// The + ALLOCATE_ALLIGNMENT here is so that we don't create a zero-length block at the end
-	if (block.Tail + realSizeToReserve + ALLOCATE_ALLIGNMENT < AddBytes(block.BlockStart, block.BlockSize))
+	if (AddBytes(block.Tail, realSizeToReserve + ALLOCATE_ALLIGNMENT) < AddBytes(block.BlockStart, block.BlockSize))
 	{
 		// There's room at the end of the block. Just use this.
 		hd = block.Tail;
