@@ -1128,6 +1128,37 @@ ClassDeclaration* FirmataIlExecutor::GetTypeFromTypeInstance(Variable& ownTypeIn
 	return t1;
 }
 
+bool FirmataIlExecutor::StringEquals(const VariableVector& args)
+{
+	ASSERT(args.size() == 2);
+	Variable& a = args[0];
+	Variable& b = args[1];
+	if (a.Object == b.Object)
+	{
+		return true;
+	}
+	if (a.Object == nullptr || b.Object == nullptr)
+	{
+		return true;
+	}
+
+	// This function seems to be broken on the Arduino DUE, therefore we implement it manually.
+	// (The possibly missing terminating 0 cannot be the issue, since it works in simulation)
+	// int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
+	ClassDeclaration* ty1 = GetClassDeclaration(a);
+	ClassDeclaration* ty2 = GetClassDeclaration(b);
+	ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String);
+	ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String);
+	int len1 = *AddBytes((int*)a.Object, 4);
+	int len2 = *AddBytes((int*)b.Object, 4);
+	if (len1 != len2)
+	{
+		return false;
+	}
+	int cmp = memcmp(AddBytes(a.Object, STRING_DATA_START), AddBytes(b.Object, STRING_DATA_START), len1 * 2);
+	return cmp == 0;
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
@@ -1724,42 +1755,14 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	case NativeMethod::StringEquals: // These two are technically identical
 	case NativeMethod::StringEqualsStatic:
 		{
-		ASSERT(args.size() == 2);
 		result.Type = VariableKind::Boolean;
-		Variable& a = args[0];
-		Variable& b = args[1];
-		if (a.Object == b.Object)
-		{
-			result.Boolean = true;
-			return;
-		}
-		if (a.Object == nullptr || b.Object == nullptr)
-		{
-			result.Boolean = false;
-			return;
-		}
-		int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
-		result.Boolean = cmp == 0;
+		result.Boolean = StringEquals(args);
 		}
 	break;
 	case NativeMethod::StringUnEqualsStatic:
 	{
-		ASSERT(args.size() == 2);
-		Variable& a = args[0];
-		Variable& b = args[1];
-		if (a.Object == b.Object)
-		{
-			result.Boolean = false;
-			return;
-		}
-		if (a.Object == nullptr || b.Object == nullptr)
-		{
-			result.Boolean = true;
-			return;
-		}
-		int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
 		result.Type = VariableKind::Boolean;
-		result.Boolean = cmp != 0;
+		result.Boolean = !StringEquals(args);
 	}
 	break;
 	case NativeMethod::StringGetHashCode:
@@ -3501,15 +3504,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		// This can only be a value type (of type byte or sbyte)
 		byte* bytePtr = (byte*)data;
+		byte value = *AddBytes(bytePtr, ARRAY_DATA_START + index);
 		if (instr == CEE_LDELEM_I1)
 		{
 			intermediate.Type = VariableKind::Int32;
-			intermediate.Int32 = *(bytePtr + 12 + index);
+			intermediate.Int32 = value; // Does this properly sign-extend?
 		}
 		else
 		{
 			intermediate.Type = VariableKind::Uint32;
-			intermediate.Uint32 = *(bytePtr + 12 + index);
+			intermediate.Uint32 = value & 0xFF;
 		}
 			
 		stack->push(intermediate);

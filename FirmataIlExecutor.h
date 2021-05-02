@@ -240,7 +240,8 @@ public:
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
-    void CreateException(SystemException exception, Variable& managedException, int hintToken);
+	bool StringEquals(const VariableVector& args);
+	void CreateException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
