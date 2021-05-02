@@ -1868,7 +1868,15 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			}
 		byte* srcPtr = (byte*)AddBytes(srcArray.Object, ARRAY_DATA_START + (srcType->ClassDynamicSize * srcIndex.Int32));
 		byte* dstPtr = (byte*)AddBytes(dstArray.Object, ARRAY_DATA_START + (dstType->ClassDynamicSize * dstIndex.Int32));
-		int bytesToCopy = srcType->ClassDynamicSize * length.Int32;
+		int bytesToCopy = 0;
+		if (srcArray.Type == VariableKind::ReferenceArray)
+		{
+			bytesToCopy = sizeof(void*) * length.Int32;
+		}
+		else
+		{
+			bytesToCopy = srcType->ClassDynamicSize * length.Int32;
+		}
 		memmove(dstPtr, srcPtr, bytesToCopy);
 		result.Type = VariableKind::Void;
 		}
@@ -5400,10 +5408,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						throw ClrException("Array index out of range", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
 					}
 
+					// This should always exist
+					ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 					if (value1.Type == VariableKind::ValueArray)
 					{
-						// This should always exist
-						ClassDeclaration* elemTy = _classes.GetClassWithToken(token);
 						EnsureStackVarSize(elemTy->ClassDynamicSize);
 						tempVariable->Marker = VARIABLE_DEFAULT_MARKER;
 						switch (elemTy->ClassDynamicSize)
@@ -5451,12 +5459,27 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					else
 					{
-						// can only be an object now
+						// can only be a reference type now (either an object, or another array)
 						Variable v1;
 						v1.Marker = VARIABLE_DEFAULT_MARKER;
 						v1.Object = (void*)*(data + ARRAY_DATA_START/4 + index);
 						v1.Type = VariableKind::Object;
 						v1.setSize(4);
+						if (elemTy->IsArray())
+						{
+							// If the inner type is an array, we need to find wether it's a value or a reference array (or any further operations on this inner array don't
+							// see the right variable type)
+							int arrayTypeToken = *AddBytes((int*)v1.Object, 8);
+							ClassDeclaration* innerArrayType = GetClassWithToken(arrayTypeToken);
+							if (innerArrayType->IsValueType())
+							{
+								v1.Type = VariableKind::ValueArray;
+							}
+							else
+							{
+								v1.Type = VariableKind::ReferenceArray;
+							}
+						}
 						stack->push(v1);
 					}
 					break;
