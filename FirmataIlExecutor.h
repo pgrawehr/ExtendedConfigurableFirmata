@@ -239,6 +239,7 @@ public:
     Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args);
 	void CreateException(SystemException exception, Variable& managedException, int hintToken);

@@ -4921,6 +4921,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						tempVariable->Marker = 0x37;
 						tempVariable->Type = desc.Type;
 						memcpy(&(tempVariable->Int32), dataPtr, desc.Size);
+						SignExtend(*tempVariable, desc.Size);
 						stack->push(*tempVariable);
 						break;
 						}
@@ -5957,6 +5958,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
+}
+
+void FirmataIlExecutor::SignExtend(Variable& variable, int inputSize)
+{
+	// For int64, both paths may be taken, so that extension from i1 to i8 is possible
+	if (variable.Type == VariableKind::Int32 || variable.Type == VariableKind::Int64)
+	{
+		if (inputSize == 1 && variable.Int32 >= 0x80)
+		{
+			variable.Int32 |= 0xFFFFFF00;
+		}
+		if (inputSize == 2 && variable.Int32 >= 0x8000)
+		{
+			variable.Int32 |= 0xFFFF0000;
+		}
+	}
+	if (variable.Type == VariableKind::Int64 && variable.Int64 >= 0x80000000)
+	{
+		variable.Int64 |= 0xFFFFFFFF00000000;
+	}
 }
 
 void FirmataIlExecutor::CreateException(SystemException exception, Variable& managedException, int hintToken)
