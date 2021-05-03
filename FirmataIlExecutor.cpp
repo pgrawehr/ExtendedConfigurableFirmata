@@ -1677,17 +1677,50 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		break;
 	case NativeMethod::StringCompareTo:
 		{
+			// Actually, this should do a language-dependent sorting. But for now, the implementation is the same as CompareStringsOrdinal
 			ASSERT(args.size() == 2);
 			result.Type = VariableKind::Int32;
 			result.setSize(4);
-			Variable& other = args[1];
-			if (other.Object == nullptr)
+			Variable& a = args[0];
+			Variable& b = args[1];
+			if (b.Object == nullptr)
 			{
 				result.Int32 = 1; // by definition, this returns >0 for comparing to null
 			}
 			else
 			{
-				result.Int32 = strcmp(AddBytes((char*)args[0].Object, 8), AddBytes((char*)args[1].Object, 8));
+				ClassDeclaration* ty1 = GetClassDeclaration(a);
+				ClassDeclaration* ty2 = GetClassDeclaration(b);
+				ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String);
+				ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String);
+				int len1 = *AddBytes((int*)a.Object, 4);
+				int len2 = *AddBytes((int*)b.Object, 4);
+				int min = MIN(len1, len2);
+				for (int i = 0; i < min; i++)
+				{
+					uint16_t c1 = *AddBytes((uint16_t*)a.Object, STRING_DATA_START + i * 2);
+					uint16_t c2 = *AddBytes((uint16_t*)b.Object, STRING_DATA_START + i * 2);
+					if (c1 < c2)
+					{
+						result.Int32 = -1;
+						return;
+					}
+					else if (c1 > c2)
+					{
+						result.Int32 = 1;
+						return;
+					}
+				}
+
+				// If they're equal so far, the shorter string shall precede the longer one.
+				if (len1 == len2)
+				{
+					result.Int32 = 0;
+					return;
+				}
+				
+				result.Int32 = len1 < len2 ? -1 : 1;
+				return;
 			}
 		}
 		break;
