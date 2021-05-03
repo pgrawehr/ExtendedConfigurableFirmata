@@ -50,6 +50,7 @@ public:
     inline size_t write(int n) { return write((uint8_t)n); }
 
 private:
+	void ReplyShort(int16_t value);
 	int _currentDevice;
 	int _currentRegister;
 	byte _bytesInCurrentTransmission;

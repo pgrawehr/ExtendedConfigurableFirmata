@@ -39,6 +39,12 @@ uint8_t TwoWire::endTransmission(uint8_t stopTx)
 	return 0;
 }
 
+void TwoWire::ReplyShort(int16_t value)
+{
+	_replyBuffer.push((value) & 0xFF);
+	_replyBuffer.push((value >> 8) & 0xFF);
+}
+
 uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 {
 	_currentDevice = address;
@@ -67,8 +73,54 @@ uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 		}
 		else if (_currentRegister == 0x22 && numBytes == 3) // Raw temperature register
 		{
-			_replyBuffer.push(0x78); // 7896832
-			_replyBuffer.push(0x7F);
+			_replyBuffer.push(0x75); // 7825152
+			_replyBuffer.push(0x67);
+			_replyBuffer.push(0x0);
+		}
+		else if (_currentRegister == 0x8E && numBytes == 2) // P1
+		{
+			ReplyShort(-28984); // 36552, unsigned
+		}
+		else if (_currentRegister == 0x90 && numBytes == 2) // P2
+		{
+			ReplyShort(-10293);
+		}
+		else if (_currentRegister == 0x92 && numBytes == 1) // P3
+		{
+			_replyBuffer.push(88);
+		}
+		else if (_currentRegister == 0x94 && numBytes == 2) // P4
+		{
+			ReplyShort(4515);
+		}
+		else if (_currentRegister == 0x96 && numBytes == 2) // P5
+		{
+			ReplyShort(-125);
+		}
+		else if (_currentRegister == 0x99 && numBytes == 1) // P6
+		{
+			_replyBuffer.push(30);
+		}
+		else if (_currentRegister == 0x98 && numBytes == 1) // P7
+		{
+			_replyBuffer.push(33);
+		}
+		else if (_currentRegister == 0x9C && numBytes == 2) // P8
+		{
+			ReplyShort(-1511);
+		}
+		else if (_currentRegister == 0x9E && numBytes == 2) // P9
+		{
+			ReplyShort(-3062);
+		}
+		else if (_currentRegister == 0xA0 && numBytes == 1) // P10
+		{
+			_replyBuffer.push(30);
+		}
+		else if (_currentRegister == 0x1F && numBytes == 3) // Raw temperature register
+		{
+			_replyBuffer.push(0x67); // 6753536
+			_replyBuffer.push(0x0D);
 			_replyBuffer.push(0x0);
 		}
 		else
