@@ -51,7 +51,7 @@ public:
 			{
 				VariableDescription* start = variableDescriptions + i;
 				size_t fieldSize = start->fieldSize();
-				_data[idx].setSize((u16)fieldSize);
+				_data[idx].setSize((uint16_t)fieldSize);
 				_data[idx].Type = start->Type;
 				_data[idx].Marker = start->Marker;
 				idx++;

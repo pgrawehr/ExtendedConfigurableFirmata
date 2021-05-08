@@ -101,11 +101,11 @@ public:
 class ExecutionState
 {
 	private:
-	u16 _pc;
+	uint16_t _pc;
 	VariableDynamicStack _executionStack;
 	VariableVector _locals;
 	VariableVector _arguments;
-	u16 _taskId;
+	int _taskId;
 	
 	public:
 	// Next inner execution frame (the innermost frame is being executed) 
@@ -113,9 +113,7 @@ class ExecutionState
 	MethodBody* _executingMethod;
 	VariableList _localStorage; // Memory allocated by localloc
 
-	u32 _memoryGuard;
-	
-	ExecutionState(u16 taskId, u16 maxStack, MethodBody* executingMethod) :
+	ExecutionState(int taskId, uint16_t maxStack, MethodBody* executingMethod) :
 		_pc(0), _executionStack(10),
 		_locals(), _arguments()
 	{
@@ -130,7 +128,7 @@ class ExecutionState
 		_next = nullptr;
 	}
 	
-	void ActivateState(u16* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
+	void ActivateState(uint16_t* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
 	{
 		*pc = _pc;
 		*stack = &_executionStack;
@@ -152,12 +150,12 @@ class ExecutionState
 		_arguments[argNo].Type = type;
 	}
 		
-	void UpdatePc(u16 pc)
+	void UpdatePc(uint16_t pc)
 	{
 		_pc = pc;
 	}
 
-	u16 CurrentPc()
+	uint16_t CurrentPc()
 	{
 		return _pc;
 	}
@@ -196,10 +194,10 @@ public:
 
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
-	ExecutionError LoadIlDataStream(int token, u16 codeLength, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadIlDataStream(int token, uint16_t codeLength, uint16_t offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(int token, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod);
 	ExecutionError LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv);
-	ExecutionError LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv);
+	ExecutionError LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv);
 	ExecutionError PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize);
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
@@ -219,11 +217,11 @@ public:
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	Variable Box(Variable& value, ClassDeclaration* ty);
 	
-    MethodState BasicStackInstructions(ExecutionState* state, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
+    MethodState BasicStackInstructions(ExecutionState* state, uint16_t PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                        OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     int AllocateArrayInstance(int token, int size, Variable& v1);
 
-    ExecutionError DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv);
+    ExecutionError DecodeParametersAndExecute(int methodToken, int taskId, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
 	byte* AllocGcInstance(size_t bytes);
@@ -231,7 +229,7 @@ public:
 	void KillCurrentTask();
 	void CleanStack(ExecutionState* state);
 	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
-	void InvalidOpCode(u16 pc, OPCODE opCode);
+	void InvalidOpCode(uint16_t pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;
     MethodState IsAssignableFrom(ClassDeclaration* typeToAssignTo, const Variable& object);
@@ -244,14 +242,14 @@ public:
 	bool StringEquals(const VariableVector& args);
 	void CreateException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
-	void* CreateInstanceOfClass(int32_t typeToken, u32 length);
+	void* CreateInstanceOfClass(int32_t typeToken, uint32_t length);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
     ClassDeclaration* ResolveClassFromFieldToken(int32_t fieldToken);
     static uint16_t SizeOfClass(ClassDeclaration* cls);
 	uint32_t DecodeUint32(byte* argv);
 	void SendUint32(uint32_t value);
 	uint16_t DecodePackedUint14(byte* argv);
-    void SendExecutionResult(u16 codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
+    void SendExecutionResult(int32_t codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(int32_t token);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
@@ -276,7 +274,7 @@ public:
 	SortedMethodList _methods;
 
 	// The list of static variables (global)
-	stdSimple::map<u32, Variable> _statics;
+	stdSimple::map<uint32_t, Variable> _statics;
 
 	VariableList _largeStatics;
 

@@ -55,7 +55,7 @@ const byte OpcodePops[] PROGMEM =
 #undef OPDEF
 };
 
-OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen);
+OPCODE DecodeOpcode(const BYTE *pCode, uint16_t *pdwLen);
 
 boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 {
@@ -718,7 +718,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	int topLevelMethod = _methodCurrentlyExecuting->TaskId();
 
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult((u16)topLevelMethod, _currentException, Variable(), MethodState::Killed);
+	SendExecutionResult(topLevelMethod, _currentException, Variable(), MethodState::Killed);
 	Firmata.sendString(F("Code execution aborted"));
 	
 	CleanStack(_methodCurrentlyExecuting);
@@ -763,7 +763,7 @@ void FirmataIlExecutor::report(bool elapsed)
 	}
 
 	int methodindex = _methodCurrentlyExecuting->TaskId();
-	SendExecutionResult((u16)methodindex, _currentException, retVal, execResult);
+	SendExecutionResult(methodindex, _currentException, retVal, execResult);
 
 	// The method ended
 	CleanStack(_methodCurrentlyExecuting);
@@ -826,7 +826,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
 			method->AddArgumentDescription(desc);
 			i += 3;
 		}
@@ -838,7 +838,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (u16)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
 			method->AddLocalDescription(desc);
 			i += 3;
 		}
@@ -851,7 +851,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 	return ExecutionError::None;
 }
 
-ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, u16 codeLength, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, uint16_t codeLength, uint16_t offset, byte argc, byte* argv)
 {
 	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
 	MethodBody* method = GetMethodByToken(methodToken);
@@ -918,7 +918,7 @@ void FirmataIlExecutor::SendUint32(uint32_t value)
 	Firmata.sendValueAsTwo7bitBytes(value >> 24 & 0xFF);
 }
 
-void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException& ex, Variable returnValue, MethodState execResult)
+void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeException& ex, Variable returnValue, MethodState execResult)
 {
 	// Reply format:
 	// bytes 0-1: Reference of method that exited
@@ -950,7 +950,7 @@ void FirmataIlExecutor::SendExecutionResult(u16 codeReference, RuntimeException&
 		SendPackedInt32(ex.TokenOfException);
 		
 		SendPackedInt32(0); // A dummy marker
-		for (u32 i = 0; i < RuntimeException::MaxStackTokens; i++)
+		for (int i = 0; i < RuntimeException::MaxStackTokens; i++)
 		{
 			SendPackedInt32(ex.StackTokens[i]);
 			SendPackedInt32(ex.PerStackPc[i]);
@@ -1005,7 +1005,7 @@ void FirmataIlExecutor::SendPackedInt64(int64_t value)
 }
 
 
-ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u16 taskId, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, int taskId, byte argc, byte* argv)
 {
 	Variable result;
 	MethodBody* method = GetMethodByToken(methodToken);
@@ -1058,7 +1058,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, u1
 	return ExecutionError::None;
 }
 
-void FirmataIlExecutor::InvalidOpCode(u16 pc, OPCODE opCode)
+void FirmataIlExecutor::InvalidOpCode(uint16_t pc, OPCODE opCode)
 {
 	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
 	
@@ -2956,7 +2956,7 @@ void* GetRealTargetAddress(const Variable& value)
 	throw ExecutionEngineException("Unsupported source type for indirect memory addressing");
 }
 
-MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, u16 PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
+MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, uint16_t PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                                       OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
 	Variable intermediate;
@@ -3481,7 +3481,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 
 		// This can only be a value type (of type short or ushort)
-		u16* sPtr = (u16*)data;
+		uint16_t* sPtr = (uint16_t*)data;
 		if (instr == CEE_LDELEM_I1)
 		{
 			intermediate.Type = VariableKind::Int32;
@@ -3513,7 +3513,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 
 		// This can only be a value type (of type short or ushort)
-		u16* sPtr = (u16*)data;
+		uint16_t* sPtr = (uint16_t*)data;
 		*(sPtr + 6 + index) = (short)value3.Int32;
 	}
 	break;
@@ -4350,8 +4350,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	int instructionsExecutedThisLoop = 0;
 	int constrainedTypeToken = 0; // Only used for the CONSTRAINED. prefix
 	MethodBody* target = nullptr; // Used for the calli instruction
-	u16 PC = 0;
-	u32* hlpCodePtr;
+	uint16_t PC = 0;
 	VariableDynamicStack* stack;
 	VariableVector* locals;
 	VariableVector* arguments;
@@ -4376,7 +4375,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     	immediatellyContinue: // Label used by prefix codes, to prevent interruption
 		instructionsExecutedThisLoop++;
 		
-		u16   len;
+		uint16_t len;
         OPCODE  instr;
 		
 		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method 0x%lx"), 6, PC, currentMethod->methodToken));
@@ -4425,7 +4424,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					if (declaration->MethodFlags() == (int)MethodFlags::Ctor && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
 					{
 						newInstance = CreateInstanceOfClass(typeToken, 0);
-						newState = new ExecutionState((u16)currentFrame->TaskId(), declaration->MaxExecutionStack(), declaration);
+						newState = new ExecutionState(currentFrame->TaskId(), declaration->MaxExecutionStack(), declaration);
 						newState->ActivateState(&PC, &stack, &locals, &arguments);
 						int argNum = 0;
 						for (; argNum < argsLen; argNum++)
@@ -4693,9 +4692,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
                 break;
             case InlineI:
             {
-				hlpCodePtr = (u32*)(pCode + PC);
-				u32 v = *hlpCodePtr;
-                PC += 4;
+				uint32_t v = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				PC += 4;
 				if (instr == CEE_LDC_I4)
 				{
 					intermediate.Int32 = v;
@@ -4889,7 +4887,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				else if (intermediate.Boolean)
 				{
-					int32_t offset = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					int32_t offset = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 					int32_t dest = (PC + 4) + offset;
 					PC = (short)dest;
 				}
@@ -4902,7 +4900,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineField:
 	            {
-				int32_t token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+				int32_t token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 				PC += 4;
 		            switch(instr)
 		            {
@@ -4996,10 +4994,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 
 				void* newObjInstance = nullptr;
-            	
-				hlpCodePtr = (u32*)(pCode + PC);
-				u32 tk = *hlpCodePtr;
-                PC += 4;
+
+				// This uses this complex addressing because we need this to work independently of any alignment restrictions
+				int32_t tk = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				PC += 4;
 
 				MethodBody* newMethod = nullptr;
 				if (instr == CEE_CALLI)
@@ -5222,10 +5220,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             	// Save return PC
                 currentFrame->UpdatePc(PC);
 				
-				u16 argumentCount = newMethod->NumberOfArguments();
+				uint16_t argumentCount = newMethod->NumberOfArguments();
 				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
 				// to calculate on void types)
-				ExecutionState* newState = new ExecutionState((u16)currentFrame->TaskId(), newMethod->MaxExecutionStack(), newMethod);
+				ExecutionState* newState = new ExecutionState(currentFrame->TaskId(), newMethod->MaxExecutionStack(), newMethod);
 				if (newState == nullptr)
 				{
 					// Could also send a stack overflow exception here, but the reason is the same
@@ -5327,7 +5325,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineType:
 			{
-				int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+				int token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 				PC += 4;
 				int size;
 				switch(instr)
@@ -5786,7 +5784,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					{
 						tempVariable->Type = VariableKind::Object;
 					}
-					tempVariable->setSize((u16)size);
+					tempVariable->setSize((uint16_t)size);
 					tempVariable->Marker = 0x37;
 					memcpy(&tempVariable->Int32, value1.Object, size);
 					stack->push(*tempVariable);
@@ -5821,7 +5819,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			}
 			case InlineTok:
 				{
-					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					int token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 					PC += 4;
 					switch(instr)
 					{
@@ -5857,7 +5855,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			case InlineString:
 				{
 					// opcode must be CEE_LDSTR
-					int token = static_cast<int32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					int token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 					PC += 4;
 					bool emptyString = (token & 0xFFFF) == 0;
 					int length = 0;
@@ -5897,9 +5895,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					Variable& targetIndex = stack->top();
 					stack->pop();
-					uint32_t size = static_cast<uint32_t>(((u32)pCode[PC]) + (((u32)pCode[PC + 1]) << 8) + (((u32)pCode[PC + 2]) << 16) + (((u32)pCode[PC + 3]) << 24));
+					uint32_t size = static_cast<uint32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
 					int* targets = (int*)AddBytes(pCode, PC + 4);
-					PC += (u16)(4 * (size + 1)); // Point to instruction beyond end of switch
+					PC += (uint16_t)(4 * (size + 1)); // Point to instruction beyond end of switch
 					if (targetIndex.Uint32 < size) // If the index is out of bounds, we fall trough
 					{
 						int offset = targets[targetIndex.Uint32];
@@ -5993,14 +5991,14 @@ void FirmataIlExecutor::CreateException(SystemException exception, Variable& man
 	ExecutionState* currentFrame = _methodCurrentlyExecuting;
 	int idx = 0;
 	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
-	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(u16));
+	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(uint16_t));
 	while (currentFrame != NULL)
 	{
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
 			// If we have more than MaxStackTokens elements, shift the list and drop the first (lowest) elements
 			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int) * (RuntimeException::MaxStackTokens - 1));
-			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(u16) * (RuntimeException::MaxStackTokens - 1));
+			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(uint16_t) * (RuntimeException::MaxStackTokens - 1));
 			idx--;
 		}
 		
@@ -6070,7 +6068,7 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 /// <summary>
 /// Creates a class directly by its type (used i.e. to create instances of System::Type or System::String)
 /// </summary>
-void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, u32 length /* for string */)
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, uint32_t length /* for string */)
 {
 	ClassDeclaration* cls = _classes.GetClassWithToken(typeToken);
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
@@ -6173,7 +6171,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 	return cls->ClassDynamicSize + sizeof(void*);
 }
 
-ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, u32 classToken, u32 parent, u16 dynamicSize, u16 staticSize, u16 flags, u16 offset, byte argc, byte* argv)
+ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv)
 {
 	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
@@ -6334,7 +6332,7 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 	return nullptr;
 }
 
-OPCODE DecodeOpcode(const BYTE *pCode, u16 *pdwLen)
+OPCODE DecodeOpcode(const BYTE *pCode, uint16_t *pdwLen)
 {
     OPCODE opcode;
 

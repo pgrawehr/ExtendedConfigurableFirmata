@@ -34,7 +34,7 @@ public:
 		return _methodFlags;
 	}
 
-	u16 MethodLength() const
+	uint16_t MethodLength() const
 	{
 		if (_methodIl == nullptr)
 		{
@@ -71,7 +71,7 @@ public:
 	{
 		// We need only either of these two
 		NativeMethod _nativeMethod; // Native method number
-		u16 _methodLength;
+		uint16_t _methodLength;
 	};
 	
 protected:
