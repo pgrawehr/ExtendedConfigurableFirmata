@@ -3502,10 +3502,11 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		// This can only be a value type (of type short or ushort)
 		uint16_t* sPtr = (uint16_t*)data;
-		if (instr == CEE_LDELEM_I1)
+		if (instr == CEE_LDELEM_I2)
 		{
 			intermediate.Type = VariableKind::Int32;
 			intermediate.Int32 = *(sPtr + 6 + index);
+			SignExtend(intermediate, 2);
 		}
 		else
 		{
@@ -4681,6 +4682,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					case CEE_LDC_I4_S:
 						intermediate.Int32 = data;
 						intermediate.Type = VariableKind::Int32;
+						SignExtend(intermediate, 1);
 						stack->push(intermediate);
 						break;
 					case CEE_LDLOC_S:
