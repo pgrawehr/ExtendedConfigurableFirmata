@@ -253,6 +253,8 @@ public:
 	MethodBody* GetMethodByToken(int32_t token);
 	void SendPackedInt32(int32_t value);
 	void SendPackedInt64(int64_t value);
+	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
+	void SendString(Variable& string);
 
 	byte* GetString(int stringToken, int& length);
 	byte* GetString(byte* heap, int stringToken, int& length);

@@ -1159,6 +1159,26 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 	return cmp == 0;
 }
 
+// Should have a variant of this that keeps the string in memory (but cannot use alloca then)
+void FirmataIlExecutor::SendString(Variable& string)
+{
+	uint16_t* input = (uint16_t*)string.Object;
+	int length = *AddBytes(input, 4);
+	int outLength = 0;
+	byte* outbuf = (byte*)alloca(length * 4 + 2);
+	byte* outStart = outbuf;
+	input = AddBytes(input, STRING_DATA_START);
+	for(int i = 0; i < length; i++)
+	{
+		uint16_t charToEncode = *input;
+		input++;
+		outLength += unicode_to_utf8(charToEncode, outbuf);
+	}
+
+	*outbuf = 0;
+	Firmata.sendString(STRING_DATA, (char*)outStart);
+}
+
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
@@ -2195,25 +2215,23 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Double = pow(args[0].Double, args[1].Double);
 		break;
 	}
+	case NativeMethod::MathExp:
+		{
+		result = args[0];
+		result.Double = exp(args[0].Double);
+		break;
+		}
+	case NativeMethod::MathAbs:
+	{
+		result = args[0];
+		result.Double = abs(args[0].Double);
+		break;
+	}
 	case NativeMethod::DebugWriteLine:
 		{
 		ASSERT(args.size() == 1);
 		Variable& string = args.at(0);
-		uint16_t* input = (uint16_t*)string.Object;
-		int length = *AddBytes(input, 4);
-		int outLength = 0;
-		byte* outbuf = (byte*)alloca(length * 4 + 2);
-		byte* outStart = outbuf;
-		input = AddBytes(input, STRING_DATA_START);
-			for(int i = 0; i < length; i++)
-			{
-				uint16_t charToEncode = *input;
-				input++;
-				outLength += unicode_to_utf8(charToEncode, outbuf);
-			}
-
-			*outbuf = 0;
-		Firmata.sendString(STRING_DATA, (char*)outStart);
+		SendString(string);
 		break;
 		}
 	default:
@@ -2970,7 +2988,9 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			stack->pop();
 		}
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
-		// TODO: Extract the string from the argument
+		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
+		SendString(messageField);
+		// TODO: Use the above string in the message
 		throw ClrException("Custom exception", SystemException::CustomException, exceptionType->ClassToken);
 	}
 	case CEE_NOP:
@@ -4333,6 +4353,11 @@ int FirmataIlExecutor::MethodMatchesArgumentTypes(MethodBody* declaration, Varia
 }
 
 
+uint32_t FirmataIlExecutor::ReadUint32FromArbitraryAddress(byte* pCode)
+{
+	return static_cast<int32_t>(((uint32_t)pCode[0]) + (((uint32_t)pCode[1]) << 8) + (((uint32_t)pCode[2]) << 16) + (((uint32_t)pCode[3]) << 24));
+}
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -4692,7 +4717,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
                 break;
             case InlineI:
             {
-				uint32_t v = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				uint32_t v = ReadUint32FromArbitraryAddress(pCode + PC);
 				PC += 4;
 				if (instr == CEE_LDC_I4)
 				{
@@ -4710,10 +4735,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 			case InlineI8: // LDC.i8 instruction
 			{
-				uint32_t* hlpCodePtr8 = (uint32_t*)(pCode + PC);
-
 				// We need to read the 64 bit value as two 32-bit values, since the CPU crashes on unaligned reads of 64 bit values otherwise
-				int64_t data = ((int64_t)(*hlpCodePtr8)) | ((uint64_t) * (hlpCodePtr8 + 1)) << 32; // Little endian!
+				int64_t data = ((int64_t)(ReadUint32FromArbitraryAddress(pCode + PC))) | ((uint64_t) (ReadUint32FromArbitraryAddress(pCode + PC + 4))) << 32; // Little endian!
 				PC += 8;
 				if (instr == CEE_LDC_I8)
 				{
@@ -4730,11 +4753,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			}
 			case InlineR: // LDC.r8 instruction
 			{
-				uint32_t* hlpCodePtr8 = (uint32_t*)(pCode + PC);
-				// Firmata.sendString(F("Before 64 bit access"));
-
-            	// We need to read the 64 bit value as two 32-bit values, since the CPU crashes on unaligned reads of 64 bit values otherwise
-				int64_t data = ((int64_t)(*hlpCodePtr8)) | ((uint64_t)*(hlpCodePtr8 + 1)) << 32; // Little endian!
+				// We need to read the 64 bit value as two 32-bit values, since the CPU crashes on unaligned reads of 64 bit values otherwise
+				int64_t data = ((int64_t)(ReadUint32FromArbitraryAddress(pCode + PC))) | ((uint64_t)(ReadUint32FromArbitraryAddress(pCode + PC + 4))) << 32; // Little endian!
 				// Firmata.sendString(F("After 64 bit access"));
 				double v = *reinterpret_cast<double*>(&data);
 				// Firmata.sendString(F("after conversion access"));
@@ -4754,8 +4774,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			}
 			case ShortInlineR: // LDC.r4 instruction
 			{
-				float* hlpCodePtr4 = (float*)(pCode + PC);
-				float v = *hlpCodePtr4;
+				int32_t data = ReadUint32FromArbitraryAddress(pCode + PC);
+				float v = *reinterpret_cast<float*>(&data);
 				PC += 4;
 				if (instr == CEE_LDC_R4)
 				{
@@ -4887,7 +4907,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				}
 				else if (intermediate.Boolean)
 				{
-					int32_t offset = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+					int32_t offset = ReadUint32FromArbitraryAddress(pCode + PC);
 					int32_t dest = (PC + 4) + offset;
 					PC = (short)dest;
 				}
@@ -4900,7 +4920,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineField:
 	            {
-				int32_t token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				int32_t token = ReadUint32FromArbitraryAddress(pCode + PC);
 				PC += 4;
 		            switch(instr)
 		            {
@@ -4996,7 +5016,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				void* newObjInstance = nullptr;
 
 				// This uses this complex addressing because we need this to work independently of any alignment restrictions
-				int32_t tk = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				int32_t tk = ReadUint32FromArbitraryAddress(pCode + PC);
 				PC += 4;
 
 				MethodBody* newMethod = nullptr;
@@ -5325,7 +5345,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
             }
 			case InlineType:
 			{
-				int token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				int token = ReadUint32FromArbitraryAddress(pCode + PC);
 				PC += 4;
 				int size;
 				switch(instr)
@@ -5819,7 +5839,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			}
 			case InlineTok:
 				{
-					int token = static_cast<int32_t>(((uint32_t)pCode[PC]) + (((uint32_t)pCode[PC + 1]) << 8) + (((uint32_t)pCode[PC + 2]) << 16) + (((uint32_t)pCode[PC + 3]) << 24));
+				int token = ReadUint32FromArbitraryAddress(pCode + PC);
 					PC += 4;
 					switch(instr)
 					{
