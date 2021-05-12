@@ -378,6 +378,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				int* specialTokenListPtr = CopySpecialTokenListToFlash();
 				_startupToken = DecodePackedUint32(argv + 2 + 10);
 				_startupFlags = DecodePackedUint32(argv + 2 + 15);
+					
+				_classes.ValidateListOrder();
+				_methods.ValidateListOrder();
+				_constants.ValidateListOrder();
 				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, _startupToken, _startupFlags);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
@@ -611,11 +615,11 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 	if (offset == 0)
 	{
 		int numToDecode = num7BitOutbytes(argc);
-		data2 = (int*)mallocEx(currentEntryLength + 2 * sizeof(int));
+		ConstantEntry* data2 = (ConstantEntry*)mallocEx(currentEntryLength + 2 * sizeof(int));
 		Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, 2 * sizeof(int)));
-		data2[0] = constantToken;
-		data2[1] = currentEntryLength;
-		_constants.Insert((byte*)data2);
+		data2->Token = constantToken;
+		data2->Length = currentEntryLength;
+		_constants.Insert(data2);
 		return ExecutionError::None;
 	}
 
@@ -6342,12 +6346,10 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 
 MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 {
-	for (auto current = _methods.GetIterator(); current.Next();)
+	MethodBody* ret = _methods.BinarySearchKey(token);
+	if (ret != nullptr)
 	{
-		if (current.Current()->methodToken == token)
-		{
-			return current.Current();
-		}
+		return ret;
 	}
 
 	TRACE(Firmata.sendString(F("Reference not found: "), token));

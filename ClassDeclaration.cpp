@@ -219,11 +219,11 @@ void SortedConstantList::CopyContentsToFlash()
 {
 	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{
-		byte* sourceAddress = *iterator;
-		int* sourceHdr = (int*)sourceAddress;
-		int length = sourceHdr[1];
+		ConstantEntry* sourceAddress = *iterator;
+
+		int length = sourceAddress->Length;
 		length += 2 * sizeof(int);
-		byte* target = (byte*)FlashManager.FlashAlloc(length);
+		ConstantEntry* target = (ConstantEntry*)FlashManager.FlashAlloc(length);
 		FlashManager.CopyToFlash(sourceAddress, target, length);
 		_flashEntries.push_back(target);
 	}

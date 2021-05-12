@@ -119,6 +119,11 @@ public:
 		return (int)ClassFlags & (int)ClassProperties::Array;
 	}
 
+	uint32_t GetKey() const
+	{
+		return ClassToken;
+	}
+
 	ClassProperties ClassFlags;
 	int32_t ClassToken;
 	int32_t ParentToken;
@@ -258,7 +263,6 @@ public:
 
 	SortedList()
 	{
-		// TODO: This needs a "Reserve" method, then _entries shall be replaced by two static arrays (one in flash, the other in RAM)
 	}
 
 	virtual ~SortedList()
@@ -270,6 +274,101 @@ public:
 		_ramEntries.push_back(entry);
 	}
 
+	/// <summary>
+	/// Validates that all keys in the list are ascending (for both the ram and the flash container) and no duplicates exist.
+	/// Note that 0 is also not a valid key.
+	/// </summary>
+	void ValidateListOrder()
+	{
+		uint32_t previousKey = 0;
+		for(size_t i = 0; i < _ramEntries.size(); i++)
+		{
+			TBase* base = _ramEntries.at(i);
+			uint32_t currentKey = base->GetKey();
+			if (previousKey >= currentKey)
+			{
+				throw stdSimple::ExecutionEngineException("Ram list is not ordered correctly for binary search");
+			}
+		}
+
+		previousKey = 0;
+		for (size_t i = 0; i < _flashEntries.size(); i++)
+		{
+			TBase* base = _flashEntries.at(i);
+			uint32_t currentKey = base->GetKey();
+			if (previousKey >= currentKey)
+			{
+				throw stdSimple::ExecutionEngineException("Ram list is not ordered correctly for binary search");
+			}
+		}
+	}
+
+	/// <summary>
+	/// Performs a binary search for the given key. The list must be ordered by key.
+	/// </summary>
+	/// <param name="key">The key to search for</param>
+	/// <returns>A pointer to the element with the given key, or null if no such element was found</returns>
+	TBase* BinarySearchKey(uint32_t key)
+	{
+		TBase* ret = BinarySearchKeyInternal(&_flashEntries, key);
+		if (ret == nullptr)
+		{
+			ret = BinarySearchKeyInternal(&_ramEntries, key);
+		}
+		
+		return ret;
+	}
+
+private:
+	TBase* BinarySearchKeyInternal(stdSimple::vector<TBase*>* list, uint32_t key)
+	{
+		if (list->size() == 0)
+		{
+			return nullptr;
+		}
+		int32_t left = 0;
+		int32_t right = list->size() - 1;
+		int32_t current = (left + right) / 2;
+		while (true)
+		{
+			TBase* currentEntry = list->at(current);
+			uint32_t currentKey = currentEntry->GetKey();
+			if (currentKey == key)
+			{
+				return currentEntry;
+			}
+
+			if (key > currentKey)
+			{
+				left = current;
+			}
+			if (key < currentKey)
+			{
+				right = current;
+			}
+			
+			current = (left + right) / 2;
+
+			// At most 2 elements left?
+			if (left + 1 >= right)
+			{
+				currentEntry = list->at(left);
+				if (currentEntry->GetKey() == key)
+				{
+					return currentEntry;
+				}
+
+				currentEntry = list->at(right);
+				if (currentEntry->GetKey() == key)
+				{
+					return currentEntry;
+				}
+
+				return nullptr; // Not found
+			}
+		}
+	}
+public:
 	virtual void* CopyListToFlash()
 	{
 		if (_flashEntries.size() == 0)
@@ -324,20 +423,14 @@ public:
 	/// <returns>The class declaration for the class with the given token or null.</returns>
 	ClassDeclaration* GetClassWithToken(int token, bool throwIfNotFound = true)
 	{
-		for (auto elem = GetIterator(); elem.Next();)
-		{
-			if (elem.Current()->ClassToken == token)
-			{
-				return elem.Current();
-			}
-		}
+		ClassDeclaration* ret = BinarySearchKey(token);
 
-		if (throwIfNotFound)
+		if (throwIfNotFound && ret == nullptr)
 		{
 			ThrowNotFoundException(token);
 		}
 
-		return nullptr;
+		return ret;
 	}
 
 	ClassDeclaration* GetClassWithToken(KnownTypeTokens token)
@@ -350,8 +443,20 @@ private:
 
 };
 
+class ConstantEntry
+{
+public:
+	int Token;
+	uint32_t Length;
+	int DataStart; // data stored inline
+	uint32_t GetKey() const
+	{
+		return Token;
+	}
+};
+
 // The list of constants. Each element is prefixed with the token and the length
-class SortedConstantList : public SortedList<byte>
+class SortedConstantList : public SortedList<ConstantEntry>
 {
 public:
 	void CopyContentsToFlash() override;

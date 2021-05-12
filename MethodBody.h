@@ -67,6 +67,11 @@ public:
 
 	byte* _methodIl;
 
+	uint32_t GetKey() const
+	{
+		return methodToken;
+	}
+
 	union
 	{
 		// We need only either of these two
