@@ -124,6 +124,7 @@ namespace stdSimple
 					if (_data == nullptr)
 					{
 						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
+						return;
 					}
 				}
 				else
@@ -135,6 +136,7 @@ namespace stdSimple
 					{
 						Firmata.sendStringf(F("Bad: No more memory for %d elements"), 4, _size);
 						OutOfMemoryException::Throw("Out of memory resizing vector");
+						return;
 					}
 					_data = temp;
 				}
@@ -158,6 +160,7 @@ namespace stdSimple
 					if (_data == nullptr)
 					{
 						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
+						return;
 					}
 				}
 				else
@@ -168,6 +171,7 @@ namespace stdSimple
 					{
 						Firmata.sendStringf(F("Extra Bad: No more memory for %d elements"), 4, _size);
 						OutOfMemoryException::Throw("Out of memory increasing vector size");
+						return;
 					}
 					_data = temp;
 				}

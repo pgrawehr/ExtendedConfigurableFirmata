@@ -55,6 +55,7 @@ public:
 		_begin = (Variable*)mallocEx(_bytesAllocated);
 		if (_begin == nullptr)
 		{
+			_revPtr = nullptr;
 			stdSimple::OutOfMemoryException::Throw("Out of memory initializing dynamic stack");
 			return;
 		}

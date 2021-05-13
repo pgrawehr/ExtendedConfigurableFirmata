@@ -340,6 +340,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_specialTypeListRam = nullptr;
 				_specialTypeListRamLength = 0;
 				// Fall trough
+				[[fallthrough]];
 			case ExecutorCommand::ResetExecutor:
 				if (argv[2] == 1)
 				{
@@ -3279,6 +3280,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			value1.Type = VariableKind::Uint32;
 		}
 		// fall trough
+		[[fallthrough]];
 	case CEE_SHR:
 		// The right-hand-side of a shift operation always requires to be of type signed int
 		BinaryOperationIntOnly(>> );
