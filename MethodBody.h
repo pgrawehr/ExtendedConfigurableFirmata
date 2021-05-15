@@ -155,10 +155,10 @@ public:
 class SortedMethodList : public SortedList<MethodBody>
 {
 public:
-	void CopyContentsToFlash() override;
+	void CopyContentsToFlash(FlashMemoryManager* manager) override;
 	void ThrowNotFoundException(int token) override;
 
 	void clear(bool includingFlash) override;
 private:
-	MethodBodyFlash* CreateFlashDeclaration(MethodBodyDynamic* element);
+	MethodBodyFlash* CreateFlashDeclaration(FlashMemoryManager* manager, MethodBodyDynamic* element);
 };

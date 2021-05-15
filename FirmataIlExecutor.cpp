@@ -77,6 +77,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_specialTypeListFlash = nullptr;
 	_specialTypeListRam = nullptr;
 	_specialTypeListRamLength = 0;
+	_flashMemoryManager = nullptr;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -108,6 +109,11 @@ bool FirmataIlExecutor::AutoStartProgram()
 
 void FirmataIlExecutor::Init()
 {
+	if (_flashMemoryManager == nullptr)
+	{
+		_flashMemoryManager = new FlashMemoryManager();
+	}
+	
 	// This method is expected to be called at least once on startup, but not necessarily after a connection
 	SelfTest test;
 	test.PerformSelfTest();
@@ -118,7 +124,7 @@ void FirmataIlExecutor::Init()
 
 	void* classes, *methods, *constants, *stringHeap;
 	int* specialTokens;
-	FlashManager.Init(classes, methods, constants, stringHeap, specialTokens, _startupToken, _startupFlags);
+	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, _startupToken, _startupFlags);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
@@ -139,7 +145,7 @@ void FirmataIlExecutor::handleCapability(byte pin)
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
 		void* classes, * methods, * constants, * stringHeap;
 		int* specialTokenList;
-		FlashManager.Init(classes, methods, constants, stringHeap, specialTokenList, _startupToken, _startupFlags);
+		_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokenList, _startupToken, _startupFlags);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
@@ -327,6 +333,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				KillCurrentTask();
 				_startupToken = 0;
 				_startupFlags = 0;
+				_flashMemoryManager->Clear();
 				_classes.clear(true);
 				_methods.clear(true);
 				_constants.clear(true);
@@ -363,18 +370,18 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::CopyToFlash:
 				{
 					// Copy all members currently in ram to flash
-				_classes.CopyContentsToFlash();
-				_methods.CopyContentsToFlash();
-				_constants.CopyContentsToFlash();
+				_classes.CopyContentsToFlash(_flashMemoryManager);
+				_methods.CopyContentsToFlash(_flashMemoryManager);
+				_constants.CopyContentsToFlash(_flashMemoryManager);
 				}
 				SendAckOrNack(subCommand, ExecutionError::None);
 				break;
 
 			case ExecutorCommand::WriteFlashHeader:
 			{
-				void* classesPtr = _classes.CopyListToFlash();
-				void* methodsPtr = _methods.CopyListToFlash();
-				void* constantPtr = _constants.CopyListToFlash();
+				void* classesPtr = _classes.CopyListToFlash(_flashMemoryManager);
+				void* methodsPtr = _methods.CopyListToFlash(_flashMemoryManager);
+				void* constantPtr = _constants.CopyListToFlash(_flashMemoryManager);
 				void* stringPtr = CopyStringsToFlash();
 				int* specialTokenListPtr = CopySpecialTokenListToFlash();
 				_startupToken = DecodePackedUint32(argv + 2 + 10);
@@ -383,14 +390,14 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_classes.ValidateListOrder();
 				_methods.ValidateListOrder();
 				_constants.ValidateListOrder();
-				FlashManager.WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, _startupToken, _startupFlags);
+				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, _startupToken, _startupFlags);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 			break;
 
 			case ExecutorCommand::CheckFlashVersion:
 				{
-				bool result = FlashManager.ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
+				bool result = _flashMemoryManager->ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
 				SendAckOrNack(subCommand, result ? ExecutionError::None : ExecutionError::InvalidArguments);
 				}
 				break;
@@ -434,8 +441,8 @@ void* FirmataIlExecutor::CopyStringsToFlash()
 	
 	// This is pretty straight-forward: We just copy the whole string heap to flash.
 	// Since it internally only uses relative addresses, we don't have to care about anything else.
-	byte* target = (byte*)FlashManager.FlashAlloc(_stringHeapRamSize);
-	FlashManager.CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
+	byte* target = (byte*)_flashMemoryManager->FlashAlloc(_stringHeapRamSize);
+	_flashMemoryManager->CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
 	if (_stringHeapRam != nullptr)
 	{
 		freeEx(_stringHeapRam);
@@ -455,8 +462,8 @@ int* FirmataIlExecutor::CopySpecialTokenListToFlash()
 	}
 
 	// This is pretty straight-forward: We just copy the whole thing to flash
-	int* target = (int*)FlashManager.FlashAlloc(_specialTypeListRamLength * sizeof(int));
-	FlashManager.CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int));
+	int* target = (int*)_flashMemoryManager->FlashAlloc(_specialTypeListRamLength * sizeof(int));
+	_flashMemoryManager->CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int));
 	if (_specialTypeListRam != nullptr)
 	{
 		freeEx(_specialTypeListRam);

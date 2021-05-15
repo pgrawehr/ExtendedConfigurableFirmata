@@ -369,7 +369,7 @@ private:
 		}
 	}
 public:
-	virtual void* CopyListToFlash()
+	virtual void* CopyListToFlash(FlashMemoryManager* manager)
 	{
 		if (_flashEntries.size() == 0)
 		{
@@ -378,10 +378,10 @@ public:
 
 		int sizeToAlloc = _flashEntries.size() * sizeof(TBase*);
 		sizeToAlloc += sizeof(int); // for number of entries
-		byte* target = (byte*)FlashManager.FlashAlloc(sizeToAlloc);
+		byte* target = (byte*)manager->FlashAlloc(sizeToAlloc);
 		int size = _flashEntries.size();
-		FlashManager.CopyToFlash(&size, target, sizeof(int));
-		FlashManager.CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*));
+		manager->CopyToFlash(&size, target, sizeof(int));
+		manager->CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*));
 		return target;
 	}
 
@@ -396,10 +396,14 @@ public:
 		_flashEntries.initFrom(size, (TBase*)AddBytes(flashAddress, sizeof(int)));
 	}
 
-	virtual void CopyContentsToFlash() = 0;
+	virtual void CopyContentsToFlash(FlashMemoryManager* manager) = 0;
 
 	virtual void ThrowNotFoundException(int token) = 0;
 
+	/// <summary>
+	/// Clears the list
+	/// </summary>
+	/// <param name="includingFlash">Whether also the flash list should be cleared. The flash itself is not cleared, so that the data could be recovered from there</param>
 	virtual void clear(bool includingFlash) = 0;
 
 	Iterator GetIterator()
@@ -411,7 +415,7 @@ public:
 class SortedClassList : public SortedList<ClassDeclaration>
 {
 public:
-	void CopyContentsToFlash() override;
+	void CopyContentsToFlash(FlashMemoryManager* manager) override;
 	void ThrowNotFoundException(int token) override;
 	void clear(bool includingFlash) override;
 	
@@ -439,7 +443,7 @@ public:
 		return GetClassWithToken((int)token, true);
 	}
 private:
-	ClassDeclarationFlash* CreateFlashDeclaration(ClassDeclarationDynamic* dynamic);
+	ClassDeclarationFlash* CreateFlashDeclaration(FlashMemoryManager* manager, ClassDeclarationDynamic* dynamic);
 
 };
 
@@ -459,7 +463,7 @@ public:
 class SortedConstantList : public SortedList<ConstantEntry>
 {
 public:
-	void CopyContentsToFlash() override;
+	void CopyContentsToFlash(FlashMemoryManager* manager) override;
 	void ThrowNotFoundException(int token) override;
 	void clear(bool includingFlash) override;
 };

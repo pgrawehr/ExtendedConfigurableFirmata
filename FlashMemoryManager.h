@@ -44,7 +44,5 @@ public:
 
 };
 
-extern FlashMemoryManager FlashManager;
-
 #endif
 

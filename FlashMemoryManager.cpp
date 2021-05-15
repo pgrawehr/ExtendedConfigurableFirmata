@@ -3,12 +3,18 @@
 // 
 
 #include <ConfigurableFirmata.h>
-#ifndef SIM
-#include <DueFlashStorage.h>
-DueFlashStorage* storage = nullptr;
-#else
+#ifdef ESP32
+#include "Esp32FlashStorage.h"
+Esp32CliFlashStorage* storage;
+#elif SIM
 #include "SimFlashStorage.h"
-VirtualFlashMemory* storage = nullptr;
+VirtualFlashMemory* storage;
+#elif __SAM3X8E__
+#include <DueFlashStorage.h>
+DueFlashStorage* storage;
+#elif
+	// TODO: Create a dummy storage driver (with zero bytes size)
+#error No storage driver available
 #endif
 
 #include "FlashMemoryManager.h"
@@ -16,8 +22,6 @@ VirtualFlashMemory* storage = nullptr;
 #include "Exceptions.h"
 
 using namespace stdSimple;
-
-FlashMemoryManager FlashManager;
 
 const int FLASH_MEMORY_IDENTIFIER = 0x7AABCDBB;
 const int MEMORY_ALLOCATION_ALIGNMENT = 4;
@@ -42,13 +46,18 @@ public:
 
 FlashMemoryManager::FlashMemoryManager()
 {
-#ifdef SIM
-	storage = new VirtualFlashMemory(IFLASH0_SIZE + IFLASH1_SIZE);
-#else
+#ifdef ESP32
+	storage = new Esp32CliFlashStorage();
+#elif SIM
+	storage = new VirtualFlashMemory(512 * 1024);
+#elif __SAM3X8E__
 	storage = new DueFlashStorage();
+#elif
+	// TODO: Create a dummy storage driver (with zero bytes size)
+#error No storage driver available
 #endif
 	_endOfHeap = _startOfHeap = storage->getFirstFreeBlock(); // This just returns the start of the flash memory used by this manager
-	_flashEnd = storage->readAddress(0) + IFLASH0_SIZE + IFLASH1_SIZE;
+	_flashEnd = storage->readAddress(0) + storage->getFlashSize();
 	_header = (FlashMemoryHeader*)_startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = true;
@@ -106,6 +115,7 @@ void FlashMemoryManager::Clear()
 	_endOfHeap = _startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = true;
+	storage->eraseBlock(storage->getOffset(_startOfHeap), _flashEnd - _startOfHeap);
 }
 
 void* FlashMemoryManager::FlashAlloc(size_t bytes)

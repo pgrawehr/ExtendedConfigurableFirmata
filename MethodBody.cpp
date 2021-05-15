@@ -84,24 +84,24 @@ VariableDescription* MethodBodyFlash::GetLocalsIterator() const
 }
 
 
-void SortedMethodList::CopyContentsToFlash()
+void SortedMethodList::CopyContentsToFlash(FlashMemoryManager* manager)
 {
 	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{
-		MethodBodyFlash* flash = CreateFlashDeclaration((MethodBodyDynamic*)*iterator);
+		MethodBodyFlash* flash = CreateFlashDeclaration(manager, (MethodBodyDynamic*)*iterator);
 		_flashEntries.push_back(flash);
 	}
 
 	clear(false);
 }
 
-MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dynamic)
+MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(FlashMemoryManager* manager, MethodBodyDynamic* dynamic)
 {
 	// First create the object in RAM
 	int totalSize = sizeof(MethodBodyFlash) + dynamic->_argumentTypes.size() * sizeof(VariableDescription) + dynamic->_localTypes.size() * sizeof(VariableDescription) + dynamic->MethodLength();
 
 	byte* flashCopy = (byte*)mallocEx(totalSize);
-	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
+	byte* flashTarget = (byte*)manager->FlashAlloc(totalSize);
 
 	byte* temp = flashCopy;
 	// Reserve space for main class
@@ -155,7 +155,7 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(MethodBodyDynamic* dyn
 	
 	memcpy(flashCopy, (void*)flash, sizeof(MethodBodyFlash));
 	
-	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
+	manager->CopyToFlash(flashCopy, flashTarget, totalSize);
 	flash->_methodIl = nullptr; // Because the delete shall not touch this
 	delete flash;
 	freeEx(flashCopy);
@@ -173,7 +173,6 @@ void SortedMethodList::clear(bool includingFlash)
 	if (includingFlash)
 	{
 		_flashEntries.clear();
-		FlashManager.Clear();
 	}
 
 	for (size_t i = 0; i < _ramEntries.size(); i++)

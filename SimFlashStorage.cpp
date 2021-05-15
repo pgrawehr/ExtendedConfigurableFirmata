@@ -8,6 +8,7 @@ VirtualFlashMemory::VirtualFlashMemory(size_t size)
 {
 	_memoryBasePtr = (byte*)malloc(size);
 	memset(_memoryBasePtr, -1, size); // The Arduino Due's flash is initialized to all 1's when erasing
+	_memorySize = size;
 }
 
 VirtualFlashMemory::~VirtualFlashMemory()
@@ -19,6 +20,12 @@ VirtualFlashMemory::~VirtualFlashMemory()
 
 	_memoryBasePtr = nullptr;
 }
+
+uint32_t VirtualFlashMemory::getFlashSize()
+{
+	return _memorySize;
+}
+
 
 
 byte* VirtualFlashMemory::readAddress(uint32_t address)
@@ -41,4 +48,9 @@ boolean VirtualFlashMemory::write(uint32_t address, byte* data, uint32_t dataLen
 boolean VirtualFlashMemory::write(byte* address, byte* data, uint32_t dataLength)
 {
 	return write(address - _memoryBasePtr, data, dataLength);
+}
+
+void VirtualFlashMemory::eraseBlock(uint32_t address, uint32_t length)
+{
+	memset(_memoryBasePtr + address, -1, length);
 }

@@ -299,6 +299,7 @@ public:
 
 	// An empty instance of type Variable, used for error returns where a "null reference" would be required
 	Variable _clearVariable;
+	FlashMemoryManager* _flashMemoryManager;
 };
 
 

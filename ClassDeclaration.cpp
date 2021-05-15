@@ -13,7 +13,6 @@ void SortedClassList::clear(bool includingFlash)
 	if (includingFlash)
 	{
 		_flashEntries.clear();
-		FlashManager.Clear();
 	}
 
 	for (size_t i = 0; i < _ramEntries.size(); i++)
@@ -24,18 +23,18 @@ void SortedClassList::clear(bool includingFlash)
 	_ramEntries.clear(true);
 }
 
-void SortedClassList::CopyContentsToFlash()
+void SortedClassList::CopyContentsToFlash(FlashMemoryManager* manager)
 {
 	for(auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{
-		ClassDeclarationFlash* flash = CreateFlashDeclaration((ClassDeclarationDynamic*)*iterator);
+		ClassDeclarationFlash* flash = CreateFlashDeclaration(manager, (ClassDeclarationDynamic*)*iterator);
 		_flashEntries.push_back(flash);
 	}
 
 	clear(false);
 }
 
-ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationDynamic* dynamic)
+ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(FlashMemoryManager* manager, ClassDeclarationDynamic* dynamic)
 {
 	// First create the class in RAM
 	int totalSize = sizeof(ClassDeclarationFlash) + dynamic->fieldTypes.size() * sizeof(Variable) + dynamic->interfaceTokens.size() * sizeof(int32_t);
@@ -46,7 +45,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 	}
 
 	byte* flashCopy = (byte*)mallocEx(totalSize);
-	byte* flashTarget = (byte*)FlashManager.FlashAlloc(totalSize);
+	byte* flashTarget = (byte*)manager->FlashAlloc(totalSize);
 	
 	byte* temp = flashCopy;
 	// Reserve space for main class
@@ -113,7 +112,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(ClassDeclarationD
 	// The class declaration comes first, copy it there
 	memcpy(flashCopy, (void*)flash, sizeof(ClassDeclarationFlash));
 
-	FlashManager.CopyToFlash(flashCopy, flashTarget, totalSize);
+	manager->CopyToFlash(flashCopy, flashTarget, totalSize);
 	delete flash;
 	freeEx(flashCopy);
 
@@ -215,7 +214,7 @@ void SortedConstantList::ThrowNotFoundException(int token)
 	throw ClrException("Constant token not found", SystemException::ClassNotFound, token);
 }
 
-void SortedConstantList::CopyContentsToFlash()
+void SortedConstantList::CopyContentsToFlash(FlashMemoryManager* manager)
 {
 	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
 	{
@@ -223,8 +222,8 @@ void SortedConstantList::CopyContentsToFlash()
 
 		int length = sourceAddress->Length;
 		length += 2 * sizeof(int);
-		ConstantEntry* target = (ConstantEntry*)FlashManager.FlashAlloc(length);
-		FlashManager.CopyToFlash(sourceAddress, target, length);
+		ConstantEntry* target = (ConstantEntry*)manager->FlashAlloc(length);
+		manager->CopyToFlash(sourceAddress, target, length);
 		_flashEntries.push_back(target);
 	}
 
