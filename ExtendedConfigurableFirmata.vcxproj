@@ -109,6 +109,7 @@
   <ItemGroup>
     <ClInclude Include="ClassDeclaration.h" />
     <ClInclude Include="Ds1307.h" />
+    <ClInclude Include="Esp32FatSupport.h" />
     <ClInclude Include="Esp32FlashStorage.h" />
     <ClInclude Include="Exceptions.h" />
     <ClInclude Include="FirmataIlExecutor.h" />
@@ -143,6 +144,7 @@
   <ItemGroup>
     <ClCompile Include="ClassDeclaration.cpp" />
     <ClCompile Include="Ds1307.cpp" />
+    <ClCompile Include="Esp32FatSupport.cpp" />
     <ClCompile Include="Esp32FlashStorage.cpp" />
     <ClCompile Include="Exceptions.cpp" />
     <ClCompile Include="FirmataIlExecutor.cpp" />

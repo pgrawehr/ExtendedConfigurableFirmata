@@ -121,6 +121,9 @@
     <ClCompile Include="..\GarbageCollector.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\Esp32FatSupport.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -268,6 +271,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\GarbageCollector.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Esp32FatSupport.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

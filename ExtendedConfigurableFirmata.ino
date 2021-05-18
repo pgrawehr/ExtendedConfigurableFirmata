@@ -3,6 +3,7 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
+#include "Esp32FatSupport.h"
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
 #include "SelfTest.h"
@@ -115,7 +116,7 @@ void systemResetCallback()
     if (IS_PIN_ANALOG(i)) {
       Firmata.setPinMode(i, PIN_MODE_ANALOG);
     } else if (IS_PIN_DIGITAL(i)) {
-      Firmata.setPinMode(i, OUTPUT);
+      Firmata.setPinMode(i, PIN_MODE_OUTPUT);
     }
   }
   firmataExt.reset();

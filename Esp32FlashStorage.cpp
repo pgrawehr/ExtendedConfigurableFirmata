@@ -4,10 +4,11 @@
 #include "Esp32FlashStorage.h"
 #include "esp_partition.h"
 
+// This flash storage driver uses the partition named "ilcode" on the ESP32 embedded SPI flash
+
 Esp32CliFlashStorage::Esp32CliFlashStorage()
 {
-	PrintPartitions();
-	partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "storage");
+	partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "ilcode");
 	if (partition == nullptr)
 	{
 		throw stdSimple::ExecutionEngineException("FATAL: Could not locate data partition.");
@@ -25,6 +26,7 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
 	mappedBaseAddress = (byte*)map_ptr;
 	mapHandle = map_handle;
 	partitionSize = partition->size;
+	PrintPartitions();
 }
 
 Esp32CliFlashStorage::~Esp32CliFlashStorage()
@@ -78,12 +80,22 @@ boolean Esp32CliFlashStorage::write(byte* address, byte* data, uint32_t dataLeng
 
 boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataLength)
 {
-	esp_err_t errNo = esp_partition_write(partition, 0, data, dataLength);
+	esp_err_t errNo = esp_partition_write(partition, address, data, dataLength);
 	if (errNo != 0)
 	{
-		Firmata.sendStringf(F("Error: Could not erase flash: %d"), 4, errNo);
-		throw stdSimple::OutOfMemoryException("Error writing flash");
+		Firmata.sendStringf(F("Error: Could not write flash: %d"), 4, errNo);
+		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
 	}
+
+	byte* physicalAddress = readAddress(address);
+	int result = memcmp(data, physicalAddress, dataLength);
+	if (result != 0)
+	{
+		Firmata.sendStringf(F("Error: Data at address 0x%x not written correctly"), 4, physicalAddress);
+		return false;
+	}
+	
+	return true;
 }
 
 void Esp32CliFlashStorage::eraseBlock(uint32_t address, uint32_t length)
@@ -92,7 +104,7 @@ void Esp32CliFlashStorage::eraseBlock(uint32_t address, uint32_t length)
 	if (errNo != 0)
 	{
 		Firmata.sendStringf(F("Error: Could not erase flash: %d"), 4, errNo);
-		throw stdSimple::OutOfMemoryException("Error erasing flash");
+		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error erasing flash");
 	}
 }
 

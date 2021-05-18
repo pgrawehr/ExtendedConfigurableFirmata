@@ -298,7 +298,7 @@ public:
 			uint32_t currentKey = base->GetKey();
 			if (previousKey >= currentKey)
 			{
-				throw stdSimple::ExecutionEngineException("Ram list is not ordered correctly for binary search");
+				throw stdSimple::ExecutionEngineException("Flash list is not ordered correctly for binary search");
 			}
 		}
 	}

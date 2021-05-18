@@ -35,7 +35,7 @@ void HardwareAccess::Init()
 	TheClock.Init();
 }
 
-void HardwareAccess::UpdateClocks()
+void HardwareAccess::Update()
 {
 	uint32_t microSeconds = micros();
 	if (microSeconds < _lastTickCount)

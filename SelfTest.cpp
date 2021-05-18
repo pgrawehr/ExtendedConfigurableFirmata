@@ -61,14 +61,18 @@ void SelfTest::PerformMemoryAnalysis()
 
 void SelfTest::ValidateMemoryManager()
 {
-#if defined(__SAM3X8E__) && !defined(SIM)
-	void* data = malloc(120 * 1024);
+#if !defined(SIM)
+	void* data = malloc(1024 * 1024);
 	// Need to patch the C++ library to fix a runtime bug that exists in the C runtime of the Arduino Due:
 	// There's no limit to the amount of memory that can be allocated, the CPU just crashes if you try to use it.
 	ASSERT(data == nullptr, "Memory allocation error: Can allocate more memory than available. Please consult the documentation");
 #endif
 	const int oneK = 1024;
+#if ESP32
+	const int maxMemToTest = 1024; // The esp32 has some 300k of RAM
+#else
 	const int maxMemToTest = 100; // the arduino due has 96k of memory
+#endif
 	void* ptrs[maxMemToTest];
 	int idx = 0;
 	int totalAllocsSucceeded = 0;

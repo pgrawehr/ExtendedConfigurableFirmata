@@ -33,6 +33,7 @@
 #include "MethodBody.h"
 #include "GarbageCollector.h"
 
+class LowlevelInterface;
 using namespace stdSimple;
 
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
@@ -300,6 +301,7 @@ public:
 	// An empty instance of type Variable, used for error returns where a "null reference" would be required
 	Variable _clearVariable;
 	FlashMemoryManager* _flashMemoryManager;
+	stdSimple::vector<LowlevelInterface*> _lowLevelLibraries;
 };
 
 

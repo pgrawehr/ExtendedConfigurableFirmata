@@ -21,6 +21,7 @@
 #include "HardwareAccess.h"
 #include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
+#include "Esp32FatSupport.h"
 #include <stdint.h>
 #include <cwchar>
 #include <new>
@@ -118,7 +119,17 @@ void FirmataIlExecutor::Init()
 	SelfTest test;
 	test.PerformSelfTest();
 
-	HardwareAccess::Init();
+	if (_lowLevelLibraries.empty())
+	{
+		HardwareAccess* access = new HardwareAccess();
+		access->Init();
+		_lowLevelLibraries.push_back(access);
+#if ESP32
+		Esp32FatSupport* fat = new Esp32FatSupport();
+		fat->Init();
+		_lowLevelLibraries.push_back(fat);
+#endif
+	}
 
 	_gc.Init(this);
 
@@ -749,8 +760,11 @@ void FirmataIlExecutor::CleanStack(ExecutionState* state)
 
 void FirmataIlExecutor::report(bool elapsed)
 {
-	// Keep track of timers
-	HardwareAccess::UpdateClocks();
+	// Keep track of timers or background jobs
+	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
+	{
+		_lowLevelLibraries[i]->Update();
+	}
 	
 	// Check that we have an existing execution context, and if so continue there.
 	if (!IsExecutingCode())
@@ -1194,9 +1208,12 @@ void FirmataIlExecutor::SendString(Variable& string)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	if (HardwareAccess::ExecuteHardwareAccess(this, currentFrame, method, args, result))
+	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
-		return;
+		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
+		{
+			return;
+		}
 	}
 
 	// Note: All methods should do some minimal parameter validation, at least the count.
