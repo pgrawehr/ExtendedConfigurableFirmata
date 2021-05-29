@@ -1189,6 +1189,12 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 void FirmataIlExecutor::SendString(Variable& string)
 {
 	uint16_t* input = (uint16_t*)string.Object;
+	if (input == nullptr)
+	{
+		Firmata.sendString(STRING_DATA, "(null message)");
+		return;
+	}
+	
 	int length = *AddBytes(input, 4);
 	int outLength = 0;
 	byte* outbuf = (byte*)alloca(length * 4 + 2);

@@ -26,6 +26,9 @@ void Esp32FatSupport::Init()
 			throw stdSimple::ExecutionEngineException("Unable to mount FAT partition. Aborting");
 		}
 	}
+
+	// Make sure the temp directory exists
+	FFat.mkdir("/tmp");
 	
 	Firmata.sendStringf(F("Total space on data partition: %10u\n"), 8, FFat.totalBytes());
 	Firmata.sendStringf(F("Free space on data partition: %10u\n"), 8, FFat.freeBytes());

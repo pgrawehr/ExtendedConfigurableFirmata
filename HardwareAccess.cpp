@@ -280,6 +280,8 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Boolean = true;
 		}
 		break;
+		// These two are quite equivalent, I think.
+	case NativeMethod::Interop_Kernel32QueryUnbiasedInterruptTime:
 	case NativeMethod::InteropQueryPerformanceCounter:
 		{
 		ASSERT(args.size() == 1);
@@ -311,6 +313,18 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			result.Object = orig; // Return the original destination object
 	}
 		break;
+	case NativeMethod::InterlockedExchangeAdd:
+		{
+			// Behavior is a bit confusing: Adds the two input values (first one given by-ref), updates the first one with the sum and returns the old value
+		result.Type = VariableKind::Int32;
+		noInterrupts();
+		int firstValue = *AddBytes((int*)args[0].Object, 0);
+		int sum = firstValue + args[1].Int32;
+		*AddBytes((int*)args[0].Object, 0) = sum;
+		interrupts();
+		result.Int32 = firstValue;
+		}
+		break;
 	case NativeMethod::DateTimeUtcNow:
 		result.Type = VariableKind::Int64;
 		result.setSize(8);
@@ -318,7 +332,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 
 		// As long as we're running only one task, this is a no-op
-	case NativeMethod::MonitorEnter1:
+	case NativeMethod::MonitorEnter:
 		result.Type = VariableKind::Void;
 		break;
 	case NativeMethod::MonitorExit:

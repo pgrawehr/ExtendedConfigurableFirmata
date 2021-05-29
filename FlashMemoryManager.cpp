@@ -49,7 +49,7 @@ FlashMemoryManager::FlashMemoryManager()
 #ifdef ESP32
 	storage = new Esp32CliFlashStorage();
 #elif SIM
-	storage = new VirtualFlashMemory(512 * 1024);
+	storage = new VirtualFlashMemory(1024 * 1024);
 #elif __SAM3X8E__
 	storage = new DueFlashStorage();
 #elif
