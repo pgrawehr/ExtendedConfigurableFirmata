@@ -12,7 +12,7 @@ VirtualFlashMemory* storage;
 #elif __SAM3X8E__
 #include <DueFlashStorage.h>
 DueFlashStorage* storage;
-#elif
+#else
 	// TODO: Create a dummy storage driver (with zero bytes size)
 #error No storage driver available
 #endif
@@ -52,7 +52,7 @@ FlashMemoryManager::FlashMemoryManager()
 	storage = new VirtualFlashMemory(1024 * 1024);
 #elif __SAM3X8E__
 	storage = new DueFlashStorage();
-#elif
+#else
 	// TODO: Create a dummy storage driver (with zero bytes size)
 #error No storage driver available
 #endif
@@ -178,4 +178,3 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	int bytesTotal = _flashEnd - _startOfHeap;
 	Firmata.sendStringf(F("Flash data written: %d bytes of %d used."), 4, bytesUsed, bytesTotal);
 }
-

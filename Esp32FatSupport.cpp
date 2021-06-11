@@ -36,7 +36,27 @@ void Esp32FatSupport::Init()
 
 bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	return false;
+	switch (method)
+	{
+	case NativeMethod::FileSystemCreateDirectory:
+	{
+		char* path = FirmataIlExecutor::GetAsUtf8String(args[0]);
+		FFat.mkdir(path);
+		free(path);
+	}
+		break;
+	case NativeMethod::FileSystemFileExists:
+	{
+		result.Type = VariableKind::Boolean;
+		char* path = FirmataIlExecutor::GetAsUtf8String(args[0]);
+		result.Boolean = FFat.exists(path);
+		free(path);
+	}
+		break;
+	default:
+		return false;
+	}
+	return true;
 }
 
 

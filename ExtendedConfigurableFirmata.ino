@@ -3,8 +3,9 @@
  * Sun Mar 29 2020 15:10:48 GMT-0400 (EDT)
  */
 
-#include "Esp32FatSupport.h"
 #include <ConfigurableFirmata.h>
+
+#include "Esp32FatSupport.h"
 #include "Exceptions.h"
 #include "SelfTest.h"
 #include "FlashMemoryManager.h"
@@ -31,6 +32,7 @@
 #define ENABLE_SPI
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
+#define ENABLE_FREQUENCY
 
 #ifdef SIM
 #include "SimulatorImpl.h"
@@ -96,6 +98,11 @@ AccelStepperFirmata accelStepper;
 DhtFirmata dhtFirmata;
 #endif
 
+#ifdef ENABLE_FREQUENCY
+#include <Frequency.h>
+Frequency frequency;
+#endif
+
 #ifdef ENABLE_BASIC_SCHEDULER
 // The scheduler allows to store scripts on the board, however this requires a kind of compiler on the client side.
 // When running dotnet/iot on the client side, prefer using the FirmataIlExecutor module instead
@@ -116,7 +123,7 @@ void systemResetCallback()
     if (IS_PIN_ANALOG(i)) {
       Firmata.setPinMode(i, PIN_MODE_ANALOG);
     } else if (IS_PIN_DIGITAL(i)) {
-      Firmata.setPinMode(i, PIN_MODE_OUTPUT);
+      Firmata.setPinMode(i, PIN_MODE_INPUT);
     }
   }
   firmataExt.reset();
@@ -183,7 +190,11 @@ void initFirmata()
 #ifdef ENABLE_DHT
   firmataExt.addFeature(dhtFirmata);
 #endif
-	
+
+#ifdef ENABLE_FREQUENCY
+  firmataExt.addFeature(frequency);
+#endif
+
 #ifdef ENABLE_IL_EXECUTOR
   firmataExt.addFeature(ilExecutor);
   firmataExt.addFeature(statusLed);
@@ -218,4 +229,3 @@ void loop()
 
   firmataExt.report(reporting.elapsed());
 }
-

@@ -199,11 +199,11 @@ uint16_t utf8_to_unicode(byte*& coded)
 	return (uint16_t)charcode;
 }
 
-int unicode_to_utf8(int charcode, byte*& output)
+int unicode_to_utf8(int charcode, char*& output)
 {
 	if (charcode < 128)
 	{
-		*output = (byte)charcode;
+		*output = (char)charcode;
 		output++;
 		return 1;
 	}
@@ -231,7 +231,7 @@ int unicode_to_utf8(int charcode, byte*& output)
 		t = first_val | charcode;
 		
 		memmove(output + 1, output, bytesUsed);
-		*output = (byte)t;
+		*output = (char)t;
 		bytesUsed++;
 		output += bytesUsed;
 		return bytesUsed;
@@ -966,20 +966,20 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 		Firmata.write((byte)(1 + 1 /* ExceptionArg*/ + 2 * RuntimeException::MaxStackTokens + 1)); // Number of arguments that follow
 		if (ex.ExceptionType == SystemException::None)
 		{
-			SendPackedInt32(ex.TokenOfException);
+			SendPackedUInt32(ex.TokenOfException);
 		}
 		else
 		{
-			SendPackedInt32((int32_t)ex.ExceptionType);
+			SendPackedUInt32((uint32_t)ex.ExceptionType);
 		}
 
-		SendPackedInt32(ex.TokenOfException);
+		SendPackedUInt32(ex.TokenOfException);
 		
-		SendPackedInt32(0); // A dummy marker
+		SendPackedUInt32(0); // A dummy marker
 		for (int i = 0; i < RuntimeException::MaxStackTokens; i++)
 		{
-			SendPackedInt32(ex.StackTokens[i]);
-			SendPackedInt32(ex.PerStackPc[i]);
+			SendPackedUInt32(ex.StackTokens[i]);
+			SendPackedUInt32(ex.PerStackPc[i]);
 		}
 	}
 	else
@@ -1015,19 +1015,14 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 	}
 }
 
-void FirmataIlExecutor::SendPackedInt32(int32_t value)
+void FirmataIlExecutor::SendPackedUInt32(uint32_t value)
 {
-	Firmata.write((byte)(value & 0x7F));
-	Firmata.write((byte)((value >> 7) & 0x7F));
-	Firmata.write((byte)((value >> 14) & 0x7F));
-	Firmata.write((byte)((value >> 21) & 0x7F));
-	Firmata.write((byte)((value >> 28) & 0x0F)); // only 4 bits left, and we don't care about the sign here
+	Firmata.sendPackedUInt32(value);
 }
 
-void FirmataIlExecutor::SendPackedInt64(int64_t value)
+void FirmataIlExecutor::SendPackedUInt64(uint64_t value)
 {
-	SendPackedInt32(value & 0xFFFFFFFF);
-	SendPackedInt32(value >> 32);
+	Firmata.sendPackedUInt64(value);
 }
 
 
@@ -1185,20 +1180,23 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 	return cmp == 0;
 }
 
-// Should have a variant of this that keeps the string in memory (but cannot use alloca then)
-void FirmataIlExecutor::SendString(Variable& string)
+// Returns the given C# string as C UTF8 string (with trailing zero)
+// The caller is responsible for freeing the memory
+char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 {
 	uint16_t* input = (uint16_t*)string.Object;
 	if (input == nullptr)
 	{
-		Firmata.sendString(STRING_DATA, "(null message)");
-		return;
+		// Also allocate a dummy element for an empty string - simplifies handling
+		char* empty = (char*)malloc(4);
+		empty[0] = 0;
+		return empty;
 	}
 	
 	int length = *AddBytes(input, 4);
 	int outLength = 0;
-	byte* outbuf = (byte*)alloca(length * 4 + 2);
-	byte* outStart = outbuf;
+	char* outbuf = (char*)malloc(length * 4 + 2);
+	char* outStart = outbuf;
 	input = AddBytes(input, STRING_DATA_START);
 	for(int i = 0; i < length; i++)
 	{
@@ -1208,7 +1206,7 @@ void FirmataIlExecutor::SendString(Variable& string)
 	}
 
 	*outbuf = 0;
-	Firmata.sendString(STRING_DATA, (char*)outStart);
+	return outStart;
 }
 
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
@@ -2266,7 +2264,9 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		{
 		ASSERT(args.size() == 1);
 		Variable& string = args.at(0);
-		SendString(string);
+		char* cstr = GetAsUtf8String(string);
+		Firmata.sendString(STRING_DATA, cstr);
+		free(cstr);
 		break;
 		}
 	default:
@@ -3024,8 +3024,10 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
 		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
-		SendString(messageField);
-		// TODO: Use the above string in the message
+		char* cstr = GetAsUtf8String(messageField);
+		Firmata.sendString(STRING_DATA, cstr);
+		free(cstr);
+		// TODO: Use the above string in the message (but be careful about the memory)
 		throw ClrException("Custom exception", SystemException::CustomException, exceptionType->ClassToken);
 	}
 	case CEE_NOP:

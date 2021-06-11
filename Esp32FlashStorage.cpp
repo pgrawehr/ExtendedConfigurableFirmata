@@ -2,6 +2,7 @@
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
 #include "Esp32FlashStorage.h"
+#ifdef ESP32
 #include "esp_partition.h"
 
 // This flash storage driver uses the partition named "ilcode" on the ESP32 embedded SPI flash
@@ -108,8 +109,4 @@ void Esp32CliFlashStorage::eraseBlock(uint32_t address, uint32_t length)
 	}
 }
 
-
-
-
-
-
+#endif

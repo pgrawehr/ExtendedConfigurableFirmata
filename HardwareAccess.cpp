@@ -325,6 +325,23 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Int32 = firstValue;
 		}
 		break;
+	case NativeMethod::InterlockedCompareExchange_Int32:
+	{
+		result.Type = VariableKind::Int32;
+		Variable& ref = args[0]; // Arg0 is a reference to an int
+		Variable& value = args[1];
+		Variable& comparand = args[2];
+		noInterrupts();
+		int* refPtr = (int*)ref.Object;
+		int orig = *(refPtr);
+		if (orig == comparand.Int32)
+		{
+			*(refPtr) = value.Int32; // Replace the object ref points to with the value if ref==comparand.
+		}
+		interrupts();
+		result.Int32 = orig; // Return the original destination value
+	}
+		break;
 	case NativeMethod::DateTimeUtcNow:
 		result.Type = VariableKind::Int64;
 		result.setSize(8);

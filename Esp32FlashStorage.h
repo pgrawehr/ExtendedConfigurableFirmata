@@ -2,8 +2,9 @@
 
 #include <ConfigurableFirmata.h>
 
-class esp_pratition_t;
-// This class simulates flash by memory. This is not within the #ifdef SIM to simplify development.
+class esp_partition_t;
+typedef int spi_flash_mmap_handle_t;
+// This class uses a special flash partition as backend storage.
 class Esp32CliFlashStorage
 {
 private:
@@ -51,5 +52,3 @@ public:
 	/// <returns>True on success, false otherwise</returns>
 	boolean write(byte* address, byte* data, uint32_t dataLength);
 };
-
-

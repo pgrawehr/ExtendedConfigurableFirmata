@@ -193,6 +193,8 @@ public:
 		return _classes.GetClassWithToken(token, throwIfNotFound);
 	}
 
+	static char* GetAsUtf8String(Variable& string);
+
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
 	ExecutionError LoadIlDataStream(int token, uint16_t codeLength, uint16_t offset, byte argc, byte* argv);
@@ -252,10 +254,9 @@ public:
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(int32_t codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(int32_t token);
-	void SendPackedInt32(int32_t value);
-	void SendPackedInt64(int64_t value);
+	void SendPackedUInt32(uint32_t value);
+	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
-	void SendString(Variable& string);
 
 	byte* GetString(int stringToken, int& length);
 	byte* GetString(byte* heap, int stringToken, int& length);
