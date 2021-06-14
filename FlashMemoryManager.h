@@ -1,4 +1,4 @@
-﻿// FlashMemoryManager.h
+// FlashMemoryManager.h
 
 #ifndef _FLASHMEMORYMANAGER_h
 #define _FLASHMEMORYMANAGER_h

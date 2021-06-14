@@ -1,4 +1,4 @@
-﻿#include <ConfigurableFirmata.h>
+#include <ConfigurableFirmata.h>
 #include "Ds1307.h"
 #include "Wire.h"
 

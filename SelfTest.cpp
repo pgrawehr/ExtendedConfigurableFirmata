@@ -1,4 +1,4 @@
-﻿#include "ConfigurableFirmata.h"
+#include "ConfigurableFirmata.h"
 #include "SelfTest.h"
 #include "Variable.h"
 #include "VariableVector.h"

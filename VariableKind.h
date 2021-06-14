@@ -1,6 +1,6 @@
-﻿
-#pragma once
 
+#ifndef VARIABLEKIND_H
+#define VARIABLEKIND_H
 enum class VariableKind
 {
     Void = 0,
@@ -24,3 +24,4 @@ enum class VariableKind
     NativeHandle = 37,
     StaticMember = 128,
 };
+#endif

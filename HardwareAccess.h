@@ -1,4 +1,4 @@
-﻿// HardwareAccess.h
+// HardwareAccess.h
 
 #ifndef _HARDWAREACCESS_h
 #define _HARDWAREACCESS_h
