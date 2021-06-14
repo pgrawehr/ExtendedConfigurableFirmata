@@ -1,4 +1,4 @@
-﻿
+
 #include <ConfigurableFirmata.h>
 #include "HardwareAccess.h"
 #include "SelfTest.h"

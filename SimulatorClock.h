@@ -1,4 +1,4 @@
-﻿// SimulatorClock.h
+// SimulatorClock.h
 
 #ifndef _SIMULATORCLOCK_h
 #define _SIMULATORCLOCK_h

@@ -1,4 +1,4 @@
-﻿// Ds1307.h
+// Ds1307.h
 
 #ifndef _DS1307_h
 #define _DS1307_h

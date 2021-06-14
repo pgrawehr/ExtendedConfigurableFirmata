@@ -1,4 +1,4 @@
-﻿// Exceptions.h
+// Exceptions.h
 #pragma once
 
 enum class SystemException;

@@ -1,4 +1,4 @@
-﻿
+
 #include <ConfigurableFirmata.h>
 #include "ClassDeclaration.h"
 #include "MethodBody.h"

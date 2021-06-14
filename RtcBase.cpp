@@ -1,4 +1,4 @@
-﻿#include <ConfigurableFirmata.h>
+#include <ConfigurableFirmata.h>
 #include "RtcBase.h"
 
 

@@ -1,4 +1,4 @@
-﻿// RtcBase.h
+// RtcBase.h
 
 #ifndef _RTCBASE_h
 #define _RTCBASE_h

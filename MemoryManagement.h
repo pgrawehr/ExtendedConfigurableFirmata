@@ -1,4 +1,4 @@
-﻿// MemoryManagement.h
+// MemoryManagement.h
 
 #ifndef _MEMORYMANAGEMENT_h
 #define _MEMORYMANAGEMENT_h
