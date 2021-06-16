@@ -2,8 +2,12 @@
 
 #include <ConfigurableFirmata.h>
 
-class esp_partition_t;
-typedef int spi_flash_mmap_handle_t;
+#ifndef ESP32
+// Dummy definition if not ESP
+typedef int esp_partition_t;
+#endif
+
+typedef uint32_t spi_flash_mmap_handle_t;
 // This class uses a special flash partition as backend storage.
 class Esp32CliFlashStorage
 {

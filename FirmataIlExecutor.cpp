@@ -2874,6 +2874,14 @@ case VariableKind::AddressOfVariable:\
 	intermediate.Uint32 = value1.Uint32 op value2.Uint32;\
 	intermediate.Type = VariableKind::AddressOfVariable;\
 	break;\
+case VariableKind::NativeHandle:\
+	intermediate.Uint32 = value1.Uint32 op value2.Uint32;\
+	intermediate.Type = VariableKind::NativeHandle;\
+	break;\
+case VariableKind::Object: /* Only allowed in unsafe context */\
+	intermediate.Uint32 = value1.Uint32 op value2.Uint32;\
+	intermediate.Type = VariableKind::Object;\
+	break;\
 case VariableKind::Int64:\
 	intermediate.Int64 = value1.Int64 op value2.Int64;\
 	intermediate.Type = VariableKind::Int64;\
@@ -2887,6 +2895,7 @@ case VariableKind::Double:\
 	intermediate.Type = VariableKind::Double;\
 	break;\
 default:\
+	Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);\
 	throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
@@ -2899,6 +2908,7 @@ case VariableKind::Int32:\
 	intermediate.Boolean = value1.Int32 op value2.Int32;\
 	break;\
 case VariableKind::Object:\
+case VariableKind::NativeHandle:\
 case VariableKind::AddressOfVariable:\
 case VariableKind::ReferenceArray:\
 case VariableKind::ValueArray:\
@@ -3470,6 +3480,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		*pTarget = (int16_t)value2.Uint32;
 	}
 	break;
+	case CEE_STIND_I:
 	case CEE_STIND_I4:
 	{
 		// Store a byte (i.e. a bool) to the place where value1 points to
@@ -5380,7 +5391,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				target = nullptr;
 				constrainedTypeToken = 0;
-				TRACE(Firmata.sendStringf(F("Pushed stack to method %d"), 2, currentMethod->methodToken));
+				Firmata.sendStringf(F("Pushed stack to method 0x%x"), 2, currentMethod->methodToken);
 				break;
             }
 			case InlineType:

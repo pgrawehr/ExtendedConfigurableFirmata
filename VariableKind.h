@@ -21,5 +21,6 @@ enum class VariableKind
     RuntimeTypeHandle = 34,
     AddressOfVariable = 35,
     FunctionPointer = 36,
+    NativeHandle = 37,
     StaticMember = 128,
 };
