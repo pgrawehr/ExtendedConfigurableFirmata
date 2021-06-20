@@ -4,6 +4,7 @@
 #include <ConfigurableFirmata.h>
 #include "ClassDeclaration.h"
 #include "NativeMethod.h"
+#include "ExceptionHandlingClauseOptions.h"
 
 class MethodBody
 {
@@ -161,4 +162,36 @@ public:
 	void clear(bool includingFlash) override;
 private:
 	MethodBodyFlash* CreateFlashDeclaration(FlashMemoryManager* manager, MethodBodyDynamic* element);
+};
+
+class ExceptionClause
+{
+private:
+	int32_t _methodToken;
+public:
+	ExceptionClause(int token);
+	uint32_t GetKey()
+	{
+		return _methodToken;
+	}
+	ExceptionHandlingClauseOptions ClauseType;
+	uint16_t TryOffset;
+	uint16_t TryLength;
+	uint16_t HandlerOffset;
+	uint16_t HandlerLength;
+	
+};
+
+class SortedClauseList : public SortedList<ExceptionClause>
+{
+
+public:
+	void CopyContentsToFlash(FlashMemoryManager* manager) override;
+	void ThrowNotFoundException(int token) override;
+	void ValidateListOrder() override;
+	ExceptionClause* BinarySearchKeyInternal(stdSimple::vector<ExceptionClause*>* list, uint32_t key, uint32_t& index) override;
+
+	void clear(bool includingFlash) override;
+private:
+	ExceptionClause* CreateFlashDeclaration(FlashMemoryManager* manager, ExceptionClause* element);
 };

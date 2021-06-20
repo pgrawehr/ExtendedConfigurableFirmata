@@ -83,6 +83,24 @@ void interrupts()
 	LeaveCriticalSection(&cs);
 }
 
+int digitalPinToInterrupt(int pin)
+{
+	return pin;
+}
+
+void attachInterrupt(uint8_t pin, void (*)(void), int mode)
+{
+	// Does just nothing in simulation for now
+}
+void attachInterruptArg(uint8_t pin, void (*)(void*), void* arg, int mode)
+{
+	
+}
+void detachInterrupt(uint8_t pin)
+{
+	
+}
+
 unsigned long micros()
 {
 	const int ONEMILLION = 1000000;

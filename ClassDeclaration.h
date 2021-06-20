@@ -278,7 +278,7 @@ public:
 	/// Validates that all keys in the list are ascending (for both the ram and the flash container) and no duplicates exist.
 	/// Note that 0 is also not a valid key.
 	/// </summary>
-	void ValidateListOrder()
+	virtual void ValidateListOrder()
 	{
 		uint32_t previousKey = 0;
 		for(size_t i = 0; i < _ramEntries.size(); i++)
@@ -310,18 +310,20 @@ public:
 	/// <returns>A pointer to the element with the given key, or null if no such element was found</returns>
 	TBase* BinarySearchKey(uint32_t key)
 	{
-		TBase* ret = BinarySearchKeyInternal(&_flashEntries, key);
+		uint32_t dummy;
+		TBase* ret = BinarySearchKeyInternal(&_flashEntries, key, dummy);
 		if (ret == nullptr)
 		{
-			ret = BinarySearchKeyInternal(&_ramEntries, key);
+			ret = BinarySearchKeyInternal(&_ramEntries, key, dummy);
 		}
 		
 		return ret;
 	}
 
-private:
-	TBase* BinarySearchKeyInternal(stdSimple::vector<TBase*>* list, uint32_t key)
+protected:
+	virtual TBase* BinarySearchKeyInternal(stdSimple::vector<TBase*>* list, uint32_t key, uint32_t& index)
 	{
+		index = -1;
 		if (list->size() == 0)
 		{
 			return nullptr;
@@ -332,6 +334,7 @@ private:
 		while (true)
 		{
 			TBase* currentEntry = list->at(current);
+			index = current;
 			uint32_t currentKey = currentEntry->GetKey();
 			if (currentKey == key)
 			{
@@ -364,6 +367,7 @@ private:
 					return currentEntry;
 				}
 
+				index = -1;
 				return nullptr; // Not found
 			}
 		}

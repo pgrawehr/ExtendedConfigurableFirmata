@@ -133,12 +133,13 @@ void FirmataIlExecutor::Init()
 
 	_gc.Init(this);
 
-	void* classes, *methods, *constants, *stringHeap;
+	void* classes, *methods, *constants, *stringHeap, *clauses;
 	int* specialTokens;
-	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, _startupToken, _startupFlags);
+	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, clauses, _startupToken, _startupFlags);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
+	_clauses.ReadListFromFlash(clauses);
 	_stringHeapFlash = (byte*)stringHeap;
 	_specialTypeListFlash = specialTokens;
 	if (_startupToken != 0)
@@ -154,12 +155,13 @@ void FirmataIlExecutor::handleCapability(byte pin)
 	if (pin == 1)
 	{
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
-		void* classes, * methods, * constants, * stringHeap;
+		void* classes, * methods, * constants, * stringHeap, * clauses;
 		int* specialTokenList;
-		_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokenList, _startupToken, _startupFlags);
+		_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokenList, clauses, _startupToken, _startupFlags);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
+		_clauses.ReadListFromFlash(clauses);
 		_stringHeapFlash = (byte*)stringHeap;
 		_specialTypeListFlash = specialTokenList;
 	}
@@ -306,6 +308,16 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				}
 				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint32(argv + 2), argv[7], argc - 8, argv + 8));
 				break;
+			case ExecutorCommand::ExceptionClauses:
+				if (argc < 7 * 5)
+				{
+					Firmata.sendString(F("Not enough IL data parameters"));
+					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					return true;
+				}
+				SendAckOrNack(subCommand, LoadExceptionClause(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 7),
+					DecodePackedUint32(argv + 12), DecodePackedUint32(argv + 17), DecodePackedUint32(argv + 22), DecodePackedUint32(argv + 27), DecodePackedUint32(argv + 32)));
+				break;
 			case ExecutorCommand::ClassDeclarationEnd:
 			case ExecutorCommand::ClassDeclaration:
 			{
@@ -348,6 +360,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_classes.clear(true);
 				_methods.clear(true);
 				_constants.clear(true);
+				_clauses.clear(true);
 				_stringHeapFlash = nullptr;
 				freeEx(_stringHeapRam);
 				_stringHeapRamSize = 0;
@@ -393,6 +406,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				void* classesPtr = _classes.CopyListToFlash(_flashMemoryManager);
 				void* methodsPtr = _methods.CopyListToFlash(_flashMemoryManager);
 				void* constantPtr = _constants.CopyListToFlash(_flashMemoryManager);
+				void* clausesPtr = _clauses.CopyListToFlash(_flashMemoryManager);
 				void* stringPtr = CopyStringsToFlash();
 				int* specialTokenListPtr = CopySpecialTokenListToFlash();
 				_startupToken = DecodePackedUint32(argv + 2 + 10);
@@ -401,7 +415,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_classes.ValidateListOrder();
 				_methods.ValidateListOrder();
 				_constants.ValidateListOrder();
-				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, _startupToken, _startupFlags);
+				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, clausesPtr, _startupToken, _startupFlags);
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 			break;
@@ -441,6 +455,11 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		return true;
 	}
 	return false;
+}
+
+ExecutionError FirmataIlExecutor::LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken)
+{
+	ExceptionClause* clause = new ExceptionClause();
 }
 
 void* FirmataIlExecutor::CopyStringsToFlash()
@@ -2181,9 +2200,9 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		break;
 	}
 	case NativeMethod::StringCtorSpan:
+	case NativeMethod::StringCtorCharArray:
 		{
 			// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
-			ASSERT(args.size() == 2);
 			result = args[0];
 		break;
 		}
@@ -5253,6 +5272,25 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = (uint16_t)c;
 							}
 						}
+						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharArray)
+						{
+							// The ctor MiniString(char[] value, int startIndex, int length) was called
+							int length = stack->top().Int32;
+							int startIndex = stack->nth(1).Int32;
+							uint16_t* value = (uint16_t*)stack->nth(2).Object;
+							int sourceLen = *AddBytes((int*)value, 4);
+							if (sourceLen < length + startIndex)
+							{
+								throw ClrException("Array size out of bounds", SystemException::IndexOutOfRange, newMethod->methodToken);
+							}
+							
+							value = AddBytes(value, ARRAY_DATA_START);
+							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							for (int i = 0; i < length; i++)
+							{
+								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
+							}
+						}
 						else
 						{
 							throw ClrException("Unsupported string ctor called", SystemException::MissingMethod, newMethod->methodToken);
@@ -6443,6 +6481,7 @@ void FirmataIlExecutor::reset()
 	_methods.clear(false);
 	_classes.clear(false);
 	_constants.clear(false);
+	_clauses.clear(false);
 	_statics.clear(true);
 
 	_largeStatics.clear();

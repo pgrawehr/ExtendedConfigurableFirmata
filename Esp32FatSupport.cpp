@@ -153,6 +153,8 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		}
 		_lastError = 0;
 		result.Int32 = fileHandles[index].write(buffer, len);
+		// TODO: Remove the next line
+		fileHandles[index].close();
 		break;
 		}
 	case NativeMethod::Interop_Kernel32ReadFile:

@@ -35,6 +35,7 @@ public:
 	void* Classes;
 	void* Methods;
 	void* Constants;
+	void* Clauses;
 	void* StringHeap;
 	byte* EndOfHeap;
 	int* SpecialTokenList;
@@ -68,7 +69,7 @@ FlashMemoryManager::FlashMemoryManager()
 	}
 }
 
-void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, int& startupToken, int& startupFlags)
+void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int& startupToken, int& startupFlags)
 {
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
@@ -77,6 +78,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		classes = _header->Classes;
 		methods = _header->Methods;
 		constants = _header->Constants;
+		clauses = _header->Clauses;
 		stringHeap = _header->StringHeap;
 		startupToken = _header->StartupToken;
 		startupFlags = _header->StartupFlags;
@@ -88,6 +90,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		methods = nullptr;
 		constants = nullptr;
 		stringHeap = nullptr;
+		clauses = nullptr;
 		startupToken = 0;
 		startupFlags = 0;
 		specialTokenList = nullptr;
@@ -156,7 +159,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 	}
 }
 
-void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, int startupToken, int startupFlags)
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags)
 {
 	FlashMemoryHeader hd;
 	hd.DataVersion = dataVersion;
@@ -164,6 +167,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.EndOfHeap = _endOfHeap;
 	hd.Identifier = FLASH_MEMORY_IDENTIFIER;
 	hd.Classes = classesPtr;
+	hd.Clauses = clauses;
 	hd.Methods = methodsPtr;
 	hd.Constants = constantsPtr;
 	hd.StringHeap = stringHeapPtr;

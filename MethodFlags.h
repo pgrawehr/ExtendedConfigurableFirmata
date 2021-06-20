@@ -10,4 +10,5 @@ enum class MethodFlags
     Void = 8,
     Ctor = 16,
     Abstract = 32,
+    ExceptionClausesPresent = 64,
 };

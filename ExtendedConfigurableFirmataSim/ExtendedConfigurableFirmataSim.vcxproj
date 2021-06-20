@@ -161,6 +161,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FreeMemory.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
@@ -205,6 +206,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataFeature.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\Frequency.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />

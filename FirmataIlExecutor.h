@@ -177,8 +177,8 @@ class FirmataIlExecutor: public FirmataFeature
     bool AutoStartProgram();
     boolean handlePinMode(byte pin, int mode) override;
     void handleCapability(byte pin) override;
-    
-    boolean handleSysex(byte command, byte argc, byte* argv) override;
+
+	boolean handleSysex(byte command, byte argc, byte* argv) override;
     void reset() override;
 	void report(bool elapsed) override;
 
@@ -204,6 +204,8 @@ public:
 	ExecutionError PrepareStringLoad(uint32_t constantSize, uint32_t stringListSize);
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
+	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
+
 
     int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
     int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
@@ -276,6 +278,7 @@ public:
 
 	SortedClassList _classes;
 	SortedMethodList _methods;
+	SortedClauseList _clauses;
 
 	// The list of static variables (global)
 	stdSimple::map<uint32_t, Variable> _statics;

@@ -183,3 +183,80 @@ void SortedMethodList::clear(bool includingFlash)
 	_ramEntries.clear(true);
 }
 
+void SortedClauseList::clear(bool includingFlash)
+{
+	if (includingFlash)
+	{
+		_flashEntries.clear();
+	}
+
+	for (size_t i = 0; i < _ramEntries.size(); i++)
+	{
+		deleteEx(_ramEntries[i]);
+	}
+
+	_ramEntries.clear(true);
+}
+
+void SortedClauseList::ThrowNotFoundException(int token)
+{
+	throw stdSimple::ClrException("Exception handler in method not found, but expected", SystemException::InvalidOperation, token);
+}
+
+void SortedClauseList::ValidateListOrder()
+{
+	uint32_t previousKey = 0;
+	for (size_t i = 0; i < _ramEntries.size(); i++)
+	{
+		ExceptionClause* base = _ramEntries.at(i);
+		uint32_t currentKey = base->GetKey();
+		if (previousKey > currentKey)
+		{
+			throw stdSimple::ExecutionEngineException("Ram list is not ordered correctly for binary search");
+		}
+	}
+
+	previousKey = 0;
+	for (size_t i = 0; i < _flashEntries.size(); i++)
+	{
+		ExceptionClause* base = _flashEntries.at(i);
+		uint32_t currentKey = base->GetKey();
+		if (previousKey > currentKey)
+		{
+			throw stdSimple::ExecutionEngineException("Flash list is not ordered correctly for binary search");
+		}
+	}
+}
+
+void SortedClauseList::CopyContentsToFlash(FlashMemoryManager* manager)
+{
+	for (auto iterator = _ramEntries.begin(); iterator != _ramEntries.end(); ++iterator)
+	{
+		ExceptionClause* flash = CreateFlashDeclaration(manager, *iterator);
+		_flashEntries.push_back(flash);
+	}
+
+	clear(false);
+}
+
+ExceptionClause* SortedClauseList::CreateFlashDeclaration(FlashMemoryManager* manager, ExceptionClause* element)
+{
+	int totalSize = sizeof(ExceptionClause);
+	ExceptionClause* flashTarget = (ExceptionClause*)manager->FlashAlloc(totalSize);
+
+	manager->CopyToFlash(element, flashTarget, totalSize);
+	return flashTarget;
+}
+
+
+ExceptionClause* SortedClauseList::BinarySearchKeyInternal(stdSimple::vector<ExceptionClause*>* list, uint32_t key, uint32_t& index)
+{
+	ExceptionClause* ret = SortedList<ExceptionClause>::BinarySearchKeyInternal(list, key, index);
+	// This list may have multiple entries with the same key -> find the first one
+	while (index > 0 && (list->at(index - 1)->GetKey() == key))
+	{
+		index--;
+		ret = list->at(index);
+	}
+	return ret;
+}

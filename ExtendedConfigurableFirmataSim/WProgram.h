@@ -37,6 +37,10 @@ byte digitalPinToBitMask(int pin);
 byte digitalPinToPort(int pin);
 byte* portModeRegister(int port);
 byte* portOutputRegister(int port);
+int digitalPinToInterrupt(int pin);
+void attachInterrupt(uint8_t pin, void (*)(void), int mode);
+void attachInterruptArg(uint8_t pin, void (*)(void*), void* arg, int mode);
+void detachInterrupt(uint8_t pin);
 
 void noInterrupts();
 void interrupts();
@@ -47,6 +51,15 @@ void interrupts();
 
 #define HIGH 1
 #define LOW 0
+
+//Interrupt Modes
+#define RISING    0x01
+#define FALLING   0x02
+#define CHANGE    0x03
+#define ONLOW     0x04
+#define ONHIGH    0x05
+#define ONLOW_WE  0x0C
+#define ONHIGH_WE 0x0D
 
 // The program memory directive (just uses plain char* for us)
 #define F(x) x

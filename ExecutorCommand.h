@@ -20,7 +20,8 @@ enum class ExecutorCommand
     EraseFlash = 15,
     SetConstantMemorySize = 16,
     SpecialTokenList = 17,
-    ArrayOperations = 18,
+    ExceptionClauses = 18,
+    ArrayOperations = 19,
     Nack = 126,
     Ack = 127,
 };
