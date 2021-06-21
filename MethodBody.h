@@ -164,12 +164,16 @@ private:
 	MethodBodyFlash* CreateFlashDeclaration(FlashMemoryManager* manager, MethodBodyDynamic* element);
 };
 
+// One exception clause. A method can have 0 or many of these.
 class ExceptionClause
 {
 private:
 	int32_t _methodToken;
 public:
-	ExceptionClause(int token);
+	ExceptionClause(int token)
+	{
+		_methodToken = token;
+	}
 	uint32_t GetKey()
 	{
 		return _methodToken;
@@ -179,7 +183,7 @@ public:
 	uint16_t TryLength;
 	uint16_t HandlerOffset;
 	uint16_t HandlerLength;
-	
+	int FilterToken; // The token of the exception type in this catch clause
 };
 
 class SortedClauseList : public SortedList<ExceptionClause>

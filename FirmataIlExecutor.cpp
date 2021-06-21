@@ -459,7 +459,14 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 
 ExecutionError FirmataIlExecutor::LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken)
 {
-	ExceptionClause* clause = new ExceptionClause();
+	ExceptionClause* clause = new ExceptionClause(methodToken);
+	clause->ClauseType = (ExceptionHandlingClauseOptions)clauseType;
+	clause->TryOffset = (uint16_t)tryOffset;
+	clause->TryLength = (uint16_t)tryLength;
+	clause->HandlerOffset = (uint16_t)handlerOffset;
+	clause->HandlerLength = (uint16_t)handlerLength;
+	clause->FilterToken = exceptionFilterToken;
+	return ExecutionError::None;
 }
 
 void* FirmataIlExecutor::CopyStringsToFlash()
