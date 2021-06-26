@@ -111,6 +111,9 @@
     <ClInclude Include="Esp32FatSupport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CustomClrException.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -162,6 +165,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Esp32FatSupport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CustomClrException.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -127,6 +127,9 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\CustomClrException.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -280,6 +283,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\Frequency.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\CustomClrException.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

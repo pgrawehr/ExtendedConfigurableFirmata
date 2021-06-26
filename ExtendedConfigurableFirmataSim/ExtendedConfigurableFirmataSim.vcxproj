@@ -167,6 +167,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.cpp" />
     <ClCompile Include="..\ClassDeclaration.cpp" />
+    <ClCompile Include="..\CustomClrException.cpp" />
     <ClCompile Include="..\Ds1307.cpp" />
     <ClCompile Include="..\Esp32FatSupport.cpp" />
     <ClCompile Include="..\Exceptions.cpp" />
@@ -212,6 +213,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\SpiFirmata.h" />
     <ClInclude Include="..\ClassDeclaration.h" />
+    <ClInclude Include="..\CustomClrException.h" />
     <ClInclude Include="..\Ds1307.h" />
     <ClInclude Include="..\Esp32FatSupport.h" />
     <ClInclude Include="..\Exceptions.h" />

@@ -40,6 +40,7 @@ namespace stdSimple
 
 	};
 
+
 	class OutOfMemoryException : public ClrException
 	{
 	public:

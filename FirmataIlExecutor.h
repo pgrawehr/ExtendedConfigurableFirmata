@@ -268,13 +268,14 @@ public:
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
-	bool LocateHandler(ExecutionState* state, ExceptionHandlingClauseOptions filterType, int tryBlockOffset, ExceptionClause**
-	                   clauseThatMatches);
-    MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+	bool LocateFinallyHandler(ExecutionState* state, int tryBlockOffset, ExceptionClause** clauseThatMatches);
+	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
+	                        ExceptionClause** clauseThatMatches);
+	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args);
-	void CreateException(SystemException exception, Variable& managedException, int hintToken);
+	void CreateFatalException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, uint32_t length);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
