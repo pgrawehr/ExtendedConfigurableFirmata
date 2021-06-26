@@ -98,6 +98,25 @@ public:
 	short PerStackPc[MaxStackTokens];
 };
 
+/// <summary>
+/// Represents the current exception handler stack
+/// This is used to track returning to the correct position within a handler, particularly if
+/// multiple handlers are used within each other
+/// </summary>
+class ExceptionFrame
+{
+public:
+	ExceptionFrame(ExceptionClause* clause)
+	{
+		Clause = clause;
+		ContinuationPc = 0;
+		Next = nullptr;
+	}
+	ExceptionClause* Clause;
+	uint16_t ContinuationPc; // The PC to load when this handler is left with endfinally. 0 if we're going to rethrow then
+	ExceptionFrame* Next;
+};
+
 
 class ExecutionState
 {
@@ -113,10 +132,11 @@ class ExecutionState
 	ExecutionState* _next;
 	MethodBody* _executingMethod;
 	VariableList _localStorage; // Memory allocated by localloc
+	ExceptionFrame* _exceptionFrame;
 
 	ExecutionState(int taskId, uint16_t maxStack, MethodBody* executingMethod) :
 		_pc(0), _executionStack(10),
-		_locals(), _arguments()
+		_locals(), _arguments(), _exceptionFrame(nullptr)
 	{
 		_locals.InitFrom(executingMethod->NumberOfLocals(), executingMethod->GetLocalsIterator());
 		_arguments.InitFrom(executingMethod->NumberOfArguments(), executingMethod->GetArgumentTypesIterator());
@@ -127,6 +147,12 @@ class ExecutionState
 	~ExecutionState()
 	{
 		_next = nullptr;
+		while (_exceptionFrame)
+		{
+			ExceptionFrame *temp = _exceptionFrame->Next;
+			delete _exceptionFrame->Next;
+			_exceptionFrame = temp;
+		}
 	}
 	
 	void ActivateState(uint16_t* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
@@ -221,9 +247,10 @@ public:
 	Variable Ldflda(Variable& obj, int32_t token);
 	void* Stfld(MethodBody* currentMethod, Variable& obj, int32_t token, Variable& var);
 	Variable Box(Variable& value, ClassDeclaration* ty);
-	
+
+	void ClearExecutionStack(VariableDynamicStack* stack);
     MethodState BasicStackInstructions(ExecutionState* state, uint16_t PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
-                                       OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
+	                                   OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
     int AllocateArrayInstance(int token, int size, Variable& v1);
 
     ExecutionError DecodeParametersAndExecute(int methodToken, int taskId, byte argc, byte* argv);
@@ -241,6 +268,8 @@ public:
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
+	bool LocateHandler(ExecutionState* state, ExceptionHandlingClauseOptions filterType, int tryBlockOffset, ExceptionClause**
+	                   clauseThatMatches);
     MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
@@ -259,6 +288,7 @@ public:
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
+	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c);
 
 	byte* GetString(int stringToken, int& length);
 	byte* GetString(byte* heap, int stringToken, int& length);

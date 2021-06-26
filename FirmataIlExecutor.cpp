@@ -466,6 +466,7 @@ ExecutionError FirmataIlExecutor::LoadExceptionClause(int methodToken, int claus
 	clause->HandlerOffset = (uint16_t)handlerOffset;
 	clause->HandlerLength = (uint16_t)handlerLength;
 	clause->FilterToken = exceptionFilterToken;
+	_clauses.Insert(clause);
 	return ExecutionError::None;
 }
 
@@ -3045,6 +3046,14 @@ void* GetRealTargetAddress(const Variable& value)
 	throw ExecutionEngineException("Unsupported source type for indirect memory addressing");
 }
 
+void FirmataIlExecutor::ClearExecutionStack(VariableDynamicStack* stack)
+{
+	while (!stack->empty())
+	{
+		stack->pop();
+	}
+}
+
 MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFrame, uint16_t PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
                                                       OPCODE instr, Variable& value1, Variable& value2, Variable& value3)
 {
@@ -3054,10 +3063,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	case CEE_THROW:
 	{
 		// Throw empties the execution stack
-		while (!stack->empty())
-		{
-			stack->pop();
-		}
+		ClearExecutionStack(stack);
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
 		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
 		char* cstr = GetAsUtf8String(messageField);
@@ -4434,6 +4440,27 @@ uint32_t FirmataIlExecutor::ReadUint32FromArbitraryAddress(byte* pCode)
 	return static_cast<int32_t>(((uint32_t)pCode[0]) + (((uint32_t)pCode[1]) << 8) + (((uint32_t)pCode[2]) << 16) + (((uint32_t)pCode[3]) << 24));
 }
 
+uint16_t FirmataIlExecutor::CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c)
+{
+	ExceptionFrame* frame = new ExceptionFrame(c);
+	frame->ContinuationPc = continuationAddress;
+	uint16_t newPc = c->HandlerOffset;
+	if (currentFrame->_exceptionFrame == nullptr)
+	{
+		currentFrame->_exceptionFrame = frame;
+	}
+	else
+	{
+		ExceptionFrame* f = currentFrame->_exceptionFrame;
+		while (f->Next != nullptr)
+		{
+			f = f->Next;
+		}
+		f->Next = frame;
+	}
+	return newPc;
+}
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -4455,7 +4482,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	VariableDynamicStack* stack;
 	VariableVector* locals;
 	VariableVector* arguments;
-
+	
 	// Temporary location for a stack variable of arbitrary size. The memory is allocated using alloca() when needed
 	Variable* tempVariable = nullptr;
 	size_t sizeOfTemp = 0;
@@ -4702,6 +4729,41 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					// We can ignore this, I think.
 					goto immediatellyContinue;
 				}
+				else if (instr == CEE_ENDFINALLY)
+				{
+					// Can we try to find another handler around the current finally block?
+					ExceptionClause* c;
+					if (LocateHandler(currentFrame, ExceptionHandlingClauseOptions::Finally, PC, &c))
+					{
+						PC = CreateExceptionFrame(currentFrame, PC, c);
+					}
+					else if (currentFrame->_exceptionFrame != nullptr)
+					{
+						ExceptionFrame* frame = currentFrame->_exceptionFrame;
+						ExceptionFrame* previous = nullptr;
+						while (frame->Next != nullptr)
+						{
+							previous = frame;
+							frame = frame->Next;
+						}
+						PC = frame->ContinuationPc;
+						if (previous)
+						{
+							delete previous->Next;
+							previous->Next = nullptr;
+						}
+						else
+						{
+							delete currentFrame->_exceptionFrame;
+							currentFrame->_exceptionFrame = nullptr;
+						}
+					}
+					else
+					{
+						throw ExecutionEngineException("EndFinally instruction found, but not within an exception handler");
+					}
+					goto immediatellyContinue;
+				}
 
 				MethodState errorState = MethodState::Running;
 				byte numArgumentsToPop = pgm_read_byte(OpcodePops + instr);
@@ -4888,12 +4950,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				intermediate.Type = VariableKind::Boolean;
 				intermediate.Boolean = false;
+				int32_t leaveSource = -1;
 				switch (instr)
 				{
+					case CEE_LEAVE: 
+					case CEE_LEAVE_S:
+						{
+						intermediate.Boolean = true;
+						leaveSource = PC - 1;
+						ClearExecutionStack(stack);
+						}
+						break;
 					case CEE_BR:
 					case CEE_BR_S:
-					case CEE_LEAVE: // TODO: That's a very bad shortcut (we're just skipping the finally clauses)
-					case CEE_LEAVE_S:
 						intermediate.Boolean = true;
 						break;
 					case CEE_BEQ:
@@ -4992,6 +5061,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				{
 					PC += 4;
 				}
+
+            	if (leaveSource >= 0)
+            	{
+            		// We're executing a leave command. Instead of continuing at the new PC, first locate a finally clause and go there.
+					currentFrame->UpdatePc(PC);
+					ExceptionClause* c = nullptr;
+					if (LocateHandler(currentFrame, ExceptionHandlingClauseOptions::Finally, leaveSource, &c))
+					{
+						// We didn't find a finally clause - continue normally where the leave instruction pointed us to.
+						PC = CreateExceptionFrame(currentFrame, PC, c);
+					}
+            	}
 				TRACE(Firmata.sendString(F("Branch instr. Next is "), PC));
 				break;
             }
@@ -6073,6 +6154,67 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
 }
+
+/// <summary>
+/// Locates an exception handler around the current offset
+/// </summary>
+/// <param name="state">The execution state of the calling method</param>
+/// <param name="filterType">The kind of handler to search</param>
+/// <param name="tryBlockOffset">The PC at which a handler is needed (this shall be within the handlers "try" block)</param>
+/// <param name="clauseThatMatches">The clause that best fits</param>
+/// <returns>True if a handler was found, false otherwise</returns>
+bool FirmataIlExecutor::LocateHandler(ExecutionState* state, ExceptionHandlingClauseOptions filterType, int tryBlockOffset, ExceptionClause** clauseThatMatches)
+{
+	*clauseThatMatches = nullptr;
+	uint32_t indexOfClause = 0;
+	uint32_t key = state->_executingMethod->GetKey();
+	ExceptionClause* c = _clauses.BinarySearchKey(key, indexOfClause);
+	if (c == nullptr)
+	{
+		return false;
+	}
+	// TODO: This probably also needs to check whether we are in a frame already
+	ExceptionClause* bestClause = nullptr;
+	while (c && c->GetKey() == key)
+	{
+		if (c->ClauseType == filterType)
+		{
+			// if the block offset where whe left the protected block (the try{} part) is within this handler's try block, it is a possible candidate
+			if (tryBlockOffset >= c->TryOffset && tryBlockOffset < c->TryOffset + c->TryLength)
+			{
+				if (bestClause == nullptr)
+				{
+					bestClause = c;
+				}
+				else
+				{
+					// If multiple try blocks surround the code location in question, we use the shortest one
+					if (bestClause->TryLength < c->TryLength)
+					{
+						bestClause = c;
+					}
+				}
+			}
+		}
+		indexOfClause++;
+		if (indexOfClause < _clauses.size())
+		{
+			c = _clauses.at(indexOfClause);
+		}
+		else
+		{
+			c = nullptr;
+		}
+	}
+
+	if (bestClause != nullptr)
+	{
+		*clauseThatMatches = bestClause;
+		return true;
+	}
+	return false;
+}
+
 
 void FirmataIlExecutor::SignExtend(Variable& variable, int inputSize)
 {

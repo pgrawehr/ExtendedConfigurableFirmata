@@ -252,6 +252,10 @@ ExceptionClause* SortedClauseList::CreateFlashDeclaration(FlashMemoryManager* ma
 ExceptionClause* SortedClauseList::BinarySearchKeyInternal(stdSimple::vector<ExceptionClause*>* list, uint32_t key, uint32_t& index)
 {
 	ExceptionClause* ret = SortedList<ExceptionClause>::BinarySearchKeyInternal(list, key, index);
+	if (ret == nullptr)
+	{
+		return nullptr;
+	}
 	// This list may have multiple entries with the same key -> find the first one
 	while (index > 0 && (list->at(index - 1)->GetKey() == key))
 	{

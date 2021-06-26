@@ -311,13 +311,43 @@ public:
 	TBase* BinarySearchKey(uint32_t key)
 	{
 		uint32_t dummy;
-		TBase* ret = BinarySearchKeyInternal(&_flashEntries, key, dummy);
+		return BinarySearchKey(key, dummy);
+	}
+	
+	/// <summary>
+	/// Performs a binary search for the given key. The list must be ordered by key.
+	/// </summary>
+	/// <param name="key">The key to search for</param>
+	/// <param name="index">The index of the found key</param>
+	/// <returns>A pointer to the element with the given key, or null if no such element was found</returns>
+	TBase* BinarySearchKey(uint32_t key, uint32_t& index)
+	{
+		TBase* ret = BinarySearchKeyInternal(&_flashEntries, key, index);
 		if (ret == nullptr)
 		{
-			ret = BinarySearchKeyInternal(&_ramEntries, key, dummy);
+			ret = BinarySearchKeyInternal(&_ramEntries, key, index);
+			index = index + _flashEntries.size();
 		}
 		
 		return ret;
+	}
+
+	TBase* at(uint32_t index)
+	{
+		if (index < _flashEntries.size())
+		{
+			return _flashEntries.at(index);
+		}
+		else
+		{
+			index = index - _flashEntries.size();
+			return _ramEntries.at(index);
+		}
+	}
+
+	uint32_t size() const
+	{
+		return _flashEntries.size() + _ramEntries.size();
 	}
 
 protected:
