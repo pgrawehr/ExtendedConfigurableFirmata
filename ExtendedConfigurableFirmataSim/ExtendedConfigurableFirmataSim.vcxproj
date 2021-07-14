@@ -93,6 +93,7 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\libraries\ConfigurableFirmata\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -160,7 +161,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataExt.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
-    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FreeMemory.cpp" />
+    <ClCompile Include="..\FreeMemory.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />

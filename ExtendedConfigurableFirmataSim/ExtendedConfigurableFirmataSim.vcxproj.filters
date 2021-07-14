@@ -94,7 +94,7 @@
     <ClCompile Include="..\ClassDeclaration.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FreeMemory.cpp">
+    <ClCompile Include="..\FreeMemory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="..\FlashMemoryManager.cpp">

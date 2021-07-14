@@ -28,6 +28,7 @@
 #include <math.h>
 #include "Exceptions.h"
 #include "CustomClrException.h"
+#include "FreeMemory.h"
 
 typedef byte BYTE;
 typedef uint32_t DWORD;

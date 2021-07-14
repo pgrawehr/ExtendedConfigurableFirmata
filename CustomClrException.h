@@ -1,4 +1,4 @@
-﻿// CustomClrException.h
+// CustomClrException.h
 
 #ifndef _CUSTOMCLREXCEPTION_h
 #define _CUSTOMCLREXCEPTION_h

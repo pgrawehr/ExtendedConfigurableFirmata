@@ -1,4 +1,4 @@
-﻿
+
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
 #include "Esp32FlashStorage.h"

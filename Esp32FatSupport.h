@@ -1,4 +1,4 @@
-﻿// Esp32FatSupport.h
+// Esp32FatSupport.h
 
 #include <ConfigurableFirmata.h>
 #include "HardwareAccess.h"
