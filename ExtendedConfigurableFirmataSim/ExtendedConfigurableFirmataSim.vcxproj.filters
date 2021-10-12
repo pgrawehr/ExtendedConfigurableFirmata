@@ -58,7 +58,10 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp">
+    <ClCompile Include="..\FreeMemory.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+	<ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp">
@@ -92,9 +95,6 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="..\ClassDeclaration.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
-    <ClCompile Include="..\FreeMemory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="..\FlashMemoryManager.cpp">

@@ -161,8 +161,8 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataExt.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
-    <ClCompile Include="..\FreeMemory.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp" />
+	<ClCompile Include="..\FreeMemory.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />

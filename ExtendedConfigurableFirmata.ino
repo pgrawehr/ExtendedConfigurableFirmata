@@ -9,6 +9,7 @@
 #include "Exceptions.h"
 #include "SelfTest.h"
 #include "FlashMemoryManager.h"
+#include "FreeMemory.h"
 
 // Use these defines to easily enable or disable certain modules
 
@@ -20,7 +21,7 @@
 // #define ENABLE_ONE_WIRE
 // #define ENABLE_SERVO 
 // #define ENABLE_ACCELSTEPPER
-#define ENABLE_BASIC_SCHEDULER
+// #define ENABLE_BASIC_SCHEDULER
 #define ENABLE_SERIAL
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
