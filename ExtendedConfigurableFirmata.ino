@@ -5,10 +5,7 @@
 
 #include <ConfigurableFirmata.h>
 
-#include "Esp32FatSupport.h"
-#include "Exceptions.h"
-#include "SelfTest.h"
-#include "FlashMemoryManager.h"
+
 #include "FreeMemory.h"
 
 // Use these defines to easily enable or disable certain modules
