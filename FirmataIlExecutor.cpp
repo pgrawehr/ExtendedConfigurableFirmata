@@ -1,4 +1,4 @@
-/*
+﻿/*
   FirmataIlExecutor
 
   This library is free software; you can redistribute it and/or
@@ -29,9 +29,9 @@
 #include "Exceptions.h"
 #include "CustomClrException.h"
 #include "FreeMemory.h"
+#include "OverflowMath.h"
 
 typedef byte BYTE;
-typedef uint32_t DWORD;
 
 #pragma warning (error:4244)
 
@@ -1093,7 +1093,11 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 		}
 	}
 
-	MethodState execResult = ExecuteIlCode(rootState, &result);
+	return ExecutionError::None;
+
+	// Don't actually start the execution, so that the start request is immediately returning, and we don't have to separately handle
+	// immediate errors
+	/* MethodState execResult = ExecuteIlCode(rootState, &result);
 	if (execResult == MethodState::Running)
 	{
 		// The method is still running
@@ -1107,6 +1111,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	_methodCurrentlyExecuting = nullptr;
 
 	return ExecutionError::None;
+	*/
 }
 
 void FirmataIlExecutor::InvalidOpCode(uint16_t pc, OPCODE opCode)
@@ -2373,6 +2378,11 @@ int* FirmataIlExecutor::GetSpecialTokenListEntry(int token, bool searchWithMainT
 
 int* FirmataIlExecutor::GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken)
 {
+	if (tokenList == nullptr)
+	{
+		return nullptr;
+	}
+	
 	// If searchWithMainToken is true, we search for the combined token, otherwise we search for the left type (the open type)
 	int compareIndex = searchWithMainToken ? 1 : 2;
 	while (*tokenList != 0)
@@ -3125,9 +3135,39 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		ComparisonOperation(== );
 		stack->push(intermediate);
 		break;
-		
+
+	case CEE_ADD_OVF:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = sadd_overflow(value1.Int32, value2.Int32, &intermediate.Int32);
+			intermediate.Type = VariableKind::Int32;
+			break;
+		case VariableKind::Uint64:\
+		case VariableKind::Int64:\
+			fail = sadd_overflow(value1.Int64, value2.Int64, &intermediate.Int64);
+			intermediate.Type = VariableKind::Int64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32); \
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken); \
+		}
+		if (fail)
+		{
+			throw ClrException("Integer addition overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
 	case CEE_ADD:
-		// For some of the operations, the result doesn't depend on the sign, due to correct overflow
+		// For some of the operations, the result doesn't depend on the whether the variables are signed or not, due to correct overflow
 		BinaryOperation(+);
 		stack->push(intermediate);
 		break;

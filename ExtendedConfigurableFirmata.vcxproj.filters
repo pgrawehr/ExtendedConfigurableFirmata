@@ -114,6 +114,9 @@
     <ClInclude Include="CustomClrException.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="OverflowMath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -171,6 +174,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FreeMemory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OverflowMath.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

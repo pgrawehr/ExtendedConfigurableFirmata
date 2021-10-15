@@ -132,6 +132,7 @@
     <ClInclude Include="ObjectStack.h" />
     <ClInclude Include="ObjectVector.h" />
     <ClInclude Include="openum.h" />
+    <ClInclude Include="OverflowMath.h" />
     <ClInclude Include="RtcBase.h" />
     <ClInclude Include="SelfTest.h" />
     <ClInclude Include="SimFlashStorage.h" />
@@ -161,6 +162,7 @@
     <ClCompile Include="HardwareAccess.cpp" />
     <ClCompile Include="MemoryManagement.cpp" />
     <ClCompile Include="MethodBody.cpp" />
+    <ClCompile Include="OverflowMath.cpp" />
     <ClCompile Include="RtcBase.cpp" />
     <ClCompile Include="SelfTest.cpp" />
     <ClCompile Include="SimFlashStorage.cpp" />
