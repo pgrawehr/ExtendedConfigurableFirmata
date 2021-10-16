@@ -1,4 +1,4 @@
-﻿/*
+/*
   FirmataIlExecutor
 
   This library is free software; you can redistribute it and/or
@@ -3156,8 +3156,38 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32); \
-			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken); \
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+		if (fail)
+		{
+			throw ClrException("Integer addition overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
+	case CEE_ADD_OVF_UN:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = uadd_overflow(value1.Uint32, value2.Uint32, &intermediate.Uint32);
+			intermediate.Type = VariableKind::Uint32;
+			break;
+		case VariableKind::Uint64:\
+		case VariableKind::Int64:\
+			fail = uadd_overflow(value1.Uint64, value2.Uint64, &intermediate.Uint64);
+			intermediate.Type = VariableKind::Uint64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32); 
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken); 
 		}
 		if (fail)
 		{
@@ -3171,10 +3201,130 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		BinaryOperation(+);
 		stack->push(intermediate);
 		break;
+	case CEE_SUB_OVF:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = ssub_overflow(value1.Int32, value2.Int32, &intermediate.Int32);
+			intermediate.Type = VariableKind::Int32;
+			break;
+		case VariableKind::Uint64:
+		case VariableKind::Int64:
+			fail = ssub_overflow(value1.Int64, value2.Int64, &intermediate.Int64);
+			intermediate.Type = VariableKind::Int64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+		if (fail)
+		{
+			throw ClrException("Integer addition overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
+	case CEE_SUB_OVF_UN:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = usub_overflow(value1.Uint32, value2.Uint32, &intermediate.Uint32);
+			intermediate.Type = VariableKind::Uint32;
+			break;
+		case VariableKind::Uint64:\
+		case VariableKind::Int64:\
+			fail = usub_overflow(value1.Uint64, value2.Uint64, &intermediate.Uint64);
+			intermediate.Type = VariableKind::Uint64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+		if (fail)
+		{
+			throw ClrException("Integer addition overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
 	case CEE_SUB:
 		BinaryOperation(-);
 		stack->push(intermediate);
 		break;
+	case CEE_MUL_OVF:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = smul_overflow(value1.Int32, value2.Int32, &intermediate.Int32);
+			intermediate.Type = VariableKind::Int32;
+			break;
+		case VariableKind::Uint64:\
+		case VariableKind::Int64:\
+			fail = smul_overflow(value1.Int64, value2.Int64, &intermediate.Int64);
+			intermediate.Type = VariableKind::Int64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+		if (fail)
+		{
+			throw ClrException("Integer multiplication overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
+	case CEE_MUL_OVF_UN:
+	{
+		bool fail = false;
+		switch (value1.Type)
+		{
+		case VariableKind::Int32:
+		case VariableKind::Uint32:
+		case VariableKind::AddressOfVariable:
+		case VariableKind::NativeHandle:
+		case VariableKind::Object:
+			fail = umul_overflow(value1.Uint32, value2.Uint32, &intermediate.Uint32);
+			intermediate.Type = VariableKind::Uint32;
+			break;
+		case VariableKind::Uint64:\
+		case VariableKind::Int64:\
+			fail = umul_overflow(value1.Uint64, value2.Uint64, &intermediate.Uint64);
+			intermediate.Type = VariableKind::Uint64;
+			break;
+
+		default:
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+		if (fail)
+		{
+			throw ClrException("Integer multiplication overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
+		}
+		stack->push(intermediate);
+		break;
+	}
 	case CEE_MUL:
 		BinaryOperation(*);
 		stack->push(intermediate);
@@ -3184,7 +3334,21 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		{
 			throw ClrException(SystemException::DivideByZero, currentFrame->_executingMethod->methodToken);
 		}
-		
+
+		if (value1.Type == VariableKind::Int32)
+		{
+			if (value1.Int32 == 0x7FFFFFFF && value2.Int32 == -1)
+			{
+				throw ClrException(SystemException::Arithmetic, currentFrame->_executingMethod->methodToken);
+			}
+		}
+		else if (value1.Type == VariableKind::Int64)
+		{
+			if (value1.Int64 == 0x7FFFFFFFFFFFFFFF && value2.Int64 == -1)
+			{
+				throw ClrException(SystemException::Arithmetic, currentFrame->_executingMethod->methodToken);
+			}
+		}
 		BinaryOperation(/ );
 		stack->push(intermediate);
 		break;
@@ -3196,9 +3360,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		switch (value1.Type)
 		{
 		case VariableKind::Int32:
+			if (value1.Int32 == 0x7FFFFFFF && value2.Int32 == -1)
+			{
+				throw ClrException(SystemException::Arithmetic, currentFrame->_executingMethod->methodToken);
+			}
 			intermediate.Int32 = value1.Int32 % value2.Int32;
 			intermediate.Type = value1.Type;
-				break;
+			break;
 		case VariableKind::Uint32:
 			intermediate.Uint32 = value1.Uint32 % value2.Uint32;
 			intermediate.Type = VariableKind::Uint32;
@@ -3208,6 +3376,10 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Type = VariableKind::Uint64;
 			break;
 		case VariableKind::Int64:
+			if (value1.Int64 == 0x7FFFFFFFFFFFFFFF && value2.Int64 == -1)
+			{
+				throw ClrException(SystemException::Arithmetic, currentFrame->_executingMethod->methodToken);
+			}
 			intermediate.Int64 = value1.Int64 % value2.Int64;
 			intermediate.Type = VariableKind::Int64;
 			break;

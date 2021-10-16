@@ -18,4 +18,3 @@ CustomClrException::CustomClrException(Variable& msg, int exceptionToken)
 
 	_object = msg.Object;
 }
-

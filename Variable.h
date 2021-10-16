@@ -360,5 +360,3 @@ inline bool FitsIn(Variable src)
 	}
 	
 }
-
-

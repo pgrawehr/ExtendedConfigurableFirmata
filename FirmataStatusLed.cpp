@@ -64,4 +64,3 @@ void FirmataStatusLed::report(bool elapsed)
 		digitalWrite(_pin, _isOn);
 	}
 }
-

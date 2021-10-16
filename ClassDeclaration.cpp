@@ -229,4 +229,3 @@ void SortedConstantList::CopyContentsToFlash(FlashMemoryManager* manager)
 
 	clear(false);
 }
-

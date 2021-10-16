@@ -38,4 +38,3 @@ void deleteEx(T*& ptr)
 
 
 #endif
-

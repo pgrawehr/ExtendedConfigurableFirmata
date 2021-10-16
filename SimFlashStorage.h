@@ -45,4 +45,3 @@ public:
 	/// <returns>True on success, false otherwise</returns>
 	boolean write(byte* address, byte* data, uint32_t dataLength);
 };
-

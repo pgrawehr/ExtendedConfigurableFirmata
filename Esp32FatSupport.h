@@ -18,4 +18,3 @@ public:
 private:
 	uint32_t _lastError;
 };
-

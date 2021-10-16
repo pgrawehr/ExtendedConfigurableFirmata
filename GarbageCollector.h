@@ -128,5 +128,3 @@ private:
 	int _bytesAllocatedSinceLastGc;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };
-
-

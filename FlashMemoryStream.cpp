@@ -20,4 +20,3 @@ int FlashMemoryStream::peek()
 	  
 	  return pgm_read_byte(_buffer + _pos);
   }
-

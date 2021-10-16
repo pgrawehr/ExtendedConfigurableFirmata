@@ -19,6 +19,7 @@ enum class SystemException
     FieldAccess = 13,
     Overflow = 14,
     Io = 15,
+    Arithmetic = 16,
     CustomException = 20,
     ExecutionEngine = 21,
 };

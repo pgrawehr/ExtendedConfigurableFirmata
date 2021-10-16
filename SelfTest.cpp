@@ -179,4 +179,3 @@ void SelfTest::CompilerBehavior()
 	ASSERT(a == 3, "Reference behavior error");
 	ASSERT(b == 7, "Reference behavior error");*/
 }
-
