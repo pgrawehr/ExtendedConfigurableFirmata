@@ -192,11 +192,9 @@ void initFirmata()
 #ifdef ENABLE_FREQUENCY
   firmataExt.addFeature(frequency);
 #endif
-
-#ifdef ENABLE_IL_EXECUTOR
+  
   firmataExt.addFeature(ilExecutor);
   firmataExt.addFeature(statusLed);
-#endif
 
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 }
@@ -208,10 +206,8 @@ void setup()
 	initFirmata();
 
 	Firmata.parse(SYSTEM_RESET);
-
-#ifdef ENABLE_IL_EXECUTOR
+	
 	ilExecutor.Init();
-#endif
 
 	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
@@ -219,6 +215,11 @@ void setup()
 void loop()
 {
   while(Firmata.available()) {
+	if (statusLed.getStatus() == STATUS_IDLE)
+	{
+		statusLed.setStatus(STATUS_COMMANDED, 1000);
+	}
+
     Firmata.processInput();
     if (!Firmata.isParsingMessage()) {
       break;

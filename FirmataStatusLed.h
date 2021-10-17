@@ -11,6 +11,23 @@
 	#include "WProgram.h"
 #endif
 
+#define STATUS_IDLE 0
+#define STATUS_COMMANDED 1
+#define STATUS_LOADING_PROGRAM 2
+#define STATUS_EXECUTING_PROGRAM 3
+#define STATUS_ERROR 4
+
+#define STATUS_NUMBER_OF_STEPS 4
+
+
+// This list gives the blink pattern for each possible status. A pattern consists of 4 steps (given in milliseconds), the even ones are on, the odd ones are off
+static int BlinkPatterns[][STATUS_NUMBER_OF_STEPS] = {
+	{ 1000, 1000, 1000, 1000 }, /* STATUS_IDLE */
+	{ 200, 500, 200, 500 }, /* STATUS_COMMANDED */
+	{ 100, 100, 100, 100 }, /* STATUS_LOADING_PROGRAM */
+	{ 300, 100, 300, 100 }, /* STATUS_EXECUTING_PROGRAM */
+	{ 30, 30, 100, 100 }, /* STATUS_ERROR */
+};
 /// <summary>
 /// Simple component that reports the CPU status by some blinking patterns.
 /// By default, the VERSION_BLINK_PIN is used, but any other digital pin can be choosen.
@@ -19,15 +36,16 @@ class FirmataStatusLed : public FirmataFeature
 {
 private:
     int _pin;
-	int _triggerCount;
+	int _status;
+	uint32_t _startClock;
+	uint32_t _resetAt;
 	bool _isOn;
-	// These have microsecond resolution
-	uint32_t _lastTime;
-	uint32_t _minTime;
 	
 public:
+	static FirmataStatusLed* FirmataStatusLedInstance;
 	FirmataStatusLed(int pinNumber)
 	{
+		FirmataStatusLedInstance = this;
         _pin = pinNumber;
 		Init();
 	}
@@ -37,6 +55,7 @@ public:
 	/// </summary>
 	FirmataStatusLed()
 	{
+		FirmataStatusLedInstance = this;
 #ifdef VERSION_BLINK_PIN
 		_pin = VERSION_BLINK_PIN;
 #else
@@ -45,20 +64,29 @@ public:
 		Init();
 	}
 
-	// These have no implementation here - this component has no controllable parts
-    virtual void handleCapability(byte pin)
+	virtual void handleCapability(byte pin)
 	{
 	}
-    virtual boolean handlePinMode(byte pin, int mode)
+
+	virtual boolean handlePinMode(byte pin, int mode)
 	{
+		setStatus(STATUS_COMMANDED, 500);
 		return false;
 	}
+
 	virtual boolean handleSysex(byte command, byte argc, byte* argv) override;
 	
-    virtual void reset()
-    {
+	virtual void reset()
+	{
 		Init();
-    }
+	}
+
+	void setStatus(int status, int resetAfter);
+
+	int getStatus()
+	{
+		return _status;
+	}
 
 	virtual void report(bool elapsed) override;
 

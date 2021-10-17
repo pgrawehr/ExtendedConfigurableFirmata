@@ -30,6 +30,7 @@
 #include "CustomClrException.h"
 #include "FreeMemory.h"
 #include "OverflowMath.h"
+#include "FirmataStatusLed.h"
 
 typedef byte BYTE;
 
@@ -277,6 +278,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			{
 				
 			case ExecutorCommand::LoadIl:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 8)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -293,6 +295,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 				break;
 			case ExecutorCommand::DeclareMethod:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -303,6 +306,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					(NativeMethod)DecodePackedUint32(argv + 10)));
 				break;
 			case ExecutorCommand::MethodSignature:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 4)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -312,6 +316,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint32(argv + 2), argv[7], argc - 8, argv + 8));
 				break;
 			case ExecutorCommand::ExceptionClauses:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 7 * 5)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -324,6 +329,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::ClassDeclarationEnd:
 			case ExecutorCommand::ClassDeclaration:
 			{
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 19)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
@@ -338,6 +344,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 				break;
 			case ExecutorCommand::Interfaces:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough parameters"));
@@ -346,12 +353,15 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
 				break;
 			case ExecutorCommand::SpecialTokenList:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				SendAckOrNack(subCommand, LoadSpecialTokens(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), argc - 12, argv + 12));
 				break;
 			case ExecutorCommand::SetConstantMemorySize:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				SendAckOrNack(subCommand, PrepareStringLoad(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5)));
 				break;
 			case ExecutorCommand::ConstantData:
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
@@ -396,6 +406,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			}
 			case ExecutorCommand::CopyToFlash:
 				{
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 500);
 					// Copy all members currently in ram to flash
 				_classes.CopyContentsToFlash(_flashMemoryManager);
 				_methods.CopyContentsToFlash(_flashMemoryManager);
@@ -406,6 +417,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 
 			case ExecutorCommand::WriteFlashHeader:
 			{
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 500);
 				void* classesPtr = _classes.CopyListToFlash(_flashMemoryManager);
 				void* methodsPtr = _methods.CopyListToFlash(_flashMemoryManager);
 				void* constantPtr = _constants.CopyListToFlash(_flashMemoryManager);
@@ -809,6 +821,7 @@ void FirmataIlExecutor::report(bool elapsed)
 		return;
 	}
 
+	FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_EXECUTING_PROGRAM, 100);
 	Variable retVal;
 	MethodState execResult = ExecuteIlCode(_methodCurrentlyExecuting, &retVal);
 
@@ -6889,6 +6902,8 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 	else
 	{
 		Firmata.write((byte)ExecutorCommand::Nack);
+
+		FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 1000);
 	}
 	Firmata.write((byte)subCommand);
 	Firmata.write((byte)errorCode);
