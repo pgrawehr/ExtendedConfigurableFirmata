@@ -1260,6 +1260,7 @@ char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
+	Firmata.sendStringf(F("Executing special method 0x%x"), 4, (int32_t)method);
 	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
 		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
@@ -4948,7 +4949,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 					currentMethod = currentFrame->_executingMethod;
 					pCode = currentMethod->_methodIl;
-					
+					Firmata.sendStringf(F("Popped stack back to method 0x%x"), 2, currentMethod->methodToken);
 					break;
 				}
 				else if (instr == CEE_READONLY_)
@@ -5601,6 +5602,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							
 							value = AddBytes(value, ARRAY_DATA_START);
 							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							*AddBytes((int*)newObjInstance, 4) = length;
 							for (int i = 0; i < length; i++)
 							{
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
