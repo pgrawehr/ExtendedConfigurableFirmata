@@ -851,7 +851,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, 
 	}
 
 	void* dataPtr = mallocEx(sizeof(MethodBodyDynamic));
-	method = new(dataPtr) MethodBodyDynamic((byte) flags, (byte)argCount, (byte)maxStack);
+	method = new(dataPtr) MethodBodyDynamic((byte) flags, (byte)argCount, (byte)maxStack); // placement new!
 	if (method == nullptr)
 	{
 		return ExecutionError::OutOfMemory;
