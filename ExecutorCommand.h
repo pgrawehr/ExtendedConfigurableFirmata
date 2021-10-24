@@ -22,6 +22,8 @@ enum class ExecutorCommand
     SpecialTokenList = 17,
     ExceptionClauses = 18,
     ArrayOperations = 19,
+    QueryHardware = 20,
+    Reply = 125,
     Nack = 126,
     Ack = 127,
 };

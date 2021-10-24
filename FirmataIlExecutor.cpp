@@ -31,6 +31,7 @@
 #include "FreeMemory.h"
 #include "OverflowMath.h"
 #include "FirmataStatusLed.h"
+#include "RuntimeState.h"
 
 typedef byte BYTE;
 
@@ -276,7 +277,17 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		{
 			switch (subCommand)
 			{
-				
+			case ExecutorCommand::QueryHardware:
+				{
+				SendReplyHeader(subCommand);
+				Firmata.sendPackedUInt14(0); // Some flags
+				Firmata.write(sizeof(int));
+				Firmata.write(sizeof(void*));
+				Firmata.sendPackedUInt32(_flashMemoryManager->TotalFlashMemory());
+				Firmata.sendPackedUInt32(freeMemory());
+				Firmata.endSysex();
+				return true;
+				}
 			case ExecutorCommand::LoadIl:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 8)
@@ -997,6 +1008,8 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
+	Firmata.write((byte)ExecutorCommand::Reply);
+	Firmata.write((byte)RuntimeState::TaskTermination);
 	Firmata.write(codeReference & 0x7F);
 	Firmata.write((codeReference >> 7) & 0x7F);
 	
@@ -6891,6 +6904,16 @@ ExecutionError FirmataIlExecutor::LoadInterfaces(int32_t classToken, byte argc, 
 		i += 5;
 	}
 	return ExecutionError::None;
+}
+
+void FirmataIlExecutor::SendReplyHeader(ExecutorCommand subCommand)
+{
+	// Same command start as the SendAckOrNack
+	Firmata.startSysex();
+	Firmata.write(SCHEDULER_DATA);
+	Firmata.write((byte)ExecutorCommand::Reply);
+	Firmata.write((byte)subCommand);
+	Firmata.write((byte)0);
 }
 
 void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode)

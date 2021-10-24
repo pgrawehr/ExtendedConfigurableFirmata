@@ -42,6 +42,8 @@ public:
 
 	bool ContainsMatchingData(int dataVersion, int hashCode);
 
+	long TotalFlashMemory();
+
 };
 
 #endif

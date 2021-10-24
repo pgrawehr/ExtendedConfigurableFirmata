@@ -27,7 +27,6 @@ uint32_t VirtualFlashMemory::getFlashSize()
 }
 
 
-
 byte* VirtualFlashMemory::readAddress(uint32_t address)
 {
 	return AddBytes(_memoryBasePtr, address);

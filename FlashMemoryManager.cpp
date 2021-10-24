@@ -69,6 +69,12 @@ FlashMemoryManager::FlashMemoryManager()
 	}
 }
 
+long FlashMemoryManager::TotalFlashMemory()
+{
+	return storage->getFlashSize();
+}
+
+
 void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int& startupToken, int& startupFlags)
 {
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)

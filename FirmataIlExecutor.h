@@ -223,6 +223,7 @@ public:
 
   private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
+	void SendReplyHeader(ExecutorCommand subCommand);
 	ExecutionError LoadIlDataStream(int token, uint16_t codeLength, uint16_t offset, byte argc, byte* argv);
 	ExecutionError LoadIlDeclaration(int token, int flags, byte maxLocals, byte argCount, NativeMethod nativeMethod);
 	ExecutionError LoadMethodSignature(int methodToken, byte signatureType, byte argc, byte* argv);
