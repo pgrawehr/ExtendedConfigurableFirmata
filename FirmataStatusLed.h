@@ -20,14 +20,6 @@
 #define STATUS_NUMBER_OF_STEPS 4
 
 
-// This list gives the blink pattern for each possible status. A pattern consists of 4 steps (given in milliseconds), the even ones are on, the odd ones are off
-static int BlinkPatterns[][STATUS_NUMBER_OF_STEPS] = {
-	{ 1000, 1000, 1000, 1000 }, /* STATUS_IDLE */
-	{ 200, 500, 200, 500 }, /* STATUS_COMMANDED */
-	{ 100, 100, 100, 100 }, /* STATUS_LOADING_PROGRAM */
-	{ 300, 100, 300, 100 }, /* STATUS_EXECUTING_PROGRAM */
-	{ 30, 30, 100, 100 }, /* STATUS_ERROR */
-};
 /// <summary>
 /// Simple component that reports the CPU status by some blinking patterns.
 /// By default, the VERSION_BLINK_PIN is used, but any other digital pin can be choosen.

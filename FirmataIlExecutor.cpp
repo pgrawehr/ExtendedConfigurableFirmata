@@ -221,7 +221,6 @@ int unicode_to_utf8(int charcode, char*& output)
 		const int other_bits = 6;
 		int first_val = 0xC0;
 		int t = 0;
-		int result = 0;
 		int bytesUsed = 0;
 		while (charcode >= (1 << first_bits))
 		{
@@ -1273,7 +1272,7 @@ char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	Firmata.sendStringf(F("Executing special method 0x%x"), 4, (int32_t)method);
+	TRACE(Firmata.sendStringf(F("Executing special method 0x%x"), 4, (int32_t)method));
 	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
 		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
@@ -4748,11 +4747,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
         OPCODE  instr;
 		
 		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method 0x%lx"), 6, PC, currentMethod->methodToken));
-    	/*if (!stack->empty())
-    	{
-			Firmata.sendStringf(F("Top of stack %lx"), 4, stack->peek());
-    	}*/
-    	
+
     	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::SpecialMethod))
 		{
 			NativeMethod specialMethod = currentMethod->NativeMethodNumber();
@@ -4962,7 +4957,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 					currentMethod = currentFrame->_executingMethod;
 					pCode = currentMethod->_methodIl;
-					Firmata.sendStringf(F("Popped stack back to method 0x%x"), 2, currentMethod->methodToken);
+					TRACE(Firmata.sendStringf(F("Popped stack back to method 0x%x"), 2, currentMethod->methodToken));
 					break;
 				}
 				else if (instr == CEE_READONLY_)
@@ -5759,7 +5754,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				target = nullptr;
 				constrainedTypeToken = 0;
-				Firmata.sendStringf(F("Pushed stack to method 0x%x"), 2, currentMethod->methodToken);
+				TRACE(Firmata.sendStringf(F("Pushed stack to method 0x%x"), 2, currentMethod->methodToken));
 				break;
             }
 			case InlineType:
