@@ -4740,6 +4740,17 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	// and check for other tasks (i.e. serial input data)
     while (instructionsExecutedThisLoop < NUM_INSTRUCTIONS_AT_ONCE)
     {
+#if DEBUGGER
+		if (_debuggerEnabled)
+		{
+			if (CheckForBreakCondition(currentFrame, PC))
+			{
+				currentFrame->UpdatePc(PC);
+				SendDebugState(currentFrame, PC, true);
+				break; // exit while loop
+			}
+		}
+#endif
     	immediatellyContinue: // Label used by prefix codes, to prevent interruption
 		instructionsExecutedThisLoop++;
 		
@@ -6555,6 +6566,22 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 		// TODO: Before actually going up one frame, we need to look for intermittent finally clauses
 	}
 	return false;
+}
+
+bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t pc)
+{
+	return false;
+}
+
+void FirmataIlExecutor::SendDebugState(ExecutionState* state, uint16_t pc, bool fullInfo)
+{
+	// The "default" breakpoints using CEE_BREAK instructions will probably not be supported, but we leave that name open for now
+	SendReplyHeader(ExecutorCommand::ConditionalBreakpointHit);
+	Firmata.sendPackedUInt14(0); // Some flags
+	Firmata.sendPackedUInt32(state->TaskId());
+	Firmata.sendPackedUInt32(state->_executingMethod->methodToken);
+	Firmata.sendPackedUInt32(pc);
+	Firmata.endSysex();
 }
 
 

@@ -36,6 +36,10 @@
 class LowlevelInterface;
 using namespace stdSimple;
 
+#ifndef NO_DEBUGGER_SUPPORT
+#define DEBUGGER 1
+#endif
+
 #define IL_EXECUTOR_SCHEDULER_COMMAND 0xFF
 
 enum class MethodState
@@ -272,6 +276,8 @@ public:
 	bool LocateFinallyHandler(ExecutionState* state, int tryBlockOffset, ExceptionClause** clauseThatMatches);
 	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
 	                        ExceptionClause** clauseThatMatches);
+	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc);
+	void SendDebugState(ExecutionState* execution_state, uint16_t pc, bool fullInfo);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
@@ -338,6 +344,8 @@ public:
 	Variable _clearVariable;
 	FlashMemoryManager* _flashMemoryManager;
 	stdSimple::vector<LowlevelInterface*> _lowLevelLibraries;
+
+	bool _debuggerEnabled;
 };
 
 
