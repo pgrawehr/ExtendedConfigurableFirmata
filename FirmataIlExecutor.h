@@ -32,6 +32,7 @@
 #include "VariableKind.h"
 #include "MethodBody.h"
 #include "GarbageCollector.h"
+#include "DebuggerCommand.h"
 
 class LowlevelInterface;
 using namespace stdSimple;
@@ -236,7 +237,7 @@ public:
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
-
+	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd);
 
     int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
     int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
@@ -277,7 +278,7 @@ public:
 	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
 	                        ExceptionClause** clauseThatMatches);
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc);
-	void SendDebugState(ExecutionState* execution_state, uint16_t pc, bool fullInfo);
+	void SendDebugState(ExecutionState* executionState);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
@@ -345,7 +346,14 @@ public:
 	FlashMemoryManager* _flashMemoryManager;
 	stdSimple::vector<LowlevelInterface*> _lowLevelLibraries;
 
+	// The debugger is active
 	bool _debuggerEnabled;
+
+	// We're sitting on a break point
+	bool _debugBreakActive;
+	// The number of commands to skip until we check for breakpoints again.
+	// This is used to make sure a continue or single step command executes at least one command.
+	int _commandsToSkip;
 };
 
 

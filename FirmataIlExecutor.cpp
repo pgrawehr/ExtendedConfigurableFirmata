@@ -32,6 +32,7 @@
 #include "OverflowMath.h"
 #include "FirmataStatusLed.h"
 #include "RuntimeState.h"
+#include "DebuggerCommand.h"
 
 typedef byte BYTE;
 
@@ -84,6 +85,9 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_specialTypeListRam = nullptr;
 	_specialTypeListRamLength = 0;
 	_flashMemoryManager = nullptr;
+	_debugBreakActive = false;
+	_debuggerEnabled = false;
+	_commandsToSkip = 0;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -265,7 +269,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		subCommand = (ExecutorCommand)argv[1];
 
 		// TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
-		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask)
+		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask && subCommand != ExecutorCommand::DebuggerCommand)
 		{
 			Firmata.sendString(F("Execution engine busy. Ignoring command."));
 			SendAckOrNack(subCommand, ExecutionError::EngineBusy);
@@ -449,6 +453,12 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				{
 				bool result = _flashMemoryManager->ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
 				SendAckOrNack(subCommand, result ? ExecutionError::None : ExecutionError::InvalidArguments);
+				}
+				break;
+			case ExecutorCommand::DebuggerCommand:
+				{
+				uint32_t debuggerCommand = DecodePackedUint32(argv + 2);
+				SendAckOrNack(subCommand, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand));
 				}
 				break;
 			default:
@@ -1021,7 +1031,7 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 		Firmata.write((byte)(1 + 1 /* ExceptionArg*/ + 2 * RuntimeException::MaxStackTokens + 1)); // Number of arguments that follow
 		if (ex.ExceptionType == SystemException::None)
 		{
-			SendPackedUInt32(ex.TokenOfException);
+			SendPackedUInt32((uint32_t)SystemException::CustomException);
 		}
 		else
 		{
@@ -4708,6 +4718,12 @@ uint16_t FirmataIlExecutor::CreateExceptionFrame(ExecutionState* currentFrame, u
 MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable* returnValue)
 {
 	const int NUM_INSTRUCTIONS_AT_ONCE = 50;
+
+	if (_debugBreakActive)
+	{
+		// This won't change while we're sitting on a breakpoint.
+		return MethodState::Running;
+	}
 	
 	ExecutionState* currentFrame = rootState;
 	while (currentFrame->_next != NULL)
@@ -4741,15 +4757,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     while (instructionsExecutedThisLoop < NUM_INSTRUCTIONS_AT_ONCE)
     {
 #if DEBUGGER
-		if (_debuggerEnabled)
+
+		if (CheckForBreakCondition(currentFrame, PC))
 		{
-			if (CheckForBreakCondition(currentFrame, PC))
-			{
-				currentFrame->UpdatePc(PC);
-				SendDebugState(currentFrame, PC, true);
-				break; // exit while loop
-			}
+			currentFrame->UpdatePc(PC);
+			SendDebugState(rootState);
+			_debugBreakActive = true;
+			break; // exit while loop
 		}
+
 #endif
     	immediatellyContinue: // Label used by prefix codes, to prevent interruption
 		instructionsExecutedThisLoop++;
@@ -6568,19 +6584,46 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 	return false;
 }
 
+/// <summary>
+/// Check whether we should break at this position.
+/// </summary>
+/// <param name="state">Current stack frame</param>
+/// <param name="pc">Current PC</param>
+/// <returns>True if we should break, false if execution should continue</returns>
 bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t pc)
 {
-	return false;
+	if (!_debuggerEnabled)
+	{
+		return false;
+	}
+
+	if (_commandsToSkip > 0)
+	{
+		_commandsToSkip--;
+		return false;
+	}
+
+	return true;
 }
 
-void FirmataIlExecutor::SendDebugState(ExecutionState* state, uint16_t pc, bool fullInfo)
+/// <summary>
+/// Sends the current task state
+/// </summary>
+/// <param name="state">State of the stack to report. This should typically be the root of the stack</param>
+/// <param name="fullInfo"></param>
+void FirmataIlExecutor::SendDebugState(ExecutionState* state)
 {
 	// The "default" breakpoints using CEE_BREAK instructions will probably not be supported, but we leave that name open for now
 	SendReplyHeader(ExecutorCommand::ConditionalBreakpointHit);
-	Firmata.sendPackedUInt14(0); // Some flags
-	Firmata.sendPackedUInt32(state->TaskId());
-	Firmata.sendPackedUInt32(state->_executingMethod->methodToken);
-	Firmata.sendPackedUInt32(pc);
+	Firmata.sendPackedUInt14((uint16_t)state->TaskId());
+
+	while (state != nullptr)
+	{
+		Firmata.sendPackedUInt32(state->_executingMethod->methodToken);
+		Firmata.sendPackedUInt32(state->CurrentPc());
+		state = state->_next;
+	}
+
 	Firmata.endSysex();
 }
 
@@ -6968,6 +7011,27 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 	TRACE(Firmata.sendString(F("Reference not found: "), token));
 	return nullptr;
 }
+
+ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
+{
+	switch(cmd)
+	{
+	case DebuggerCommand::Continue:
+		_commandsToSkip = 1; // Execute at least one command now
+		_debugBreakActive = false;
+		return ExecutionError::None;
+	case DebuggerCommand::EnableDebugging:
+		_debugBreakActive = false;
+		_debuggerEnabled = true;
+		return ExecutionError::None;
+	case DebuggerCommand::DisableDebugging:
+		_debugBreakActive = false;
+		_debuggerEnabled = false;
+		return ExecutionError::None;
+	}
+	return ExecutionError::InvalidArguments;
+}
+
 
 OPCODE DecodeOpcode(const BYTE *pCode, uint16_t *pdwLen)
 {
