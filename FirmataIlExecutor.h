@@ -33,6 +33,7 @@
 #include "MethodBody.h"
 #include "GarbageCollector.h"
 #include "DebuggerCommand.h"
+#include "BreakpointType.h"
 
 class LowlevelInterface;
 using namespace stdSimple;
@@ -198,6 +199,14 @@ class ExecutionState
 	}
 };
 
+class Breakpoint
+{
+public:
+	BreakpointType Kind;
+	int MethodToken;
+	int Pc;
+};
+
 
 class FirmataIlExecutor: public FirmataFeature
 {
@@ -354,6 +363,9 @@ public:
 	// The number of commands to skip until we check for breakpoints again.
 	// This is used to make sure a continue or single step command executes at least one command.
 	int _commandsToSkip;
+
+	stdSimple::vector<Breakpoint> _breakpoints;
+	Breakpoint _nextStepBehavior;
 };
 
 

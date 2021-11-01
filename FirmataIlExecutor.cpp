@@ -133,7 +133,7 @@ void FirmataIlExecutor::Init()
 		HardwareAccess* access = new HardwareAccess();
 		access->Init();
 		_lowLevelLibraries.push_back(access);
-#if ESP32
+#ifdef ESP32
 		Esp32FatSupport* fat = new Esp32FatSupport();
 		fat->Init();
 		_lowLevelLibraries.push_back(fat);
@@ -445,6 +445,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_methods.ValidateListOrder();
 				_constants.ValidateListOrder();
 				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, clausesPtr, _startupToken, _startupFlags);
+
+				// Reset this flag after programming, or we'll immediately start executing code if there was _any_ valid program in flash when the CPU started.
+				_startedFromFlash = false;
 				SendAckOrNack(subCommand, ExecutionError::None);
 			}
 			break;
@@ -808,6 +811,9 @@ void FirmataIlExecutor::KillCurrentTask()
 	
 	CleanStack(_methodCurrentlyExecuting);
 	_methodCurrentlyExecuting = nullptr;
+	// Make sure we stay stopped (hard-reset to restart from flash is possible, but typically the flash is going to be reprogrammed now)
+	_startupFlags = 0;
+	_startupToken = 0;
 }
 
 void FirmataIlExecutor::CleanStack(ExecutionState* state)
@@ -6603,7 +6609,13 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 		return false;
 	}
 
-	return true;
+	if (_nextStepBehavior.Kind == BreakpointType::Once)
+	{
+		_nextStepBehavior.Kind = BreakpointType::None;
+		return true;
+	}
+
+	return false;
 }
 
 /// <summary>
@@ -7016,6 +7028,10 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
 {
 	switch(cmd)
 	{
+	case DebuggerCommand::Break:
+		_debugBreakActive = false;
+		_nextStepBehavior.Kind = BreakpointType::Once;
+		return ExecutionError::None;
 	case DebuggerCommand::Continue:
 		_commandsToSkip = 1; // Execute at least one command now
 		_debugBreakActive = false;
@@ -7027,7 +7043,11 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
 	case DebuggerCommand::DisableDebugging:
 		_debugBreakActive = false;
 		_debuggerEnabled = false;
+		_nextStepBehavior.Kind = BreakpointType::None;
+		_breakpoints.clear();
 		return ExecutionError::None;
+	default:
+		break;
 	}
 	return ExecutionError::InvalidArguments;
 }
