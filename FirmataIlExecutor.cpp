@@ -94,17 +94,31 @@ bool FirmataIlExecutor::AutoStartProgram()
 {
 	if (_startupToken != 0)
 	{
+		if (!_flashMemoryManager->ValidateFlashContents())
+		{
+			Firmata.sendString(F("Flash memory contents are inconsistent or damaged."));
+			_startedFromFlash = false;
+			_startupToken = 0;
+			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
+		}
+
 		// Auto-Load the program
 		MethodBody* method = GetMethodByToken(_startupToken);
 		if (method == nullptr)
 		{
 			Firmata.sendString(F("Startup method not found"));
+			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
 			return false;
 		}
+
+		// There's a problem: Because we're writing full objects to flash (including the vtable pointer), updating the firmware almost always
+		// invalidates the program, causing this line to cause a core dump, because the virtual method calls fail.
+		// We should somehow validate that the program matches the current firmware.
 		ExecutionState* rootState = new ExecutionState(0, method->MaxExecutionStack(), method);
 		if (rootState == nullptr)
 		{
 			Firmata.sendString(F("Out of memory starting task"));
+			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
 			return false;
 		}
 		
@@ -249,6 +263,18 @@ int unicode_to_utf8(int charcode, char*& output)
 }
 
 
+void FirmataIlExecutor::SendQueryHardwareReply()
+{
+	ExecutorCommand subCommand = ExecutorCommand::QueryHardware;
+	SendReplyHeader(subCommand);
+	Firmata.sendPackedUInt14(0); // Some flags
+	Firmata.write(sizeof(int));
+	Firmata.write(sizeof(void*));
+	Firmata.sendPackedUInt32(_flashMemoryManager->TotalFlashMemory());
+	Firmata.sendPackedUInt32(_flashMemoryManager->UsedFlashMemory());
+	Firmata.sendPackedUInt32(freeMemory());
+	Firmata.endSysex();
+}
 
 boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 {
@@ -271,7 +297,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		// TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask && subCommand != ExecutorCommand::DebuggerCommand)
 		{
-			Firmata.sendString(F("Execution engine busy. Ignoring command."));
+			Firmata.sendStringf(F("Execution engine busy. Ignoring command %d."), 4, subCommand);
 			SendAckOrNack(subCommand, ExecutionError::EngineBusy);
 			return true;
 		}
@@ -282,13 +308,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			{
 			case ExecutorCommand::QueryHardware:
 				{
-				SendReplyHeader(subCommand);
-				Firmata.sendPackedUInt14(0); // Some flags
-				Firmata.write(sizeof(int));
-				Firmata.write(sizeof(void*));
-				Firmata.sendPackedUInt32(_flashMemoryManager->TotalFlashMemory());
-				Firmata.sendPackedUInt32(freeMemory());
-				Firmata.endSysex();
+				SendQueryHardwareReply();
 				return true;
 				}
 			case ExecutorCommand::LoadIl:
@@ -449,6 +469,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				// Reset this flag after programming, or we'll immediately start executing code if there was _any_ valid program in flash when the CPU started.
 				_startedFromFlash = false;
 				SendAckOrNack(subCommand, ExecutionError::None);
+				SendQueryHardwareReply();
+				// Firmata.sendStringf(F("Free main memory: %d"), 4, freeMemory());
 			}
 			break;
 
@@ -1020,7 +1042,7 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 	// byte 2: Status. See below
 	// byte 3: Number of integer values returned
 	// bytes 4+: Return values
-
+	Firmata.sendStringf(F("Task %d is ending."), 4, codeReference);
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
 	Firmata.write((byte)ExecutorCommand::Reply);

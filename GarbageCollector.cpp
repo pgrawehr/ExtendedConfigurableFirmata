@@ -57,6 +57,8 @@ byte* GarbageCollector::Allocate(uint32_t size)
 			// Still null? That's bad. Either the memory is completely exhausted, or the requested block is just way to large
 			OutOfMemoryException::Throw("Out of memory increasing GC controlled memory");
 		}
+
+		Firmata.sendStringf(F("Allocated new GC memory block at 0x%lx, size %ld"), 8, newBlockPtr, sizeToAllocate);
 		
 		GcBlock block;
 		block.BlockSize = sizeToAllocate;
@@ -81,8 +83,6 @@ byte* GarbageCollector::Allocate(uint32_t size)
 	_totalAllocations++;
 	_bytesAllocatedSinceLastGc += size;
 	_numAllocsSinceLastGc++;
-
-	TRACE(Firmata.sendStringf(F("Address is 0x%lx"), 4, ret));
 
 	ASSERT(((uint32_t)ret % ALLOCATE_ALLIGNMENT) == 0);
 

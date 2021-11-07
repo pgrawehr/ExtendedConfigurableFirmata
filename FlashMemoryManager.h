@@ -42,8 +42,15 @@ public:
 
 	bool ContainsMatchingData(int dataVersion, int hashCode);
 
-	long TotalFlashMemory();
+	long TotalFlashMemory() const;
 
+	long UsedFlashMemory();
+
+	/// <summary>
+	/// Check that the flash content is consistent and matches the current firmware
+	/// </summary>
+	/// <returns>True on success, false otherwise</returns>
+	bool ValidateFlashContents() const;
 };
 
 #endif

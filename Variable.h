@@ -5,40 +5,11 @@
 #include "Exceptions.h"
 #include "VariableKind.h"
 #include "openum.h"
+#include "Utils.h"
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define VARIABLE_DEFAULT_MARKER  0x37
 #define VARIABLE_DECLARATION_MARKER 0x39
-
-/// <summary>
-/// Pointer arithmetic on byte level on other object types. This shall be used if the offset is in bytes, but T is some other pointer type.
-/// </summary>
-template <typename T>
-T* AddBytes(T* inPtr, int offset)
-{
-	return (T*)(((byte*)inPtr) + offset);
-}
-
-template <typename T>
-int ByteDifference(T* higher, T* lower)
-{
-	return (byte*)higher - (byte*)lower;
-}
-
-/// <summary>
-/// Relocates a pointer (to compute the same address relative to a new base)
-/// </summary>
-/// <param name="inBasePtr">Input base pointer</param>
-/// <param name="inPtr">Input pointer. Must be &gt; inBasePtr</param>
-/// <param name="outBasePtr">New base pointer</param>
-template <typename T>
-T* Relocate(T* inBasePtr, T* inPtr, T* outBasePtr)
-{
-	int offset = ByteDifference(inPtr, inBasePtr);
-	return AddBytes(outBasePtr, offset);
-}
 
 inline VariableKind operator &(VariableKind a, VariableKind b)
 {

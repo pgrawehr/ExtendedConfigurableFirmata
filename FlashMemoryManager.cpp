@@ -20,12 +20,14 @@ DueFlashStorage* storage;
 #include "FlashMemoryManager.h"
 #include "Variable.h"
 #include "Exceptions.h"
+#include "Utils.h"
 
 using namespace stdSimple;
 
 const int FLASH_MEMORY_IDENTIFIER = 0x7AABCDBB;
 const int MEMORY_ALLOCATION_ALIGNMENT = 4;
 
+const int TIMESTAMP_SIZE = 30;
 struct FlashMemoryHeader
 {
 public:
@@ -43,6 +45,10 @@ public:
 	int StartupToken;
 	// Bit 0: Auto-Restart task after crash
 	int StartupFlags;
+
+	// These two are used to check that the contents of the flash memory matches the firmware.
+	// Since we're storing objects that include code references (vtables) in flash, updating the build invalidates it.
+	char FirmwareBuildTime[TIMESTAMP_SIZE];
 };
 
 FlashMemoryManager::FlashMemoryManager()
@@ -69,15 +75,22 @@ FlashMemoryManager::FlashMemoryManager()
 	}
 }
 
-long FlashMemoryManager::TotalFlashMemory()
+long FlashMemoryManager::TotalFlashMemory() const
 {
 	return storage->getFlashSize();
 }
 
+long FlashMemoryManager::UsedFlashMemory()
+{
+	return _endOfHeap - _startOfHeap;
+}
+
+
 
 void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int& startupToken, int& startupFlags)
 {
-	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
+	bool tryRead = ValidateFlashContents();
+	if (tryRead && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
 		_endOfHeap = _header->EndOfHeap;
 		_headerClear = false;
@@ -103,6 +116,22 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 	}
 }
 
+bool FlashMemoryManager::ValidateFlashContents() const
+{
+	if (_header->Identifier != FLASH_MEMORY_IDENTIFIER)
+	{
+		return false;
+	}
+
+	if (strncmp(__TIMESTAMP__, _header->FirmwareBuildTime, TIMESTAMP_SIZE) != 0)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+
 bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 {
 	if (_headerClear)
@@ -110,7 +139,7 @@ bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 		return false;
 	}
 	
-	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion == dataVersion && _header->DataHashCode == hashCode)
+	if (ValidateFlashContents() && _header->DataVersion == dataVersion && _header->DataHashCode == hashCode)
 	{
 		Firmata.sendString(F("Found matching data in flash."));
 		return true;
@@ -168,6 +197,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags)
 {
 	FlashMemoryHeader hd;
+	memset(&hd, 0, sizeof(FlashMemoryHeader));
 	hd.DataVersion = dataVersion;
 	hd.DataHashCode = hashCode;
 	hd.EndOfHeap = _endOfHeap;
@@ -180,6 +210,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.SpecialTokenList = specialTokenList;
 	hd.StartupToken = startupToken;
 	hd.StartupFlags = startupFlags;
+	strncpy_s(hd.FirmwareBuildTime, TIMESTAMP_SIZE, __TIMESTAMP__, _TRUNCATE);
 	
 	storage->write(_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
 	_headerClear = false;

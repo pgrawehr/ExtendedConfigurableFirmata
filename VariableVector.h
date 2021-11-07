@@ -72,6 +72,7 @@ public:
 		int totalSize = 0;
 		// Check whether the list contains any large value type objects. If not, we will be using constant field sizes of sizeof(Variable)
 		// In the same run, sum up all sizes
+		// Firmata.sendStringf(F("Initfrom: %d descriptions, address 0x%x"), 8, numDescriptions, variableDescriptions);
 		for (int i = 0; i < numDescriptions; i++)
 		{
 			size_t size = variableDescriptions[i].fieldSize();

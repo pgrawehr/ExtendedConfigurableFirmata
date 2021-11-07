@@ -141,9 +141,10 @@ class ExecutionState
 	ExceptionFrame* _exceptionFrame;
 
 	ExecutionState(int taskId, uint16_t maxStack, MethodBody* executingMethod) :
-		_pc(0), _executionStack(10),
+		_pc(0), _executionStack(MAX(maxStack, 10)),
 		_locals(), _arguments(), _exceptionFrame(nullptr)
 	{
+		// Firmata.sendString(F("ExecutionState ctor"));
 		_locals.InitFrom(executingMethod->NumberOfLocals(), executingMethod->GetLocalsIterator());
 		_arguments.InitFrom(executingMethod->NumberOfArguments(), executingMethod->GetArgumentTypesIterator());
 		_taskId = taskId;
@@ -307,7 +308,8 @@ public:
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
 	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c);
-
+	void SendQueryHardwareReply();
+	
 	byte* GetString(int stringToken, int& length);
 	byte* GetString(byte* heap, int stringToken, int& length);
 	byte* GetConstant(int token);
