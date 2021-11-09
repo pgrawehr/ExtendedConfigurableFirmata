@@ -1042,7 +1042,7 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 	// byte 2: Status. See below
 	// byte 3: Number of integer values returned
 	// bytes 4+: Return values
-	Firmata.sendStringf(F("Task %d is ending."), 4, codeReference);
+	// Firmata.sendStringf(F("Task %d is ending."), 4, codeReference);
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
 	Firmata.write((byte)ExecutorCommand::Reply);

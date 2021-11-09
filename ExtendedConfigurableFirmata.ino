@@ -209,7 +209,7 @@ void setup()
 	
 	ilExecutor.Init();
 
-	// Firmata.sendStringf(F("System booted. Free bytes: %d"), 4, freeMemory());
+	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
 
 void loop()
