@@ -82,16 +82,16 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		if (args[2].Int32 == 0)
 		{
 			// Input
-			Firmata.setPinMode(pin, MODE_INPUT);
+			Firmata.setPinMode(pin, PIN_MODE_INPUT);
 			Firmata.setPinState(pin, 0);
 		}
-		if (args[2].Int32 == 1) // Must match PullMode enum on C# side
+		else if (args[2].Int32 == 1) // Must match PullMode enum on C# side
 		{
-			Firmata.setPinMode(pin, OUTPUT);
+			Firmata.setPinMode(pin, PIN_MODE_OUTPUT);
 		}
-		if (args[2].Int32 == 3)
+		else if (args[2].Int32 == 3)
 		{
-			Firmata.setPinMode(pin, MODE_INPUT);
+			Firmata.setPinMode(pin, PIN_MODE_INPUT);
 			Firmata.setPinState(pin, 1);
 		}
 
@@ -140,7 +140,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	{
 		ASSERT(args.size() == 2);
 		byte mode = Firmata.getPinMode((byte)args[1].Int32);
-		if (mode == MODE_INPUT)
+		if (mode == PIN_MODE_INPUT)
 		{
 			result.Int32 = 0;
 			if (Firmata.getPinState((byte)args[1].Int32) == 1)
@@ -148,7 +148,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 				result.Int32 = 3; // INPUT_PULLUP instead of input
 			}
 		}
-		else if (mode == OUTPUT)
+		else if (mode == PIN_MODE_OUTPUT)
 		{
 			result.Int32 = 1;
 		}
