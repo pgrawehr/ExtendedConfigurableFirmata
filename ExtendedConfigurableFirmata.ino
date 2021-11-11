@@ -4,15 +4,19 @@
 
 #include <ConfigurableFirmata.h>
 
+#include "FreeMemory.h"
+
 // Use this to enable WIFI instead of serial communication. Tested on ESP32, but should also
 // work with Wifi-enabled Arduinos
-// #define ENABLE_WIFI
+#define ENABLE_WIFI
 
+#if __has_include("wifiConfig.h")
+#include "wifiConfig.h"
+#else
 const char* ssid     = "your-ssid";
 const char* password = "your-password";
 const int NETWORK_PORT = 27016;
-
-#include "FreeMemory.h"
+#endif
 
 // Use these defines to easily enable or disable certain modules
 
@@ -35,7 +39,7 @@ const int NETWORK_PORT = 27016;
 #define ENABLE_DHT
 #endif
 #define ENABLE_I2C
-#define ENABLE_IL_EXECUTOR
+// #define ENABLE_IL_EXECUTOR
 #define ENABLE_SPI
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
@@ -152,19 +156,22 @@ void initTransport()
 #ifdef SIM
 	NetworkSerial.begin();
 	Firmata.begin(NetworkSerial);
-#elsif ENABLE_WIFI
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  pinMode(VERSION_BLINK_PIN, OUTPUT);
-  bool pinIsOn = false;
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(100);
-    pinIsOn = !pinIsOn;
-    digitalWrite(VERSION_BLINK_PIN, pinIsOn);
-  }
-  Firmata.begin(serverStream);
-  Firmata.blinkVersion(); // Because the above doesn't do it.
+#elif defined(ENABLE_WIFI)
+	Firmata.begin(115200); // To make sure the serial port is also available
+	WiFi.mode(WIFI_STA);
+	WiFi.begin(ssid, password);
+	pinMode(16, OUTPUT);
+	bool pinIsOn = false;
+	while (WiFi.status() != WL_CONNECTED)
+	{
+	    delay(100);
+	    pinIsOn = !pinIsOn;
+	    digitalWrite(16, pinIsOn);
+	}
+	digitalWrite(16, 0);
+	Firmata.begin(serverStream);
+	Firmata.blinkVersion(); // Because the above doesn't do it.
+	Firmata.sendString(F("WIFI connection established"));
 #else
     Firmata.begin(115200);
 #endif
@@ -223,9 +230,11 @@ void initFirmata()
 #ifdef ENABLE_FREQUENCY
   firmataExt.addFeature(frequency);
 #endif
-  
+
+#ifdef ENABLE_IL_EXECUTOR
   firmataExt.addFeature(ilExecutor);
   firmataExt.addFeature(statusLed);
+#endif
 
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 }
@@ -237,20 +246,22 @@ void setup()
 	initFirmata();
 
 	Firmata.parse(SYSTEM_RESET);
-	
-	ilExecutor.Init();
 
+#ifdef ENABLE_IL_EXECUTOR
+	ilExecutor.Init();
+#endif
 	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
 
 void loop()
 {
   while(Firmata.available()) {
+#ifdef ENABLE_IL_EXECUTOR
 	if (statusLed.getStatus() == STATUS_IDLE)
 	{
 		statusLed.setStatus(STATUS_COMMANDED, 1000);
 	}
-
+#endif
     Firmata.processInput();
     if (!Firmata.isParsingMessage()) {
       break;
