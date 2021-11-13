@@ -69,9 +69,8 @@ AnalogOutputFirmata analogOutput;
 
 #ifdef ENABLE_WIFI
 #include <WiFi.h>
-#include "utility/WiFiClientStream.h"
-#include "utility/WiFiServerStream.h"
-WiFiServerStream serverStream(NETWORK_PORT);
+#include "WifiCachingStream.h"
+WifiCachingStream serverStream(NETWORK_PORT);
 #endif
 
 #ifdef ENABLE_I2C
@@ -159,6 +158,7 @@ void initTransport()
 #elif defined(ENABLE_WIFI)
 	Firmata.begin(115200); // To make sure the serial port is also available
 	WiFi.mode(WIFI_STA);
+	WiFi.setSleep(false);
 	WiFi.begin(ssid, password);
 	pinMode(16, OUTPUT);
 	bool pinIsOn = false;
@@ -169,6 +169,7 @@ void initTransport()
 	    digitalWrite(16, pinIsOn);
 	}
 	digitalWrite(16, 0);
+	serverStream.Init();
 	Firmata.begin(serverStream);
 	Firmata.blinkVersion(); // Because the above doesn't do it.
 	Firmata.sendString(F("WIFI connection established"));

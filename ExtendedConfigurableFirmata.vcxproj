@@ -142,6 +142,10 @@
     <ClInclude Include="VariableList.h" />
     <ClInclude Include="VariableVector.h" />
     <ClInclude Include="VariableDynamicStack.h" />
+    <ClInclude Include="WifiCachingStream.h">
+      <SubType>
+      </SubType>
+    </ClInclude>
     <ClInclude Include="__vm\.ExtendedConfigurableFirmata.vsarduino.h" />
   </ItemGroup>
   <ItemGroup>
@@ -169,6 +173,10 @@
     <ClCompile Include="SimFlashStorage.cpp" />
     <ClCompile Include="SimulatorClock.cpp" />
     <ClCompile Include="Utils.cpp" />
+    <ClCompile Include="WifiCachingStream.cpp">
+      <SubType>
+      </SubType>
+    </ClCompile>
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
