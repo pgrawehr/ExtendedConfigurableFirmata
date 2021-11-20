@@ -61,7 +61,7 @@
     <ClCompile Include="..\FreeMemory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-	<ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp">
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp">
@@ -163,9 +163,6 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.h">
-      <Filter>Headerdateien</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogWrite.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.h">

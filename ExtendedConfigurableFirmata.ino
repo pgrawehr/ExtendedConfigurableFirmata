@@ -1,3 +1,4 @@
+
 /*
  * ExtendedConfigurableFirmata startup code
  */
@@ -8,7 +9,9 @@
 
 // Use this to enable WIFI instead of serial communication. Tested on ESP32, but should also
 // work with Wifi-enabled Arduinos
+#ifndef SIM
 #define ENABLE_WIFI
+#endif
 
 #if __has_include("wifiConfig.h")
 #include "wifiConfig.h"
@@ -17,6 +20,7 @@ const char* ssid     = "your-ssid";
 const char* password = "your-password";
 const int NETWORK_PORT = 27016;
 #endif
+const int WIFI_STATUS_LED = 16;
 
 // Use these defines to easily enable or disable certain modules
 
@@ -160,19 +164,20 @@ void initTransport()
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 	WiFi.begin(ssid, password);
-	pinMode(16, OUTPUT);
+	pinMode(WIFI_STATUS_LED, OUTPUT);
 	bool pinIsOn = false;
-	while (WiFi.status() != WL_CONNECTED)
+	int timeout = 20000;
+	while (WiFi.status() != WL_CONNECTED && timeout > 0)
 	{
 	    delay(100);
+		timeout -= 100;
 	    pinIsOn = !pinIsOn;
-	    digitalWrite(16, pinIsOn);
+	    digitalWrite(WIFI_STATUS_LED, pinIsOn);
 	}
-	digitalWrite(16, 0);
+	digitalWrite(WIFI_STATUS_LED, 0);
 	serverStream.Init();
 	Firmata.begin(serverStream);
-	Firmata.blinkVersion(); // Because the above doesn't do it.
-	Firmata.sendString(F("WIFI connection established"));
+	Firmata.sendString(F("WIFI network connection established"));
 #else
     Firmata.begin(115200);
 #endif

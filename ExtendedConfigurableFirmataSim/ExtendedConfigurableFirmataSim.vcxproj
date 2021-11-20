@@ -162,7 +162,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataReporting.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp" />
-	<ClCompile Include="..\FreeMemory.cpp" />
+    <ClCompile Include="..\FreeMemory.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ServoFirmata.cpp" />
@@ -197,7 +197,6 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.h" />
-    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogWrite.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DhtFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DigitalInputFirmata.h" />

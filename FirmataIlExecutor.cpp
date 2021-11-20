@@ -273,6 +273,7 @@ void FirmataIlExecutor::SendQueryHardwareReply()
 	Firmata.sendPackedUInt32(_flashMemoryManager->TotalFlashMemory());
 	Firmata.sendPackedUInt32(_flashMemoryManager->UsedFlashMemory());
 	Firmata.sendPackedUInt32(freeMemory());
+	Firmata.sendPackedUInt32(MAX_DATA_BYTES);  // Maximum size of one command sequence
 	Firmata.endSysex();
 }
 

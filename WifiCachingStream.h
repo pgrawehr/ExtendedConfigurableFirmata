@@ -58,6 +58,11 @@ public:
 		// Do nothing. The implementation of WifiClient clears the _INPUT_ queue instead of the output queue!
 		// _activeClient.flush();
 	}
+
+	bool isConnected() const
+	{
+		return _hasActiveClient;
+	}
 };
 #endif
 
