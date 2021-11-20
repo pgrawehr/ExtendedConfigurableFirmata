@@ -37,6 +37,17 @@ Esp32CliFlashStorage::~Esp32CliFlashStorage()
 	mapHandle = 0;
 }
 
+extern "C" unsigned char _etext;
+// See https://arduino.stackexchange.com/questions/83911/how-do-i-get-the-size-of-my-program-at-runtime/83916#83916 for
+// an explanation of this function
+long SizeOfApp()
+{
+	byte* rom_end = &_etext;
+	rom_end = (byte*)(((uint32_t)rom_end + 256) & ~0xFF); // Align to next free flash block (even if the memory ends right on a boundary)
+	return (long)rom_end;
+}
+
+
 
 void Esp32CliFlashStorage::PrintPartitions()
 {
@@ -59,6 +70,8 @@ void Esp32CliFlashStorage::PrintPartitions()
 	}
 
 	esp_partition_iterator_release(iter);
+
+	Firmata.sendStringf(F("Application size is %d bytes"), 4, SizeOfApp());
 
 	Firmata.sendStringf(F("Data partition of size %d mapped to memory address 0x%x"), 8, partition->size, mappedBaseAddress);
 }
