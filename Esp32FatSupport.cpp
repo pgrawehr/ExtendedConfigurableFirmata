@@ -10,6 +10,7 @@
 #ifdef ESP32
 #include <FS.h>
 #include <FFat.h>
+#include <vector>
 
 std::vector<File> fileHandles;
 
