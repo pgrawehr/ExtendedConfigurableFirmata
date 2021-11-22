@@ -3,7 +3,6 @@
 // 
 #include <ConfigurableFirmata.h>
 #include "FtpServer.h"
-#include "ftp.h"
 
 void ftp_task(void* args);
 

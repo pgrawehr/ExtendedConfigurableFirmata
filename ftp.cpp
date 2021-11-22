@@ -60,7 +60,7 @@
 
 #include "ftp.h"
 
-extern int FTP_TASK_FINISH_BIT;
+// extern int FTP_TASK_FINISH_BIT;
 extern EventGroupHandle_t xEventTask;
 
 int ftp_buff_size = CONFIG_MICROPY_FTPSERVER_BUFFER_SIZE;
@@ -1405,7 +1405,7 @@ void ftp_task (void *pvParameters)
 	// Initialize ftp, create rx buffer and mutex
 	if (!ftp_init()) {
 		ESP_LOGE("[Ftp]", "Init Error");
-		xEventGroupSetBits(xEventTask, FTP_TASK_FINISH_BIT);
+		// xEventGroupSetBits(xEventTask, FTP_TASK_FINISH_BIT);
 		vTaskDelete(NULL);
 	}
 
@@ -1432,6 +1432,6 @@ void ftp_task (void *pvParameters)
 	} // end while
 
 	ESP_LOGW("[Ftp]", "\nTask terminated!");
-	xEventGroupSetBits(xEventTask, FTP_TASK_FINISH_BIT);
+	// xEventGroupSetBits(xEventTask, FTP_TASK_FINISH_BIT);
 	vTaskDelete(NULL);
 }
