@@ -79,6 +79,7 @@ AnalogOutputFirmata analogOutput;
 #include <ESPmDNS.h>
 #include "WifiCachingStream.h"
 #include "NtpClient.h"
+#include "FtpServer.h"
 WifiCachingStream serverStream(NETWORK_PORT);
 NtpClient ntpClient;
 #endif
@@ -186,6 +187,7 @@ void initTransport()
 	Firmata.begin(serverStream, false);
 	Firmata.sendString(F("WIFI network connection established"));
 	ntpClient.StartTimeSync(WIFI_STATUS_LED);
+	FtpServer.Init();
 #else
     Firmata.begin(115200);
 #endif
