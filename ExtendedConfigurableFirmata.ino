@@ -18,7 +18,10 @@
 #else
 const char* ssid     = "your-ssid";
 const char* password = "your-password";
+const char* host = "ESP32";
 const int NETWORK_PORT = 27016;
+const char* CONFIG_FTP_USER = "root";
+const char* CONFIG_FTP_PASS = "root"; // extremely secure default password!
 #endif
 const int WIFI_STATUS_LED = 16;
 
@@ -73,8 +76,11 @@ AnalogOutputFirmata analogOutput;
 
 #ifdef ENABLE_WIFI
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include "WifiCachingStream.h"
+#include "NtpClient.h"
 WifiCachingStream serverStream(NETWORK_PORT);
+NtpClient ntpClient;
 #endif
 
 #ifdef ENABLE_I2C
@@ -174,10 +180,12 @@ void initTransport()
 	    pinIsOn = !pinIsOn;
 	    digitalWrite(WIFI_STATUS_LED, pinIsOn);
 	}
+	MDNS.begin(host);
 	digitalWrite(WIFI_STATUS_LED, 0);
 	serverStream.Init();
-	Firmata.begin(serverStream);
+	Firmata.begin(serverStream, false);
 	Firmata.sendString(F("WIFI network connection established"));
+	ntpClient.StartTimeSync(WIFI_STATUS_LED);
 #else
     Firmata.begin(115200);
 #endif
@@ -185,12 +193,6 @@ void initTransport()
 
 void initFirmata()
 {
-  // Set firmware name and version. The name is automatically derived from the name of this file.
-  // Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
-  // The usage of the above shortcut is not recommended, since it stores the full path of the file name in a 
-  // string constant, using both flash and ram. 
-  Firmata.setFirmwareNameAndVersion("ConfigurableFirmata", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
-
 #ifdef ENABLE_DIGITAL
   firmataExt.addFeature(digitalInput);
   firmataExt.addFeature(digitalOutput);
@@ -247,8 +249,14 @@ void initFirmata()
 
 void setup()
 {
+	// Set firmware name and version. The name is automatically derived from the name of this file.
+	// Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+	// The usage of the above shortcut is not recommended, since it stores the full path of the file name in a
+	// string constant, using both flash and ram. 
+	Firmata.setFirmwareNameAndVersion("ConfigurableFirmata", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+
 	initTransport();
-	Firmata.sendString(F("Booting device. Stand by..."));
+	// Firmata.sendString(F("Booting device. Stand by..."));
 	initFirmata();
 
 	Firmata.parse(SYSTEM_RESET);
@@ -256,7 +264,7 @@ void setup()
 #ifdef ENABLE_IL_EXECUTOR
 	ilExecutor.Init();
 #endif
-	Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
+	// Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
 }
 
 void loop()

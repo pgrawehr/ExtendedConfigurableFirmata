@@ -5,6 +5,11 @@
 #include <ConfigurableFirmata.h>
 #include "WifiCachingStream.h"
 
+void WifiCachingStream::Init()
+{
+	_server.begin();
+}
+
 bool WifiCachingStream::Connect()
 {
 	if (_activeClient.connected())

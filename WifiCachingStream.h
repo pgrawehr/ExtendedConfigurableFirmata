@@ -10,7 +10,6 @@
 #endif
 
 #include <WiFi.h>
-
 /// <summary>
 /// A stream to read data from a TCP connection (server side).
 /// The "caching" part is not implemented yet.
@@ -28,10 +27,7 @@ public:
 		_hasActiveClient = false;
 	}
 
-	void Init()
-	{
-		_server.begin();
-	}
+	void Init();
 
 	bool Connect();
 

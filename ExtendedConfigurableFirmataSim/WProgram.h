@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #define SIM 1
 // Simulate an Arduino due. This has sizeof(int)=4, which is the same than for a 32bit windows exe
@@ -79,6 +79,16 @@ public:
 	virtual void flush();
 	virtual int read();
 	virtual int available();
+
+	virtual void println(const char* output)
+	{
+		printf("%s\r\n", output);
+	}
+
+	virtual void println(int data)
+	{
+		printf("%i\r\n", data);
+	}
 
 	virtual ~Stream()
 	{
