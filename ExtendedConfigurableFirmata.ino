@@ -34,9 +34,9 @@ const int WIFI_STATUS_LED = 16;
 
 // #define ENABLE_ONE_WIRE
 // Note that the SERVO module currently is not supported on ESP32. So either disable this or patch the library
-#ifndef ESP32
-#define ENABLE_SERVO 
-#endif
+// #ifndef ESP32
+// #define ENABLE_SERVO 
+// #endif
 // #define ENABLE_ACCELSTEPPER
 // #define ENABLE_BASIC_SCHEDULER
 #define ENABLE_SERIAL

@@ -560,13 +560,27 @@ static void ftp_send_file_data(uint32_t datasize)
 }
 
 //------------------------------------------------------------------------------------------------
-static ftp_result_t ftp_recv_non_blocking (int32_t sd, void *buff, int32_t Maxlen, int32_t *rxLen)
+static ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t Maxlen, int32_t *rxLen)
 {
 	if (sd < 0) return E_FTP_RESULT_FAILED;
 
 	*rxLen = recv(sd, buff, Maxlen, 0);
-	if (*rxLen > 0) return E_FTP_RESULT_OK;
-	else if (errno != EAGAIN) return E_FTP_RESULT_FAILED;
+	if (*rxLen > 0 && strchr(buff, '\n') != nullptr)
+	{
+		return E_FTP_RESULT_OK;
+	}
+	else
+	{
+		if (errno != EAGAIN)
+		{
+			return E_FTP_RESULT_FAILED;
+		}
+		if (*rxLen >= Maxlen)
+		{
+			// Command to long
+			return E_FTP_RESULT_FAILED;
+		}
+	}
 
 	return E_FTP_RESULT_CONTINUE;
 }
@@ -740,7 +754,7 @@ static void ftp_process_cmd (void) {
 		ftp_cmd_index_t cmd = ftp_pop_command(&bufptr);
 		if (!ftp_data.loggin.passvalid &&
 				((cmd != E_FTP_CMD_USER) && (cmd != E_FTP_CMD_PASS) && (cmd != E_FTP_CMD_QUIT) && (cmd != E_FTP_CMD_FEAT) && (cmd != E_FTP_CMD_AUTH))) {
-			ftp_send_reply(332, NULL);
+			ftp_send_reply(332, "Unauthorized");
 			return;
 		}
 		if ((cmd >= 0) && (cmd < E_FTP_NUM_FTP_CMDS)) {
@@ -1181,7 +1195,7 @@ int ftp_run (uint32_t elapsed)
 					ftp_data.loggin.passvalid = false;
 					strcpy (ftp_path, "/");
 					ESP_LOGI(FTP_TAG, "Connected.");
-					ftp_send_reply (220, "Micropython FTP Server");
+					ftp_send_reply (220, "ESP32 FTP Server");
 					break;
 				}
 			}
@@ -1241,7 +1255,7 @@ int ftp_run (uint32_t elapsed)
 				int32_t len;
 				ftp_result_t result = E_FTP_RESULT_OK;
 
-				result = ftp_recv_non_blocking(ftp_data.d_sd, ftp_data.dBuffer, ftp_buff_size, &len);
+				result = ftp_recv_non_blocking(ftp_data.d_sd, (char*)ftp_data.dBuffer, ftp_buff_size, &len);
 				if (result == E_FTP_RESULT_OK) {
 					// block of data received
 					ftp_data.dtimeout = 0;
