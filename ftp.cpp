@@ -30,6 +30,7 @@
  * Copyright (c) 2017, LoBo
  */
 
+#include <ConfigurableFirmata.h>
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
@@ -43,6 +44,7 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 
+#include "IPAddress.h"
 #include "dirent.h"
 #include "esp_system.h"
 #include "esp_spi_flash.h"
@@ -66,7 +68,7 @@ extern EventGroupHandle_t xEventTask;
 int ftp_buff_size = CONFIG_MICROPY_FTPSERVER_BUFFER_SIZE;
 int ftp_timeout = FTP_CMD_TIMEOUT_MS;
 const char *FTP_TAG = "[Ftp]";
-const char *MOUNT_POINT = "/root";
+const char *MOUNT_POINT = "";
 
 static uint8_t ftp_stop = 0;
 char ftp_user[FTP_USER_PASS_LEN_MAX + 1];
@@ -455,20 +457,22 @@ static void ftp_send_reply (uint32_t status, const char *message) {
 	if (!message) {
 		message = "";
 	}
-	snprintf(ftp_cmd_buffer, 4, "%u", status);
-	strcat (ftp_cmd_buffer, " ");
-	strcat (ftp_cmd_buffer, message);
-	strcat (ftp_cmd_buffer, "\r\n");
+	char replyBuf[101];
+	memset(replyBuf, 0, 101);
+	snprintf(replyBuf, 4, "%u", status);
+	strncat (replyBuf, " ", 99 - strlen(replyBuf));
+	strncat (replyBuf, message, 99 - strlen(replyBuf));
+	strcat (replyBuf, "\r\n");
 
 	int32_t timeout = 200;
 	ftp_result_t result;
-	uint32_t size = strlen((char *)ftp_cmd_buffer);
+	uint32_t size = strlen((char *)replyBuf);
 
-	ESP_LOGI(FTP_TAG, "Send reply: [%s]", ftp_cmd_buffer);
+	ESP_LOGI(FTP_TAG, "Send reply: [%s]", replyBuf);
 	vTaskDelay(1);
 
 	while (1) {
-		result = (ftp_result_t)send(ftp_data.c_sd, ftp_cmd_buffer, size, 0);
+		result = (ftp_result_t)send(ftp_data.c_sd, replyBuf, size, 0);
 		if (result == size) {
 			if (status == 221) {
 				closesocket(ftp_data.d_sd);
@@ -560,12 +564,12 @@ static void ftp_send_file_data(uint32_t datasize)
 }
 
 //------------------------------------------------------------------------------------------------
-static ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t Maxlen, int32_t *rxLen)
+static ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t maxlen, int32_t *rxLen)
 {
 	if (sd < 0) return E_FTP_RESULT_FAILED;
 
-	*rxLen = recv(sd, buff, Maxlen, 0);
-	if (*rxLen > 0 && strchr(buff, '\n') != nullptr)
+	*rxLen = recv(sd, buff, maxlen, 0);
+	if (*rxLen > 0)
 	{
 		return E_FTP_RESULT_OK;
 	}
@@ -573,11 +577,6 @@ static ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t Maxle
 	{
 		if (errno != EAGAIN)
 		{
-			return E_FTP_RESULT_FAILED;
-		}
-		if (*rxLen >= Maxlen)
-		{
-			// Command to long
 			return E_FTP_RESULT_FAILED;
 		}
 	}
@@ -713,7 +712,9 @@ static void ftp_pop_param(char **str, char *param, bool stop_on_space, bool stop
 //--------------------------------------------------
 static ftp_cmd_index_t ftp_pop_command(char **str) {
 	char _cmd[FTP_CMD_SIZE_MAX];
+	Serial.println(*str);
 	ftp_pop_param (str, _cmd, true, true);
+	Serial.println(_cmd);
 	stoupper (_cmd);
 	for (int i = 0; i < E_FTP_NUM_FTP_CMDS; i++) {
 		if (!strcmp (_cmd, ftp_cmd_table[i])) {
@@ -743,18 +744,29 @@ static void ftp_process_cmd (void) {
 	struct stat buf;
 	int res;
 
-	memset(bufptr, 0, FTP_MAX_PARAM_SIZE + FTP_CMD_SIZE_MAX);
 	ftp_data.closechild = false;
 
 	// use the reply buffer to receive new commands
-	result = ftp_recv_non_blocking(ftp_data.c_sd, ftp_cmd_buffer, FTP_MAX_PARAM_SIZE + FTP_CMD_SIZE_MAX, &len);
-	if (result == E_FTP_RESULT_OK) {
-		ftp_cmd_buffer[len] = '\0';
+	char temp[51] = {0};
+	result = ftp_recv_non_blocking(ftp_data.c_sd, temp, 50, &len);
+	if (result == E_FTP_RESULT_OK)
+	{
+		temp[len] = '\0';
+		memcpy(ftp_cmd_buffer + strlen(ftp_cmd_buffer), temp, strlen(temp) + 1);
+		Serial.print("Command buffer: ");
+		Serial.println(ftp_cmd_buffer);
+		if (strchr(ftp_cmd_buffer, '\n') == nullptr)
+		{
+			// This is not yet a full command
+			return;
+		}
 		// bufptr is moved as commands are being popped
 		ftp_cmd_index_t cmd = ftp_pop_command(&bufptr);
 		if (!ftp_data.loggin.passvalid &&
 				((cmd != E_FTP_CMD_USER) && (cmd != E_FTP_CMD_PASS) && (cmd != E_FTP_CMD_QUIT) && (cmd != E_FTP_CMD_FEAT) && (cmd != E_FTP_CMD_AUTH))) {
 			ftp_send_reply(332, "Unauthorized");
+
+			memset(ftp_cmd_buffer, 0, FTP_CMD_BUFFER_LEN);
 			return;
 		}
 		if ((cmd >= 0) && (cmd < E_FTP_NUM_FTP_CMDS)) {
@@ -763,8 +775,8 @@ static void ftp_process_cmd (void) {
 		else {
 			ESP_LOGI(FTP_TAG, "CMD: %d", cmd);
 		}
-		char fullname[128];
-		char fullname2[128];
+		char fullname[128] = {0};
+		char fullname2[128] = {0};
 		strcpy(fullname, MOUNT_POINT);
 		strcpy(fullname2, MOUNT_POINT);
 
@@ -880,7 +892,7 @@ static void ftp_process_cmd (void) {
 			if (!memcmp(ftp_scratch_buffer, ftp_user, MAX(strlen(ftp_scratch_buffer), strlen(ftp_user)))) {
 				ftp_data.loggin.uservalid = true && (strlen(ftp_user) == strlen(ftp_scratch_buffer));
 			}
-			ftp_send_reply(331, NULL);
+			ftp_send_reply(331, "User accepted, send password");
 			break;
 		case E_FTP_CMD_PASS:
 			ftp_pop_param (&bufptr, ftp_scratch_buffer, true, true);
@@ -888,11 +900,11 @@ static void ftp_process_cmd (void) {
 					ftp_data.loggin.uservalid) {
 				ftp_data.loggin.passvalid = true && (strlen(ftp_pass) == strlen(ftp_scratch_buffer));
 				if (ftp_data.loggin.passvalid) {
-					ftp_send_reply(230, NULL);
+					ftp_send_reply(230, "Login successful");
 					break;
 				}
 			}
-			ftp_send_reply(530, NULL);
+			ftp_send_reply(530, "Invalid username or password");
 			break;
 		case E_FTP_CMD_PASV:
 			{
@@ -1079,21 +1091,22 @@ static void ftp_process_cmd (void) {
 			ftp_send_reply(200, NULL);
 			break;
 		case E_FTP_CMD_QUIT:
-			ftp_send_reply(221, NULL);
+			ftp_send_reply(221, "Good Bye");
 			break;
 		default:
 			// command not implemented
-			ftp_send_reply(502, NULL);
+			ftp_send_reply(502, "Unsupported command");
 			break;
 		}
 
+		memset(ftp_cmd_buffer, 0, FTP_CMD_BUFFER_LEN);
 		if (ftp_data.closechild) {
 			remove_fname_from_path(ftp_path, ftp_scratch_buffer);
 		}
 	}
 	else if (result == E_FTP_RESULT_CONTINUE) {
 		if (ftp_data.ctimeout > ftp_timeout) {
-			ftp_send_reply(221, NULL);
+			ftp_send_reply(221, "Connection timeout");
 			ESP_LOGI(FTP_TAG, "Connection timeout");
 		}
 	}
@@ -1144,7 +1157,8 @@ bool ftp_init(void) {
 		free(ftp_data.dBuffer);
 		return false;
 	}
-	ftp_cmd_buffer = (char*)malloc(FTP_MAX_PARAM_SIZE + FTP_CMD_SIZE_MAX);
+	ftp_cmd_buffer = (char*)malloc(FTP_CMD_BUFFER_LEN);
+	memset(ftp_cmd_buffer, 0, FTP_CMD_BUFFER_LEN);
 	if (ftp_cmd_buffer == NULL) {
 		free(ftp_scratch_buffer);
 		free(ftp_path);

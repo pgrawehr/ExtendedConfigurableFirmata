@@ -47,6 +47,7 @@
 #define FTP_CMD_CLIENTS_MAX                 1
 #define FTP_DATA_CLIENTS_MAX                1
 #define FTP_MAX_PARAM_SIZE                  (MICROPY_ALLOC_PATH_MAX + 1)
+#define FTP_CMD_BUFFER_LEN (FTP_MAX_PARAM_SIZE + FTP_CMD_SIZE_MAX)
 #define FTP_UNIX_SECONDS_180_DAYS           15552000
 #define FTP_DATA_TIMEOUT_MS                 10000   // 10 seconds
 #define FTP_SOCKETFIFO_ELEMENTS_MAX         4

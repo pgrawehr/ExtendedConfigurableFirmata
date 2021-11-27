@@ -4585,14 +4585,14 @@ int FirmataIlExecutor::AllocateArrayInstance(int tokenOfArrayType, int numberOfE
 
 // This macro only works in the function below. It ensures the stack variable "tempVariable" has enough room to
 // store variable of the given size (+ header)
-#define EnsureStackVarSize(size) \
+#define EnsureStackVarSize(size)\
 	if (tempVariable == nullptr)\
 	{\
 		tempVariable = (Variable*)alloca((size)  + sizeof(Variable)); /* this is a bit more than what we need, but doesn't matter (is stack memory only) */ \
 		sizeOfTemp = size;\
 	} else if (sizeOfTemp < (size_t)(size))\
 	{\
-		tempVariable = (Variable*)alloca((size)  + sizeof(Variable)); \
+		tempVariable = (Variable*)alloca((size)  + sizeof(Variable));\
 		sizeOfTemp = size;\
 	}\
 	tempVariable->Uint64 = 0;
