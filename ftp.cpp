@@ -783,7 +783,7 @@ static void ftp_process_cmd (void) {
 			ESP_LOGI(FTP_TAG, "CMD: %s", ftp_cmd_table[cmd]);
 		}
 		else {
-			ESP_LOGI(FTP_TAG, "CMD: %d", cmd);
+			ESP_LOGE(FTP_TAG, "Unknown CMD: %s", ftp_cmd_buffer);
 		}
 		char fullname[128] = {0};
 		char fullname2[128] = {0};
@@ -1038,7 +1038,7 @@ static void ftp_process_cmd (void) {
 				ESP_LOGI(FTP_TAG, "E_FTP_CMD_MKD fullname=[%s]", fullname);
 
 				//if (rmdir(ftp_path) == 0) {
-				if (FFat.remove(fullname)) {
+				if (FFat.rmdir(fullname)) {
 					vTaskDelay(20 / portTICK_PERIOD_MS);
 					ftp_send_reply(250, "Directory deleted");
 				}
