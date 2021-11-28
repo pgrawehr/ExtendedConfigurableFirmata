@@ -45,10 +45,7 @@
 #include "freertos/event_groups.h"
 
 #include "IPAddress.h"
-#include "dirent.h"
 #include "esp_system.h"
-#include "esp_spi_flash.h"
-#include "nvs_flash.h"
 //#include "esp_event.h"
 #include "esp_log.h"
 
@@ -61,6 +58,7 @@
 //#include "freertos/semphr.h"
 
 #include "ftp.h"
+#include <FFat.h>
 
 // extern int FTP_TASK_FINISH_BIT;
 extern EventGroupHandle_t xEventTask;
@@ -154,8 +152,8 @@ static bool ftp_open_file (const char *path, const char *mode) {
 	strcat(fullname, path);
 	ESP_LOGI(FTP_TAG, "ftp_open_file fullname=[%s]", fullname);
 	//ftp_data.fp = fopen(path, mode);
-	ftp_data.fp = fopen(fullname, mode);
-	if (ftp_data.fp == NULL) {
+	ftp_data.fp = FFat.open(fullname, mode);
+	if (!ftp_data.fp) {
 		return false;
 	}
 	ftp_data.e_open = E_FTP_FILE_OPEN;
@@ -165,12 +163,10 @@ static bool ftp_open_file (const char *path, const char *mode) {
 //--------------------------------------
 static void ftp_close_files_dir (void) {
 	if (ftp_data.e_open == E_FTP_FILE_OPEN) {
-		fclose(ftp_data.fp);
-		ftp_data.fp = NULL;
+		ftp_data.fp.close();
 	}
 	else if (ftp_data.e_open == E_FTP_DIR_OPEN) {
-		closedir(ftp_data.dp);
-		ftp_data.dp = NULL;
+		ftp_data.dp.close();
 	}
 	ftp_data.e_open = E_FTP_NOTHING_OPEN;
 }
@@ -179,19 +175,17 @@ static void ftp_close_files_dir (void) {
 static void ftp_close_filesystem_on_error (void) {
 	ftp_close_files_dir();
 	if (ftp_data.fp) {
-		fclose(ftp_data.fp);
-		ftp_data.fp = NULL;
+		ftp_data.fp.close();
 	}
 	if (ftp_data.dp) {
-		closedir(ftp_data.dp);
-		ftp_data.dp = NULL;
+		ftp_data.dp.close();
 	}
 }
 
 //---------------------------------------------------------------------------------------------
 static ftp_result_t ftp_read_file (char *filebuf, uint32_t desiredsize, uint32_t *actualsize) {
 	ftp_result_t result = E_FTP_RESULT_CONTINUE;
-	*actualsize = fread(filebuf, 1, desiredsize, ftp_data.fp);
+	*actualsize = ftp_data.fp.readBytes(filebuf, desiredsize);
 	if (*actualsize == 0) {
 		ftp_close_files_dir();
 		result = E_FTP_RESULT_FAILED;
@@ -203,9 +197,10 @@ static ftp_result_t ftp_read_file (char *filebuf, uint32_t desiredsize, uint32_t
 }
 
 //-----------------------------------------------------------------
-static ftp_result_t ftp_write_file (char *filebuf, uint32_t size) {
+static ftp_result_t ftp_write_file (uint8_t *filebuf, uint32_t size)
+{
 	ftp_result_t result = E_FTP_RESULT_FAILED;
-	uint32_t actualsize = fwrite(filebuf, 1, size, ftp_data.fp);
+	uint32_t actualsize = ftp_data.fp.write(filebuf, size);
 	if (actualsize == size) {
 		result = E_FTP_RESULT_OK;
 	} else {
@@ -217,16 +212,15 @@ static ftp_result_t ftp_write_file (char *filebuf, uint32_t size) {
 //---------------------------------------------------------------
 static ftp_result_t ftp_open_dir_for_listing (const char *path) {
 	if (ftp_data.dp) {
-		closedir(ftp_data.dp);
-		ftp_data.dp = NULL;
+		ftp_data.dp.close();
 	}
 	ESP_LOGI(FTP_TAG, "ftp_open_dir_for_listing path=[%s] MOUNT_POINT=[%s]", path, MOUNT_POINT);
 	char fullname[128];
 	strcpy(fullname, MOUNT_POINT);
 	strcat(fullname, path);
 	ESP_LOGI(FTP_TAG, "ftp_open_dir_for_listing: %s", fullname);
-	ftp_data.dp = opendir(fullname);  // Open the directory
-	if (ftp_data.dp == NULL) {
+	ftp_data.dp = FFat.open(fullname);  // Open the directory
+	if (!ftp_data.dp) {
 		return E_FTP_RESULT_FAILED;
 	}
 	ftp_data.e_open = E_FTP_DIR_OPEN;
@@ -235,9 +229,9 @@ static ftp_result_t ftp_open_dir_for_listing (const char *path) {
 }
 
 //---------------------------------------------------------------------------------
-static int ftp_get_eplf_item (char *dest, uint32_t destsize, struct dirent *de) {
+static int ftp_get_eplf_item (char *dest, uint32_t destsize, File *de) {
 
-	const char *type = (de->d_type & DT_DIR) ? "d" : "-";
+	const char *type = de->isDirectory() ? "d" : "-";
 
 	// Get full file path needed for stat function
 	char fullname[128];
@@ -245,20 +239,18 @@ static int ftp_get_eplf_item (char *dest, uint32_t destsize, struct dirent *de) 
 	strcat(fullname, ftp_path);
 	//strcpy(fullname, ftp_path);
 	if (fullname[strlen(fullname)-1] != '/') strcat(fullname, "/");
-	strcat(fullname, de->d_name);
+	strcat(fullname, de->name());
 
 	struct stat buf;
-	int res = stat(fullname, &buf);
-	ESP_LOGI(FTP_TAG, "ftp_get_eplf_item res=%d buf.st_size=%ld", res, buf.st_size);
-	if (res < 0) {
-		buf.st_size = 0;
-		buf.st_mtime = 946684800; // Jan 1, 2000
-	}
-
+	buf.st_size = de->size();
+	buf.st_mtime = de->getLastWrite(); // Jan 1, 2000
+	
 	char str_time[64];
 	struct tm *tm_info;
 	time_t now;
-	if (time(&now) < 0) now = 946684800;	// get the current time from the RTC
+	if (time(&now) < 0)
+		now = 946684800;	// get the current time from the RTC
+
 	tm_info = localtime(&buf.st_mtime);		// get broken-down file time
 
 	// if file is older than 180 days show dat,month,year else show month, day and time
@@ -268,8 +260,20 @@ static int ftp_get_eplf_item (char *dest, uint32_t destsize, struct dirent *de) 
 	int addsize = destsize + 64;
 
 	while (addsize >= destsize) {
-		if (ftp_nlist) addsize = snprintf(dest, destsize, "%s\r\n", de->d_name);
-		else addsize = snprintf(dest, destsize, "%srw-rw-rw-   1 root  root %9u %s %s\r\n", type, (uint32_t)buf.st_size, str_time, de->d_name);
+		const char* fileName = de->name();
+		// Here, we must only report the file name, excluding the path
+		while (strchr(fileName, '/') != nullptr)
+		{
+			fileName = strchr(fileName, '/') + 1;
+		}
+		if (ftp_nlist)
+		{
+			addsize = snprintf(dest, destsize, "%s\r\n", fileName);
+		}
+		else
+		{
+			addsize = snprintf(dest, destsize, "%srw-rw-rw-   1 root  root %9u %s %s\r\n", type, (uint32_t)buf.st_size, str_time, fileName);
+		}
 		if (addsize >= destsize) {
 			ESP_LOGW(FTP_TAG, "Buffer too small, reallocating [%d > %d]", ftp_buff_size, ftp_buff_size + (addsize - destsize) + 64);
 			char *new_dest = (char*)realloc(dest, ftp_buff_size + (addsize - destsize) + 65);
@@ -308,21 +312,22 @@ static ftp_result_t ftp_list_dir(char *list, uint32_t maxlistsize, uint32_t *lis
 	uint next = 0;
 	uint listcount = 0;
 	ftp_result_t result = E_FTP_RESULT_CONTINUE;
-	struct dirent *de;
-
+	
+	ftp_data.dp.rewindDirectory();
 	// read up to 8 directory items
 	while (((maxlistsize - next) > 64) && (listcount < 8)) {
-		de = readdir(ftp_data.dp);															// Read a directory item
-		if (de == NULL) {
+		auto de = ftp_data.dp.openNextFile();															// Read a directory item
+		if (!de) {
 			result = E_FTP_RESULT_OK;
 			break;																			// Break on error or end of dp
 		}
-		if (de->d_name[0] == '.' && de->d_name[1] == 0) continue;							// Ignore . entry
-		if (de->d_name[0] == '.' && de->d_name[1] == '.' && de->d_name[2] == 0) continue;	// Ignore .. entry
+		const char* name = de.name();
+		if (name[0] == '.' && name[1] == 0) continue;							// Ignore . entry
+		if (name[0] == '.' && name[1] == '.' && name[2] == 0) continue;	// Ignore .. entry
 
 		// add the entry to the list
-		ESP_LOGI(FTP_TAG, "Add to dir list: %s", de->d_name);
-		next += ftp_get_eplf_item((list + next), (maxlistsize - next), de);
+		ESP_LOGI(FTP_TAG, "Add to dir list: %s", name);
+		next += ftp_get_eplf_item((list + next), (maxlistsize - next), &de);
 		listcount++;
 	}
 	if (result == E_FTP_RESULT_OK) {
@@ -462,13 +467,15 @@ static void ftp_send_reply (uint32_t status, const char *message) {
 	snprintf(replyBuf, 4, "%u", status);
 	strncat (replyBuf, " ", 99 - strlen(replyBuf));
 	strncat (replyBuf, message, 99 - strlen(replyBuf));
+
+	// Send log message before appending the newline
+	ESP_LOGI(FTP_TAG, "Send reply: [%s]", replyBuf);
 	strcat (replyBuf, "\r\n");
 
 	int32_t timeout = 200;
 	ftp_result_t result;
 	uint32_t size = strlen((char *)replyBuf);
 
-	ESP_LOGI(FTP_TAG, "Send reply: [%s]", replyBuf);
 	vTaskDelay(1);
 
 	while (1) {
@@ -672,7 +679,12 @@ static void ftp_close_child (char *pwd) {
 // Remove file name from path
 //-----------------------------------------------------------
 static void remove_fname_from_path (char *pwd, char *fname) {
+	// There's somewhere a bit of a mess handling the path. The file name should not contain any directory here
 	ESP_LOGI(FTP_TAG, "remove_fname_from_path: %s - %s", pwd, fname);
+	while (strchr(fname, '/') != nullptr)
+	{
+		fname = strchr(fname, '/') + 1;
+	}
 	if (strlen(fname) == 0) return;
 	char *xpwd = strstr(pwd, fname);
 	if (xpwd == NULL) return;
@@ -712,9 +724,7 @@ static void ftp_pop_param(char **str, char *param, bool stop_on_space, bool stop
 //--------------------------------------------------
 static ftp_cmd_index_t ftp_pop_command(char **str) {
 	char _cmd[FTP_CMD_SIZE_MAX];
-	Serial.println(*str);
 	ftp_pop_param (str, _cmd, true, true);
-	Serial.println(_cmd);
 	stoupper (_cmd);
 	for (int i = 0; i < E_FTP_NUM_FTP_CMDS; i++) {
 		if (!strcmp (_cmd, ftp_cmd_table[i])) {
@@ -753,8 +763,8 @@ static void ftp_process_cmd (void) {
 	{
 		temp[len] = '\0';
 		memcpy(ftp_cmd_buffer + strlen(ftp_cmd_buffer), temp, strlen(temp) + 1);
-		Serial.print("Command buffer: ");
-		Serial.println(ftp_cmd_buffer);
+		// Serial.print("Command buffer: ");
+		// Serial.println(ftp_cmd_buffer);
 		if (strchr(ftp_cmd_buffer, '\n') == nullptr)
 		{
 			// This is not yet a full command
@@ -799,7 +809,7 @@ static void ftp_process_cmd (void) {
 
 			if (strlen(ftp_scratch_buffer) > 0) {
 				if ((ftp_scratch_buffer[0] == '.') && (ftp_scratch_buffer[1] == '\0')) {
-					ftp_data.dp = NULL;
+					// ftp_data.dp = NULL; Nothing to do (cd to current directory)
 					ftp_send_reply(250, NULL);
 					break;
 				}
@@ -812,22 +822,21 @@ static void ftp_process_cmd (void) {
 			}
 
 			if ((ftp_path[0] == '/') && (ftp_path[1] == '\0')) {
-				ftp_data.dp = NULL;
+				ftp_data.dp.close();
 				ftp_send_reply(250, NULL);
 			}
 			else {
 				strcat(fullname, ftp_path);
 				ESP_LOGI(FTP_TAG, "E_FTP_CMD_CWD fullname=[%s]", fullname);
 				//ftp_data.dp = opendir(ftp_path);
-				ftp_data.dp = opendir(fullname);
-				if (ftp_data.dp != NULL) {
-					closedir(ftp_data.dp);
-					ftp_data.dp = NULL;
-					ftp_send_reply(250, NULL);
+				ftp_data.dp = FFat.open(fullname);
+				if (ftp_data.dp && ftp_data.dp.isDirectory()) {
+					ftp_data.dp.close();
+					ftp_send_reply(250, "Directory changed");
 				}
 				else {
 					ftp_close_child (ftp_path);
-					ftp_send_reply(550, NULL);
+					ftp_send_reply(550, "No such directory or name is not a directory");
 				}
 			}
 			break;
@@ -1012,9 +1021,9 @@ static void ftp_process_cmd (void) {
 				ESP_LOGI(FTP_TAG, "E_FTP_CMD_DELE fullname=[%s]", fullname);
 
 				//if (unlink(ftp_path) == 0) {
-				if (unlink(fullname) == 0) {
+				if (FFat.remove(fullname)) {
 					vTaskDelay(20 / portTICK_PERIOD_MS);
-					ftp_send_reply(250, NULL);
+					ftp_send_reply(250, "File deleted");
 				}
 				else ftp_send_reply(550, NULL);
 			}
@@ -1029,9 +1038,9 @@ static void ftp_process_cmd (void) {
 				ESP_LOGI(FTP_TAG, "E_FTP_CMD_MKD fullname=[%s]", fullname);
 
 				//if (rmdir(ftp_path) == 0) {
-				if (rmdir(fullname) == 0) {
+				if (FFat.remove(fullname)) {
 					vTaskDelay(20 / portTICK_PERIOD_MS);
-					ftp_send_reply(250, NULL);
+					ftp_send_reply(250, "Directory deleted");
 				}
 				else ftp_send_reply(550, NULL);
 			}
@@ -1045,8 +1054,7 @@ static void ftp_process_cmd (void) {
 				strcat(fullname, ftp_path);
 				ESP_LOGI(FTP_TAG, "E_FTP_CMD_MKD fullname=[%s]", fullname);
 
-				//if (mkdir(ftp_path, 0755) == 0) {
-				if (mkdir(fullname, 0755) == 0) {
+				if (FFat.mkdir(fullname)) {
 					vTaskDelay(20 / portTICK_PERIOD_MS);
 					ftp_send_reply(250, NULL);
 				}
@@ -1059,11 +1067,10 @@ static void ftp_process_cmd (void) {
 			ESP_LOGI(FTP_TAG, "E_FTP_CMD_RNFR ftp_path=[%s]", ftp_path);
 
 			strcat(fullname, ftp_path);
-			ESP_LOGI(FTP_TAG, "E_FTP_CMD_MKD fullname=[%s]", fullname);
+			ESP_LOGI(FTP_TAG, "E_FTP_CMD_RNFR fullname=[%s]", fullname);
 
 			//res = stat(ftp_path, &buf);
-			res = stat(fullname, &buf);
-			if (res == 0) {
+			if (FFat.exists(fullname)) {
 				ftp_send_reply(350, NULL);
 				// save the path of the file to rename
 				strcpy((char *)ftp_data.dBuffer, ftp_path);
@@ -1081,7 +1088,7 @@ static void ftp_process_cmd (void) {
 			ESP_LOGI(FTP_TAG, "E_FTP_CMD_RNTO fullname2=[%s]", fullname2);
 
 			//if (rename((char *)ftp_data.dBuffer, ftp_path) == 0) {
-			if (rename(fullname, fullname2) == 0) {
+			if (FFat.rename(fullname, fullname2)) {
 				ftp_send_reply(250, NULL);
 			} else {
 				ftp_send_reply(550, NULL);
@@ -1275,7 +1282,7 @@ int ftp_run (uint32_t elapsed)
 					ftp_data.dtimeout = 0;
 					ftp_data.ctimeout = 0;
 					// save received data to file
-					if (E_FTP_RESULT_OK != ftp_write_file ((char *)ftp_data.dBuffer, len)) {
+					if (E_FTP_RESULT_OK != ftp_write_file (ftp_data.dBuffer, len)) {
 						ftp_send_reply(451, NULL);
 						ftp_data.state = E_FTP_STE_END_TRANSFER;
 						ESP_LOGW(FTP_TAG, "Error writing to file");

@@ -33,6 +33,8 @@
 #ifndef FTP_H_
 #define FTP_H_
 
+#include <FS.h>
+#include <FFat.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -102,10 +104,8 @@ typedef enum {
 typedef struct {
     uint8_t         *dBuffer;
     uint32_t        ctimeout;
-    union {
-        DIR         *dp;
-        FILE        *fp;
-    };
+	File        dp;
+	File        fp;
     int32_t         lc_sd;
     int32_t         ld_sd;
     int32_t         c_sd;

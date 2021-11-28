@@ -46,7 +46,7 @@ const int WIFI_STATUS_LED = 16;
 #define ENABLE_DHT
 #endif
 #define ENABLE_I2C
-// #define ENABLE_IL_EXECUTOR
+#define ENABLE_IL_EXECUTOR
 #define ENABLE_SPI
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
