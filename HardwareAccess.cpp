@@ -8,10 +8,13 @@
 
 #include "RtcBase.h"
 #include "Ds1307.h"
+#include "Esp32Rtc.h"
 #include "SimulatorClock.h"
 
 // Enable if a DS1307 hardware real-time-clock is attached via I2C
-#if !SIM
+#if ESP32
+Esp32Rtc TheClock;
+#elif !SIM
 Ds1307 TheClock;
 #else
 SimulatorClock TheClock;

@@ -58,7 +58,7 @@ size_t WifiCachingStream::readBytes(char* buffer, size_t length)
 	{
 		return -1;
 	}
-	return _activeClient.read();
+	return _activeClient.readBytes(buffer, length);
 }
 
 size_t WifiCachingStream::write(byte b)

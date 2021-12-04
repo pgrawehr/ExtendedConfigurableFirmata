@@ -282,7 +282,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 	ExecutorCommand subCommand = ExecutorCommand::None;
 	if (command == SCHEDULER_DATA)
 	{
-		if (argc < 3)
+		if (argc < 4)
 		{
 			Firmata.sendString(F("Error in Scheduler command: Not enough parameters"));
 			return false;
@@ -293,13 +293,19 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			Firmata.sendString(F("Error in Scheduler command: Unknown command syntax"));
 			return false;
 		}
-		subCommand = (ExecutorCommand)argv[1];
+
+		byte sequenceNo = argv[1];
+		subCommand = (ExecutorCommand)argv[2];
+
+		// Correct for the late-added sequence in the header. So we don't need to adjust all offsets below
+		argv++;
+		argc--;
 
 		// TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask && subCommand != ExecutorCommand::DebuggerCommand)
 		{
 			Firmata.sendStringf(F("Execution engine busy. Ignoring command %d."), 4, subCommand);
-			SendAckOrNack(subCommand, ExecutionError::EngineBusy);
+			SendAckOrNack(subCommand, sequenceNo, ExecutionError::EngineBusy);
 			return true;
 		}
 
@@ -317,16 +323,16 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argc < 8)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 					return true;
 				}
 				// 14-bit values transmitted for length and offset
-				SendAckOrNack(subCommand, LoadIlDataStream(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 7), DecodePackedUint14(argv + 9), argc - 11, argv + 11));
+				SendAckOrNack(subCommand, sequenceNo, LoadIlDataStream(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 7), DecodePackedUint14(argv + 9), argc - 11, argv + 11));
 				break;
 			case ExecutorCommand::StartTask:
 			{
 				ExecutionError error = DecodeParametersAndExecute(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 2 + 5), argc - (5 + 2 + 2), argv + 5 + 2 + 2);
-				SendAckOrNack(subCommand, error);
+				SendAckOrNack(subCommand, sequenceNo, error);
 			}
 				break;
 			case ExecutorCommand::DeclareMethod:
@@ -334,10 +340,10 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, LoadIlDeclaration(DecodePackedUint32(argv + 2), argv[7], argv[8], argv[9],
+				SendAckOrNack(subCommand, sequenceNo, LoadIlDeclaration(DecodePackedUint32(argv + 2), argv[7], argv[8], argv[9],
 					(NativeMethod)DecodePackedUint32(argv + 10)));
 				break;
 			case ExecutorCommand::MethodSignature:
@@ -345,20 +351,20 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argc < 4)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, LoadMethodSignature(DecodePackedUint32(argv + 2), argv[7], argc - 8, argv + 8));
+				SendAckOrNack(subCommand, sequenceNo, LoadMethodSignature(DecodePackedUint32(argv + 2), argv[7], argc - 8, argv + 8));
 				break;
 			case ExecutorCommand::ExceptionClauses:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				if (argc < 7 * 5)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, LoadExceptionClause(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 7),
+				SendAckOrNack(subCommand, sequenceNo, LoadExceptionClause(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 7),
 					DecodePackedUint32(argv + 12), DecodePackedUint32(argv + 17), DecodePackedUint32(argv + 22), DecodePackedUint32(argv + 27), DecodePackedUint32(argv + 32)));
 				break;
 			case ExecutorCommand::ClassDeclarationEnd:
@@ -368,11 +374,11 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argc < 19)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 				}
 
 				bool isLastPart = subCommand == ExecutorCommand::ClassDeclarationEnd;
-				SendAckOrNack(subCommand, LoadClassSignature(isLastPart,
+				SendAckOrNack(subCommand, sequenceNo, LoadClassSignature(isLastPart,
 					DecodePackedUint32(argv + 2),
 					DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
 					DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
@@ -383,21 +389,21 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argc < 6)
 				{
 					Firmata.sendString(F("Not enough parameters"));
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 				}
-				SendAckOrNack(subCommand, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
+				SendAckOrNack(subCommand, sequenceNo, LoadInterfaces(DecodePackedUint32(argv + 2), argc - 2, argv + 2));
 				break;
 			case ExecutorCommand::SpecialTokenList:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
-				SendAckOrNack(subCommand, LoadSpecialTokens(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), argc - 12, argv + 12));
+				SendAckOrNack(subCommand, sequenceNo, LoadSpecialTokens(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), argc - 12, argv + 12));
 				break;
 			case ExecutorCommand::SetConstantMemorySize:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
-				SendAckOrNack(subCommand, PrepareStringLoad(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5)));
+				SendAckOrNack(subCommand, sequenceNo, PrepareStringLoad(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5)));
 				break;
 			case ExecutorCommand::ConstantData:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
-				SendAckOrNack(subCommand, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
+				SendAckOrNack(subCommand, sequenceNo, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
 			case ExecutorCommand::EraseFlash:
@@ -425,18 +431,18 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				{
 					KillCurrentTask();
 					reset();
-					SendAckOrNack(subCommand, ExecutionError::None);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				}
 				else
 				{
-					SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 				}
 				break;
 			case ExecutorCommand::KillTask:
 			{
 					// TODO: This currently ignores the argument (the task id).
 				KillCurrentTask();
-				SendAckOrNack(subCommand, ExecutionError::None);
+				SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				break;
 			}
 			case ExecutorCommand::CopyToFlash:
@@ -447,7 +453,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_methods.CopyContentsToFlash(_flashMemoryManager);
 				_constants.CopyContentsToFlash(_flashMemoryManager);
 				}
-				SendAckOrNack(subCommand, ExecutionError::None);
+				SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				break;
 
 			case ExecutorCommand::WriteFlashHeader:
@@ -469,7 +475,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 
 				// Reset this flag after programming, or we'll immediately start executing code if there was _any_ valid program in flash when the CPU started.
 				_startedFromFlash = false;
-				SendAckOrNack(subCommand, ExecutionError::None);
+				SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				SendQueryHardwareReply();
 				// Firmata.sendStringf(F("Free main memory: %d"), 4, freeMemory());
 			}
@@ -478,18 +484,18 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::CheckFlashVersion:
 				{
 				bool result = _flashMemoryManager->ContainsMatchingData(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5));
-				SendAckOrNack(subCommand, result ? ExecutionError::None : ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, sequenceNo, result ? ExecutionError::None : ExecutionError::InvalidArguments);
 				}
 				break;
 			case ExecutorCommand::DebuggerCommand:
 				{
 				uint32_t debuggerCommand = DecodePackedUint32(argv + 2);
-				SendAckOrNack(subCommand, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand));
+				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand));
 				}
 				break;
 			default:
 				// Unknown command
-				SendAckOrNack(subCommand, ExecutionError::InvalidArguments);
+				SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 				break;
 
 			} // End of switch
@@ -497,7 +503,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		catch(ExecutionEngineException& ex)
 		{
 			Firmata.sendString(STRING_DATA, ex.Message());
-			SendAckOrNack(subCommand, ExecutionError::InternalError);
+			SendAckOrNack(subCommand, sequenceNo, ExecutionError::InternalError);
 		}
 		catch(OutOfMemoryException& ex)
 		{
@@ -506,12 +512,12 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			Firmata.sendString(STRING_DATA, ex.Message());
 			
 			reset();
-			SendAckOrNack(subCommand, ExecutionError::OutOfMemory);
+			SendAckOrNack(subCommand, sequenceNo, ExecutionError::OutOfMemory);
 		}
 		catch(Exception& ex)
 		{
 			Firmata.sendString(STRING_DATA, ex.Message());
-			SendAckOrNack(subCommand, ExecutionError::InternalError);
+			SendAckOrNack(subCommand, sequenceNo, ExecutionError::InternalError);
 		}
 		return true;
 	}
@@ -7016,7 +7022,7 @@ void FirmataIlExecutor::SendReplyHeader(ExecutorCommand subCommand)
 	Firmata.write((byte)0);
 }
 
-void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode)
+void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, byte sequenceNo, ExecutionError errorCode)
 {
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
@@ -7032,6 +7038,7 @@ void FirmataIlExecutor::SendAckOrNack(ExecutorCommand subCommand, ExecutionError
 	}
 	Firmata.write((byte)subCommand);
 	Firmata.write((byte)errorCode);
+	Firmata.write(sequenceNo);
 	Firmata.endSysex();
 }
 

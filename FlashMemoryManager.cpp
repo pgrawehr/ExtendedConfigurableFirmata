@@ -68,6 +68,7 @@ FlashMemoryManager::FlashMemoryManager()
 	_header = (FlashMemoryHeader*)_startOfHeap;
 	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
 	_headerClear = true;
+	_flashClear = false;
 	if (_header->Identifier == FLASH_MEMORY_IDENTIFIER && _header->DataVersion != -1 && _header->DataVersion != 0)
 	{
 		_endOfHeap = _header->EndOfHeap;
@@ -150,10 +151,14 @@ bool FlashMemoryManager::ContainsMatchingData(int dataVersion, int hashCode)
 
 void FlashMemoryManager::Clear()
 {
-	_endOfHeap = _startOfHeap;
-	_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
-	_headerClear = true;
-	storage->eraseBlock(storage->getOffset(_startOfHeap), _flashEnd - _startOfHeap);
+	if (!_flashClear)
+	{
+		_endOfHeap = _startOfHeap;
+		_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
+		_headerClear = true;
+		storage->eraseBlock(storage->getOffset(_startOfHeap), _flashEnd - _startOfHeap);
+	}
+	_flashClear = true;
 }
 
 void* FlashMemoryManager::FlashAlloc(size_t bytes)
@@ -177,6 +182,7 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 
 void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length)
 {
+	_flashClear = false;
 	if (length == 0)
 	{
 		return;
@@ -196,6 +202,7 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 
 void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags)
 {
+	_flashClear = false;
 	FlashMemoryHeader hd;
 	memset(&hd, 0, sizeof(FlashMemoryHeader));
 	hd.DataVersion = dataVersion;

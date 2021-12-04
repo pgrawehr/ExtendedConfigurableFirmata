@@ -132,6 +132,9 @@
     <ClInclude Include="ftp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Esp32Rtc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -207,6 +210,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ftp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Esp32Rtc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

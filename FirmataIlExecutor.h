@@ -276,7 +276,7 @@ public:
 	bool IsExecutingCode();
 	void KillCurrentTask();
 	void CleanStack(ExecutionState* state);
-	void SendAckOrNack(ExecutorCommand subCommand, ExecutionError errorCode);
+	void SendAckOrNack(ExecutorCommand subCommand, byte sequenceNo, ExecutionError errorCode);
 	void InvalidOpCode(uint16_t pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);
     int GetHandleFromType(Variable& object) const;

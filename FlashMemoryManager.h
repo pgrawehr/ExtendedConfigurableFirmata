@@ -19,6 +19,7 @@ private:
 	byte* _flashEnd;
 	FlashMemoryHeader* _header;
 	bool _headerClear; // This is set to true to indicate the header is invalid, even if it's contents would still be ok
+	bool _flashClear; // This is true if the flash memory is known to be cleared
 public:
 	FlashMemoryManager();
 
