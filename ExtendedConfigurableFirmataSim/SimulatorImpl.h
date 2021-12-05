@@ -1,6 +1,7 @@
-﻿#pragma once
+#pragma once
 #include "WProgram.h"
 #include "HardwareSerial.h"
+#include <queue>
 
 #undef INPUT
 #include "WinSock2.h"
@@ -12,9 +13,7 @@ private:
 	SOCKET _listen;
 	SOCKET _client;
 	WSADATA _data;
-	byte _dataBuf[DATA_BUF_SIZE];
-	int _writeOffset;
-	int _readOffset;
+	std::queue<byte> _queue;
 public:
 	NetworkConnection();
 	
