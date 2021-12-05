@@ -14,20 +14,15 @@ class Esp32Rtc : public RtcBase
 {
 private:
 	int64_t _previousValue;
+	int32_t _previousMs;
 public:
 	Esp32Rtc()
 	{
 		_previousValue = 0x48d8d5bb26a9dc17; // 2020-02-20 16:18 UTC;
 	}
-	virtual void Init() override
-	{
+	virtual void Init() override;
 
-	}
-
-	int64_t ReadTime() override
-	{
-		return _previousValue; // TODO: Implement
-	}
+	int64_t ReadTime() override;
 };
 
 
