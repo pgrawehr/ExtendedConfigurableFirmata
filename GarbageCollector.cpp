@@ -401,6 +401,13 @@ void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)
 			e = state->_localStorage.next(e);
 		}
 
+		ExceptionFrame* ex = state->_exceptionFrame;
+		while (ex != nullptr)
+		{
+			MarkVariable(ex->Exception, referenceContainer);
+			ex = ex->Next;
+		}
+
 		state = state->_next;
 	}
 }

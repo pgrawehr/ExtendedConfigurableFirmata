@@ -14,7 +14,6 @@ class Esp32Rtc : public RtcBase
 {
 private:
 	int64_t _previousValue;
-	int32_t _previousMs;
 public:
 	Esp32Rtc()
 	{

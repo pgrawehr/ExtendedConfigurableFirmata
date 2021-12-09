@@ -119,8 +119,10 @@ public:
 		Next = nullptr;
 	}
 	ExceptionClause* Clause;
-	uint16_t ContinuationPc; // The PC to load when this handler is left with endfinally. 0 if we're going to rethrow then
+	// The PC to load when this handler is left with endfinally. 0 if we're going to rethrow then
+	uint16_t ContinuationPc;
 	ExceptionFrame* Next;
+	Variable Exception; // Is always of type object, therefore can be stored inline
 };
 
 
@@ -160,6 +162,8 @@ class ExecutionState
 			delete _exceptionFrame->Next;
 			_exceptionFrame = temp;
 		}
+
+		_exceptionFrame = nullptr;
 	}
 	
 	void ActivateState(uint16_t* pc, VariableDynamicStack** stack, VariableVector** locals, VariableVector** arguments)
@@ -284,12 +288,12 @@ public:
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
-	bool LocateFinallyHandler(ExecutionState* state, int tryBlockOffset, ExceptionClause** clauseThatMatches);
 	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
 	                        ExceptionClause** clauseThatMatches);
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc);
 	void SendDebugState(ExecutionState* executionState);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+	void DumpExceptionStacks(ExecutionState* stateFrom);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args);
@@ -307,7 +311,7 @@ public:
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
-	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c);
+	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c, Variable &exception);
 	void SendQueryHardwareReply();
 	
 	byte* GetString(int stringToken, int& length);
