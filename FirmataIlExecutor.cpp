@@ -3151,7 +3151,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
 		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
 		char* cstr = GetAsUtf8String(messageField);
-		Firmata.sendString(STRING_DATA, cstr);
+		Firmata.sendStringf(F("Exception thrown at 0x%x in 0x%x: %s"), 12, PC, currentFrame->_executingMethod->methodToken, cstr);
 		free(cstr);
 		throw CustomClrException(value1, exceptionType->ClassToken);
 	}
@@ -6545,11 +6545,8 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 		*clauseThatMatches = nullptr;
 		uint32_t indexOfClause = 0;
 		uint32_t key = newState->_executingMethod->GetKey();
+		// This may return null if we don't have any clauses in this method
 		ExceptionClause* c = _clauses.BinarySearchKey(key, indexOfClause);
-		if (c == nullptr)
-		{
-			return false;
-		}
 
 		// TODO: This probably also needs to check whether we are in a frame already
 		ExceptionClause* bestClause = nullptr;
@@ -6570,7 +6567,7 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 					else
 					{
 						// If multiple try blocks surround the code location in question, we use the shortest one
-						if (bestClause->TryLength < c->TryLength)
+						if (c->TryLength < bestClause->TryLength)
 						{
 							bestClause = c;
 						}
@@ -6586,7 +6583,7 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 				else
 				{
 					// If multiple try blocks surround the code location in question, we use the shortest one
-					if (bestClause->TryLength < c->TryLength)
+					if (c->TryLength < bestClause->TryLength)
 					{
 						bestClause = c;
 					}
@@ -6605,6 +6602,19 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 
 		if (bestClause != nullptr)
 		{
+			if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Clause)
+			{
+				Firmata.sendStringf(F("Found a catch clause at 0x%x in 0x%x"), 8, bestClause->HandlerOffset, bestClause->GetKey());
+			}
+			else if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Finally)
+			{
+				Firmata.sendStringf(F("Found a finally clause at 0x%x in 0x%x"), 8, bestClause->HandlerOffset, bestClause->GetKey());
+			}
+			else
+			{
+				throw ExecutionEngineException("Unsupported exception handler type found");
+			}
+			
 			// We'll be using this handler. Now clean any stack frames below the one we are in
 			CleanStack(newState->_next);
 			newState->_next = nullptr;
