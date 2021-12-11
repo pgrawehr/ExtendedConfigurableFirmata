@@ -293,7 +293,6 @@ public:
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc);
 	void SendDebugState(ExecutionState* executionState);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
-	void DumpExceptionStacks(ExecutionState* stateFrom);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args);

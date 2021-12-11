@@ -6457,8 +6457,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 			if (c->ClauseType == ExceptionHandlingClauseOptions::Clause)
 			{
-				// If we're handling the exception here, we can dump the exception stack
-				DumpExceptionStacks(rootState);
+				// Drop the top element of the exception stack. We can't throw it away entirely, because we might be inside an outer finally clause
+				ExceptionFrame* frame = currentFrame->_exceptionFrame;
+				ExceptionFrame* previous = nullptr;
+				// This chain is only required for the rare case where another exception (including handler) sits inside a finally clause.
+				while (frame->Next != nullptr)
+				{
+					previous = frame;
+					frame = frame->Next;
+				}
+
+				if (previous)
+				{
+					delete previous->Next;
+					previous->Next = nullptr;
+				}
+				else
+				{
+					delete currentFrame->_exceptionFrame;
+					currentFrame->_exceptionFrame = nullptr;
+				}
 			}
 
 			return MethodState::Running; // And go to start
@@ -6503,30 +6521,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
-}
-
-/// <summary>
-/// Dumps all exception stack instances below the given stack frame
-/// </summary>
-/// <param name="stateFrom">State where to start with, can be root</param>
-void FirmataIlExecutor::DumpExceptionStacks(ExecutionState* stateFrom)
-{
-	while (stateFrom != nullptr)
-	{
-		if (stateFrom->_exceptionFrame != nullptr)
-		{
-			auto current = stateFrom->_exceptionFrame;
-			while (current != nullptr)
-			{
-				auto next = current->Next;
-				delete current;
-				current = next;
-			}
-		}
-
-		stateFrom->_exceptionFrame = nullptr;
-		stateFrom = stateFrom->_next;
-	}
 }
 
 /// <summary>
