@@ -10,6 +10,7 @@
 #endif
 #include "SystemException.h"
 #include "Exceptions.h"
+#include "ClrException.h"
 
 using namespace stdSimple;
 
@@ -80,7 +81,7 @@ private:
 		long totalSeconds = (long)hour * 3600 + (long)minute * 60 + (long)second;
 		if (totalSeconds > MaxSeconds || totalSeconds < MinSeconds)
 		{
-			throw stdSimple::ClrException("Invalid time", SystemException::InvalidOperation, 0);
+			throw ClrException("Invalid time", SystemException::InvalidOperation, 0);
 		}
 
 		return totalSeconds * TicksPerSecond;

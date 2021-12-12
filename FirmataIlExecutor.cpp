@@ -6433,14 +6433,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		Firmata.sendString(STRING_DATA, ox.Message());
 		_gc.PrintStatistics();
 		Variable v(VariableKind::Object);
-		CreateFatalException(SystemException::OutOfMemory, v, ox.ExceptionToken());
+		CreateFatalException(SystemException::OutOfMemory, v, 0);
 		return MethodState::Aborted;
 	}
-	catch(CustomClrException& cx)
+	catch(ClrException& cx)
 	{
 		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
-		Firmata.sendString(STRING_DATA, cx.Message());
 		Variable v(VariableKind::Object);
 		v.Object = cx.ExceptionObject();
 		ExceptionClause* c = nullptr;
@@ -6487,16 +6486,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 			CreateFatalException(cx.ExceptionType(), v, cx.ExceptionToken());
 			return MethodState::Aborted;
 		}
-	}
-	catch(ClrException& ex)
-	{
-		_instructionsExecuted += instructionsExecutedThisLoop;
-		currentFrame->UpdatePc(PC);
-		Firmata.sendString(STRING_DATA, ex.Message());
-		// TODO: Replace with correct exception handling/stack unwinding later
-		Variable v(VariableKind::Object);
-		CreateFatalException(ex.ExceptionType(), v, ex.ExceptionToken());
-		return MethodState::Aborted;
 	}
 	catch(ExecutionEngineException& ee)
 	{

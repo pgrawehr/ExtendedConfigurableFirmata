@@ -5,6 +5,7 @@
 #include "SystemException.h"
 #include "Exceptions.h"
 #include "FlashMemoryManager.h"
+#include "ClrException.h"
 
 using namespace stdSimple;
 

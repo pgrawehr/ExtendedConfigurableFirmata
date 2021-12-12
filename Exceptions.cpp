@@ -23,23 +23,8 @@ namespace stdSimple
 		va_end(va);
 	}
 
-	ClrException::ClrException(SystemException exceptionType, int exceptionToken)
-		: Exception("")
-	{
-		_exceptionType = exceptionType;
-		_tokenCausingException = exceptionToken;
-	}
-
-	ClrException::ClrException(const char* msg, SystemException exceptionType, int exceptionToken)
-		: Exception(msg)
-	{
-		_exceptionType = exceptionType;
-		_tokenCausingException = exceptionToken;
-	}
-
-
 	OutOfMemoryException::OutOfMemoryException(const char* msg)
-		: ClrException(msg, SystemException::OutOfMemory, 0)
+		: Exception(msg, SystemException::OutOfMemory, 0)
 	{
 	}
 	

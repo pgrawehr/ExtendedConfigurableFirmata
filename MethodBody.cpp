@@ -5,6 +5,7 @@
 #include "Exceptions.h"
 #include "FlashMemoryManager.h"
 #include "SystemException.h"
+#include "ClrException.h"
 
 MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 {
@@ -165,7 +166,7 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(FlashMemoryManager* ma
 
 void SortedMethodList::ThrowNotFoundException(int token)
 {
-	throw stdSimple::ClrException(SystemException::MissingMethod, token);
+	throw ClrException(SystemException::MissingMethod, token);
 }
 
 void SortedMethodList::clear(bool includingFlash)
@@ -200,7 +201,7 @@ void SortedClauseList::clear(bool includingFlash)
 
 void SortedClauseList::ThrowNotFoundException(int token)
 {
-	throw stdSimple::ClrException("Exception handler in method not found, but expected", SystemException::InvalidOperation, token);
+	throw ClrException("Exception handler in method not found, but expected", SystemException::InvalidOperation, token);
 }
 
 void SortedClauseList::ValidateListOrder()

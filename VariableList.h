@@ -5,6 +5,7 @@
 
 #include "ObjectVector.h"
 #include "Exceptions.h"
+#include "ClrException.h"
 #include "SystemException.h"
 
 struct VariableListEntry
@@ -58,7 +59,7 @@ public:
 			current = current->Next;
 		}
 
-		throw stdSimple::ClrException(SystemException::ClassNotFound, token);
+		throw ClrException(SystemException::ClassNotFound, token);
 	}
 
 	VariableListEntry* first()

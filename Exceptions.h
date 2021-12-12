@@ -18,33 +18,14 @@ namespace stdSimple
 		}
 	};
 
-	class ClrException : public Exception
-	{
-	private:
-		int _tokenCausingException;
-		SystemException _exceptionType;
-
-	public:
-		ClrException(SystemException exceptionType, int exceptionToken);
-		ClrException(const char* msg, SystemException exceptionType, int exceptionToken);
-
-		SystemException ExceptionType()
-		{
-			return _exceptionType;
-		}
-
-		int ExceptionToken()
-		{
-			return _tokenCausingException;
-		}
-
-	};
-
-
-	class OutOfMemoryException : public ClrException
+	/// <summary>
+	/// This represents an out of memory error (both managed or unmanaged memory)
+	/// This error is unrecoverable for now.
+	/// </summary>
+	class OutOfMemoryException : public Exception
 	{
 	public:
-		OutOfMemoryException(const char *);
+		OutOfMemoryException(const char* msg);
 
 		static void Throw(const char* msg)
 		{
