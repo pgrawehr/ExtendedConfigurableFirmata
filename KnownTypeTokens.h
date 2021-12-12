@@ -22,6 +22,8 @@ enum class KnownTypeTokens
     Uint32 = 21,
     Int64 = 22,
     Uint64 = 23,
+    Exception = 30,
+    DivideByZeroException = 31,
     LargestKnownTypeToken = 40,
     IEnumerableOfT = 16777216,
     SpanOfT = 33554432,

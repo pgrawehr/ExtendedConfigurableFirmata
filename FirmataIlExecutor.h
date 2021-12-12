@@ -217,7 +217,7 @@ class FirmataIlExecutor: public FirmataFeature
 {
 	// Because we need to get all variables.
 	friend class GarbageCollector;
-  public:
+ public:
     FirmataIlExecutor();
     bool AutoStartProgram();
     boolean handlePinMode(byte pin, int mode) override;
@@ -228,7 +228,6 @@ class FirmataIlExecutor: public FirmataFeature
 	void report(bool elapsed) override;
 
 	void Init();
-public:
 
 	// These are used by HardwareAccess methods
 	static ClassDeclaration* GetClassDeclaration(Variable& obj);
@@ -238,9 +237,11 @@ public:
 		return _classes.GetClassWithToken(token, throwIfNotFound);
 	}
 
+	Variable GetExceptionObjectFromToken(SystemException exceptionType, const char* errorMessage);
+
 	static char* GetAsUtf8String(Variable& string);
 
-  private:
+ private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
 	void SendReplyHeader(ExecutorCommand subCommand);
 	ExecutionError LoadIlDataStream(int token, uint16_t codeLength, uint16_t offset, byte argc, byte* argv);
@@ -311,9 +312,10 @@ public:
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
 	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c, Variable &exception);
+	Variable CreateStringInstance(size_t length, const char* string);
 	void SendQueryHardwareReply();
-	
-	byte* GetString(int stringToken, int& length);
+
+	char* GetString(int stringToken, int& length);
 	byte* GetString(byte* heap, int stringToken, int& length);
 	byte* GetConstant(int token);
 

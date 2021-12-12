@@ -16,7 +16,7 @@ private:
 public:
 	CustomClrException(Variable& exceptionData, int exceptionToken);
 
-	virtual void* ExceptionObject() override
+	virtual void* ExceptionObject(FirmataIlExecutor* executor) override
 	{
 		return _object;
 	}

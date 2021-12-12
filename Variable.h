@@ -96,7 +96,8 @@ public:
 		CommonInit();
 	}
 
-private: void CommonInit()
+private:
+	void CommonInit()
 	{
 		Marker = VARIABLE_DEFAULT_MARKER;
 		_size = 0;

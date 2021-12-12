@@ -2,6 +2,8 @@
 
 #include "Exceptions.h"
 
+// Forward declare, to prevent a circular dependency
+class FirmataIlExecutor;
 
 class ClrException : public stdSimple::Exception
 {
@@ -23,5 +25,8 @@ public:
 		return _tokenCausingException;
 	}
 
-	virtual void* ExceptionObject();
+	virtual void* ExceptionObject(FirmataIlExecutor* executor);
+
+private:
+	const char* GetExceptionText(SystemException systemException);
 };

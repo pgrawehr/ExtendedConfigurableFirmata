@@ -192,10 +192,10 @@ void FirmataIlExecutor::handleCapability(byte pin)
 }
 
 // See https://stackoverflow.com/questions/18534494/convert-from-utf-8-to-unicode-c
-uint16_t utf8_to_unicode(byte*& coded)
+uint16_t utf8_to_unicode(const char*& coded)
 {
 	int charcode = 0;
-	int t = *coded;
+	int t = (*coded) & 0xFF; // No sign-extension here
 	coded++;
 	if (t < 128)
 	{
@@ -213,7 +213,7 @@ uint16_t utf8_to_unicode(byte*& coded)
 		high_bit_mask >>= 1;
 		high_bit_shift++;
 		charcode <<= other_bits;
-		charcode |= *coded & ((1 << other_bits) - 1);
+		charcode |= (*coded & 0xFF) & ((1 << other_bits) - 1);
 		coded++;
 	}
 	charcode |= ((t >> high_bit_shift) & high_bit_mask) << total_bits;
@@ -581,7 +581,7 @@ int* FirmataIlExecutor::CopySpecialTokenListToFlash()
 }
 
 
-byte* FirmataIlExecutor::GetString(int stringToken, int& length)
+char* FirmataIlExecutor::GetString(int stringToken, int& length)
 {
 	byte* ret = GetString(_stringHeapRam, stringToken, length);
 	if (ret == nullptr)
@@ -594,7 +594,7 @@ byte* FirmataIlExecutor::GetString(int stringToken, int& length)
 		throw ClrException(SystemException::NotSupported, stringToken);
 	}
 	
-	return ret;
+	return reinterpret_cast<char*>(ret);
 }
 
 byte* FirmataIlExecutor::GetString(byte* heap, int stringToken, int& length)
@@ -684,7 +684,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 	if (constantToken >= 0x10000)
 	{
 		// A string element
-		byte* data;
+		char* data;
 		if (_stringHeapRam == nullptr)
 		{
 			// Must be preallocated
@@ -711,13 +711,13 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		
 		*tokenPtr = constantToken;
 		int numToDecode = num7BitOutbytes(argc);
-		data = (byte*)AddBytes(tokenPtr, 4 + offset);
-		Encoder7Bit.readBinary(numToDecode, argv, data);
+		data = (char*)AddBytes(tokenPtr, 4 + offset);
+		Encoder7Bit.readBinary(numToDecode, argv, (byte*)data);
 
 		// Verification
 		int resultLen = 0;
-		byte* result = GetString(constantToken, resultLen);
-		if (result != (byte*)AddBytes(tokenPtr, 4))
+		char* result = GetString(constantToken, resultLen);
+		if (result != (char*)AddBytes(tokenPtr, 4))
 		{
 			throw ExecutionEngineException("The string that was just inserted is not there");
 		}
@@ -1285,8 +1285,11 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 	return cmp == 0;
 }
 
-// Returns the given C# string as C UTF8 string (with trailing zero)
-// The caller is responsible for freeing the memory
+/// <summary>
+/// Returns the given C# string as C UTF8 string (with trailing zero)
+/// The caller is responsible for freeing the memory.
+/// </summary>
+/// <param name="string">An object of type System::String</param>
 char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 {
 	uint16_t* input = (uint16_t*)string.Object;
@@ -4748,6 +4751,33 @@ uint16_t FirmataIlExecutor::CreateExceptionFrame(ExecutionState* currentFrame, u
 	return newPc;
 }
 
+Variable FirmataIlExecutor::CreateStringInstance(size_t length, const char* string)
+{
+	Variable stringVariable;
+	byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); // +1 for the terminating 0
+	// The string data is stored inline in the class data junk
+	uint16_t* stringData = (uint16_t*)AddBytes(classInstance, STRING_DATA_START);
+	int i = 0;
+	const char* stringIterator = string;
+	while(stringIterator < string + length)
+	{
+		// Several bytes in the input might make up a byte in the output
+		stringData[i] = utf8_to_unicode(stringIterator);
+		i++;
+	}
+
+	length = i; // We waste a bit of memory here, but that's hopefully negligible over the added complexity if we need to calculate the required size in an extra step
+	stringData[i] = 0; // Add terminating 0 (the constant array does not include these)
+	ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
+	// Length
+	Variable v(VariableKind::Int32);
+	v.Int32 = length;
+	stringVariable.Type = VariableKind::Object;
+	stringVariable.Object = classInstance;
+	SetField4(stringInstance, v, stringVariable, 0);
+	return stringVariable;
+}
+
 // Preconditions for save execution: 
 // - codeLength is correct
 // - argc matches argList
@@ -6372,36 +6402,15 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					PC += 4;
 					bool emptyString = (token & 0xFFFF) == 0;
 					int length = 0;
-					byte* string = nullptr;
+					char* string = nullptr;
 					if (!emptyString)
 					{
 						string = GetString(token, length);
 					}
 
 					// This creates an unicode string (16 bits per letter) from the UTF-8 encoded constant retrieved above
-					byte* classInstance = (byte*)CreateInstanceOfClass((int)KnownTypeTokens::String, length + 1); // +1 for the terminating 0
-					// The string data is stored inline in the class data junk
-					uint16_t* stringData = (uint16_t*)AddBytes(classInstance, STRING_DATA_START);
-					int i = 0;
-					byte* stringIterator = string;
-					while(stringIterator < string + length)
-					{
-						// Several bytes in the input might make up a byte in the output
-						stringData[i] = utf8_to_unicode(stringIterator);
-						i++;
-					}
-					
-					length = i; // We waste a bit of memory here, but that's hopefully negligible over the added complexity if we need to calculate the required size in an extra step
-					stringData[i] = 0; // Add terminating 0 (the constant array does not include these)
-					ClassDeclaration* stringInstance = _classes.GetClassWithToken(KnownTypeTokens::String);
-					
-					// Length
-					Variable v(VariableKind::Int32);
-					v.Int32 = length;
-					intermediate.Type = VariableKind::Object;
-					intermediate.Object = classInstance;
-					SetField4(stringInstance, v, intermediate, 0);
-					stack->push(intermediate);
+					Variable stringVariable = CreateStringInstance(length, string);
+					stack->push(stringVariable);
 				}
 				break;
 			case InlineSwitch:
@@ -6441,9 +6450,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Variable v(VariableKind::Object);
-		v.Object = cx.ExceptionObject();
+		v.Object = cx.ExceptionObject(this);
 		ExceptionClause* c = nullptr;
-		if (LocateCatchHandler(currentFrame, PC, v, &c))
+
+		// v.Object is only null if we were unable to convert a system exception into a managed exception.
+		if (v.Object != nullptr && LocateCatchHandler(currentFrame, PC, v, &c))
 		{
 			currentFrame->UpdatePc(CreateExceptionFrame(currentFrame, 0, c, v));
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
@@ -6597,7 +6608,7 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 			{
 				throw ExecutionEngineException("Unsupported exception handler type found");
 			}
-			
+
 			// We'll be using this handler. Now clean any stack frames below the one we are in
 			CleanStack(newState->_next);
 			newState->_next = nullptr;
@@ -6618,6 +6629,29 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 		}
 	}
 	return false;
+};
+
+Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptionType, const char* errorMessage)
+{
+	Variable message = CreateStringInstance(strlen(errorMessage), errorMessage);
+	KnownTypeTokens typeToInstantiate = KnownTypeTokens::None;
+	switch(exceptionType)
+	{
+	case SystemException::DivideByZero:
+		typeToInstantiate = KnownTypeTokens::DivideByZeroException;
+		break;
+	}
+	if (typeToInstantiate == KnownTypeTokens::None)
+	{
+		return Variable();
+	}
+
+	void* exceptionPtr = CreateInstanceOfClass((int)typeToInstantiate, 0);
+	Variable exception(VariableKind::Object);
+	exception.Object = exceptionPtr;
+	ClassDeclaration* cls = GetClassDeclaration(exception);
+	SetField4(cls, message, exception, 0);
+	return exception;
 }
 
 /// <summary>
