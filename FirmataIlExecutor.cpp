@@ -1829,6 +1829,18 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result.setSize(4);
 		}
 		break;
+	case NativeMethod::UnsafeAreSame:
+		{
+			// This compares two references for equality
+		ASSERT(args.size() == 2);
+		Variable a = args[0];
+		Variable b = args[1];
+		ASSERT(a.Type == VariableKind::AddressOfVariable);
+		ASSERT(b.Type == VariableKind::AddressOfVariable);
+		result.Type = VariableKind::Boolean;
+		result.Boolean = a.Object == b.Object;
+		}
+		break;
 	case NativeMethod::UnsafeAddByteOffset:
 		{
 		ASSERT(args.size() == 2);
@@ -6640,18 +6652,63 @@ Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptio
 	case SystemException::DivideByZero:
 		typeToInstantiate = KnownTypeTokens::DivideByZeroException;
 		break;
+	case SystemException::Arithmetic:
+		typeToInstantiate = KnownTypeTokens::ArithmeticException;
+		break;
+	case SystemException::ClassNotFound:
+		typeToInstantiate = KnownTypeTokens::ClassNotFoundException;
+		break;
+	case SystemException::ArrayTypeMismatch:
+		typeToInstantiate = KnownTypeTokens::ArrayTypeMismatchException;
+		break;
+	case SystemException::IndexOutOfRange:
+		typeToInstantiate = KnownTypeTokens::IndexOutOfRangeException;
+		break;
+	case SystemException::FieldAccess:
+		typeToInstantiate = KnownTypeTokens::FieldAccessException;
+		break;
+	case SystemException::InvalidCast:
+		typeToInstantiate = KnownTypeTokens::InvalidCastException;
+		break;
+	case SystemException::InvalidOperation:
+		typeToInstantiate = KnownTypeTokens::InvalidOperationException;
+		break;
+	case SystemException::MissingMethod:
+		typeToInstantiate = KnownTypeTokens::MissingMethodException;
+		break;
+	case SystemException::NullReference:
+		typeToInstantiate = KnownTypeTokens::NullReferenceException;
+		break;
+	case SystemException::Io:
+		typeToInstantiate = KnownTypeTokens::IoException;
+		break;
+	case SystemException::NotSupported:
+		typeToInstantiate = KnownTypeTokens::NotSupportedException;
+		break;
+	case SystemException::Overflow:
+		typeToInstantiate = KnownTypeTokens::OverflowException;
+		break;
 	}
 	if (typeToInstantiate == KnownTypeTokens::None)
 	{
 		return Variable();
 	}
 
-	void* exceptionPtr = CreateInstanceOfClass((int)typeToInstantiate, 0);
-	Variable exception(VariableKind::Object);
-	exception.Object = exceptionPtr;
-	ClassDeclaration* cls = GetClassDeclaration(exception);
-	SetField4(cls, message, exception, 0);
-	return exception;
+	try
+	{
+		void* exceptionPtr = CreateInstanceOfClass((int)typeToInstantiate, 0);
+		Variable exception(VariableKind::Object);
+		exception.Object = exceptionPtr;
+		ClassDeclaration* cls = GetClassDeclaration(exception);
+		SetField4(cls, message, exception, 0);
+		return exception;
+	}
+	catch(ClrException&)
+	{
+		// The exception type we wanted to instantiate is not loaded, this implies that (unless we have a bug in our code), there's
+		// no handler for it and we can directly throw a fatal error.
+		return Variable();
+	}
 }
 
 /// <summary>
