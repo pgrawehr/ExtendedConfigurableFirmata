@@ -6631,6 +6631,12 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 			return true;
 		}
 
+		if (exceptionToHandle.Type == VariableKind::Void)
+		{
+			// If we have no exception to handle, don't look for finally handlers further up the stack (but directly go to the target of the leave instruction)
+			return false;
+		}
+
 		ExecutionState* tempState = newState;
 		// Go up one stack frame
 		newState = _methodCurrentlyExecuting;
