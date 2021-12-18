@@ -22,11 +22,15 @@ enum class NativeMethod
     ArrayInternalCreate = -1736142368,
     ArraySetValue1 = -1854194542,
     BitConverterDoubleToInt64Bits = 1298308614,
+    BitConverterDoubleToUInt64Bits = -893084679,
     BitConverterHalfToInt16Bits = -1781988885,
+    BitConverterHalfToUInt16Bits = -258615545,
     BitConverterInt16BitsToHalf = -635048510,
     BitConverterInt32BitsToSingle = -1266995046,
     BitConverterInt64BitsToDouble = -1032758321,
     BitConverterSingleToInt32Bits = 2017406763,
+    BitConverterSingleToUInt32Bits = 1393130648,
+    BitConverterUInt16BitsToHalf = 955920983,
     BitOperationsLog2SoftwareFallback = -2119157240,
     BitOperationsTrailingZeroCount = -208339876,
     BufferMemmove = 202882892,
@@ -46,6 +50,7 @@ enum class NativeMethod
     EnvironmentTickCount = 995695910,
     EnvironmentTickCount64 = -828523620,
     FileSystemCreateDirectory = 1099867326,
+    FileSystemDirectoryExists = 1550815971,
     FileSystemFileExists = -129145360,
     GcCollect = 1146509511,
     GcGetTotalAllocatedBytes = 1139675769,
@@ -61,20 +66,37 @@ enum class NativeMethod
     InterlockedCompareExchange_Object = 147404285,
     InterlockedExchangeAdd = -165642107,
     Interop_GlobalizationGetCalendarInfo = -2143386112,
+    Interop_Kernel32AllocHGlobal = -453445298,
     Interop_Kernel32CancelIoEx = 523,
     Interop_Kernel32CloseHandle = 516,
+    Interop_Kernel32CreateEventEx = 1603205854,
     Interop_Kernel32CreateFile = 514,
+    Interop_Kernel32CreateIoCompletionPort = 1508078548,
+    Interop_Kernel32DeleteCriticalSection = 2130138055,
+    Interop_Kernel32DeleteFile = -2073545606,
+    Interop_Kernel32EnterCriticalSection = -1995826783,
+    Interop_Kernel32FindStringOrdinal = -1901592290,
     Interop_Kernel32FlushFileBuffers = 525,
+    Interop_Kernel32FreeHGlobal = 1747565902,
     Interop_Kernel32GetFileInformationByHandleEx = 526,
     Interop_Kernel32GetLastError = 518,
+    Interop_Kernel32GetOverlappedResult = 746996268,
+    Interop_Kernel32InitializeConditionVariable = -890999559,
+    Interop_Kernel32InitializeCriticalSection = -419167054,
+    Interop_Kernel32LeaveCriticalSection = -837236994,
     Interop_Kernel32QueryUnbiasedInterruptTime = 527,
     Interop_Kernel32ReadFile = 522,
     Interop_Kernel32ReadFileOverlapped = 524,
+    Interop_Kernel32ReadFileOverlapped2 = 1541500550,
     Interop_Kernel32SetEndOfFile = 519,
+    Interop_Kernel32SetFileInformationByHandle = -129692225,
     Interop_Kernel32SetFilePointerEx = 515,
     Interop_Kernel32SetLastError = 517,
+    Interop_Kernel32SleepConditionVariableCS = -1277951056,
+    Interop_Kernel32WakeConditionVariable = 2137074050,
     Interop_Kernel32WriteFile = 520,
     Interop_Kernel32WriteFileOverlapped = 521,
+    Interop_Kernel32WriteFileOverlapped2 = -329641268,
     InteropGetRandomBytes = -1509382087,
     InteropQueryPerformanceCounter = 513,
     InteropQueryPerformanceFrequency = 512,
@@ -91,6 +113,7 @@ enum class NativeMethod
     MathSqrt = 109,
     MathTan = 108,
     MemoryMarshalGetArrayDataReference = 441340395,
+    MemoryMarshalGetArrayDataReferenceByte = -1618984944,
     MonitorEnter = -146973688,
     MonitorExit = 514746549,
     MonitorWait = -1392757721,
@@ -100,6 +123,7 @@ enum class NativeMethod
     ObjectMemberwiseClone = 6,
     ObjectReferenceEquals = 1,
     ObjectToString = 4,
+    RuntimeHelpersEnumCompareTo = -1079910119,
     RuntimeHelpersEnumEquals = -309046897,
     RuntimeHelpersGetHashCode = 39180815,
     RuntimeHelpersGetMethodTable = 1445398005,
@@ -145,6 +169,7 @@ enum class NativeMethod
     TypeMakeGenericType = -209849911,
     TypeName = 137672381,
     TypeTypeHandle = -284466911,
+    UInt64BitsToDouble = -1460725006,
     UnsafeAddByteOffset = 36,
     UnsafeAreSame = 35,
     UnsafeAs2 = 32,
@@ -163,8 +188,11 @@ enum class NativeMethod
 -2143386112 -> Interop_GlobalizationGetCalendarInfo
 -2119157240 -> BitOperationsLog2SoftwareFallback
 -2090178041 -> TypeContainsGenericParameters
+-2073545606 -> Interop_Kernel32DeleteFile
 -2028381384 -> TypeCreateInstanceForAnotherGenericParameter
+-1995826783 -> Interop_Kernel32EnterCriticalSection
 -1975360087 -> TypeIsAssignableTo
+-1901592290 -> Interop_Kernel32FindStringOrdinal
 -1872927992 -> GcTotalAvailableMemoryBytes
 -1854194542 -> ArraySetValue1
 -1798204696 -> TypeIsAssignableFrom
@@ -173,34 +201,46 @@ enum class NativeMethod
 -1717692367 -> EnvironmentFailFast1
 -1696892778 -> RuntimeHelpersInitializeArray
 -1619611066 -> ArrayCopyCore
+-1618984944 -> MemoryMarshalGetArrayDataReferenceByte
 -1559369991 -> EnumInternalGetValues
 -1509382087 -> InteropGetRandomBytes
+-1460725006 -> UInt64BitsToDouble
 -1392757721 -> MonitorWait
+-1277951056 -> Interop_Kernel32SleepConditionVariableCS
 -1276420311 -> EnvironmentProcessorCount
 -1266995046 -> BitConverterInt32BitsToSingle
 -1228132009 -> EnumGetHashCode
 -1156966334 -> TypeGetBaseType
+-1079910119 -> RuntimeHelpersEnumCompareTo
 -1032758321 -> BitConverterInt64BitsToDouble
 -952512669 -> TypeIsArray
+-893084679 -> BitConverterDoubleToUInt64Bits
+-890999559 -> Interop_Kernel32InitializeConditionVariable
 -839695033 -> RuntimeTypeHandleValue
+-837236994 -> Interop_Kernel32LeaveCriticalSection
 -828523620 -> EnvironmentTickCount64
 -635048510 -> BitConverterInt16BitsToHalf
 -587970409 -> InterlockedCompareExchange_Int32
 -576391646 -> RuntimeHelpersRunClassConstructor
 -524065545 -> ArrayClear
 -478934591 -> TypeGetGenericArguments
+-453445298 -> Interop_Kernel32AllocHGlobal
 -447555837 -> DateTimeUtcNow
+-419167054 -> Interop_Kernel32InitializeCriticalSection
 -390971438 -> ValueTypeEquals
+-329641268 -> Interop_Kernel32WriteFileOverlapped2
 -309046897 -> RuntimeHelpersEnumEquals
 -284466911 -> TypeTypeHandle
 -276247527 -> TypeIsValueType
 -275005718 -> RuntimeHelpersGetMultiDimensionalArrayBounds
+-258615545 -> BitConverterHalfToUInt16Bits
 -237133270 -> TypeGetElementType
 -209849911 -> TypeMakeGenericType
 -208339876 -> BitOperationsTrailingZeroCount
 -181103992 -> TypeIsEnum
 -165642107 -> InterlockedExchangeAdd
 -146973688 -> MonitorEnter
+-129692225 -> Interop_Kernel32SetFileInformationByHandle
 -129145360 -> FileSystemFileExists
 -115610375 -> TypeCtor
 -30264143 -> RuntimeHelpersIsReferenceOrContainsReferencesCore
@@ -294,8 +334,10 @@ enum class NativeMethod
 691743717 -> TypeGetTypeFromHandle
 708670373 -> ValueTypeToString
 732362155 -> GcGetTotalMemory
+746996268 -> Interop_Kernel32GetOverlappedResult
 801432671 -> EnumInternalBoxEnum
 903276829 -> ArrayGetValue1
+955920983 -> BitConverterUInt16BitsToHalf
 971394044 -> ActivatorCreateInstance
 995695910 -> EnvironmentTickCount
 1030938039 -> TypeGetGenericTypeDefinition
@@ -304,12 +346,20 @@ enum class NativeMethod
 1146509511 -> GcCollect
 1217981428 -> TypeGetHashCode
 1298308614 -> BitConverterDoubleToInt64Bits
+1393130648 -> BitConverterSingleToUInt32Bits
 1445398005 -> RuntimeHelpersGetMethodTable
 1506797768 -> ByReferenceCtor
+1508078548 -> Interop_Kernel32CreateIoCompletionPort
+1541500550 -> Interop_Kernel32ReadFileOverlapped2
+1550815971 -> FileSystemDirectoryExists
+1603205854 -> Interop_Kernel32CreateEventEx
 1726687320 -> RuntimeHelpersGetRawArrayData
+1747565902 -> Interop_Kernel32FreeHGlobal
 1875327221 -> EnvironmentFailFast2
 1890006801 -> ArrayGetLength
 1962863922 -> ByReferenceValue
 2017406763 -> BitConverterSingleToInt32Bits
 2063332583 -> EnumToUInt64
+2130138055 -> Interop_Kernel32DeleteCriticalSection
+2137074050 -> Interop_Kernel32WakeConditionVariable
 */

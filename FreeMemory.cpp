@@ -6,7 +6,7 @@
 // should use uinstd.h to define sbrk but Due causes a conflict
 extern "C" char* sbrk(int incr);
 #elif defined (ESP32)
-extern "C" void* sbrk(ptrdiff_t __incr);
+// Nothing, the ESP has predefined functions for this
 #else  // __ARM__
 extern char *__brkval;
 #endif  // __arm__
@@ -28,10 +28,7 @@ int freeMemory()
   return &top - reinterpret_cast<char*>(sbrk(0));
 #elif defined(ESP32)
   // has sbrk, but calling it seems to cause a crash
-  char* m = (char*)malloc(10);
-  int32_t freeMem = m - &top;
-  free(m);
-  return freeMem;
+  return ESP.getFreeHeap();
 #elif defined(CORE_TEENSY) || (ARDUINO > 103 && ARDUINO != 151)
   return &top - __brkval;
 

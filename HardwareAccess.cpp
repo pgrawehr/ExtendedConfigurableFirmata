@@ -296,6 +296,63 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Boolean = true;
 		}
 		break;
+	case NativeMethod::Interop_Kernel32AllocHGlobal:
+	{
+		ASSERT(args.size() == 1);
+		Variable& size = args.at(0);
+		result.Type = VariableKind::AddressOfVariable;
+		void* memory = mallocEx(size.Int32);
+		memset(memory, 0, size.Int32);
+		result.Object = memory;
+	}
+		break;
+	case NativeMethod::Interop_Kernel32FreeHGlobal:
+	{
+		ASSERT(args.size() == 1);
+		Variable& ptr = args.at(0);
+		ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+		freeEx(ptr.Object);
+		ptr.Object = nullptr;
+	}
+		break;
+	case NativeMethod::Interop_Kernel32InitializeCriticalSection:
+		ASSERT(args.size() == 1);
+		{
+			Variable& ptr = args.at(0);
+			ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+			if (ptr.Object == nullptr)
+			{
+				throw ClrException("InitializeCriticalSection on a null reference.", SystemException::InvalidOperation, 0);
+			}
+			memset(ptr.Object, 0, 4); // Let's assume this minimum size - SIZEOF(CRITICAL_SECTION) should be 6x4.
+		}
+		break;
+	case NativeMethod::Interop_Kernel32InitializeConditionVariable:
+		ASSERT(args.size() == 1);
+		{
+			Variable& ptr = args.at(0);
+			ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+			if (ptr.Object == nullptr)
+			{
+				throw ClrException("InitializeCriticalSection on a null reference.", SystemException::InvalidOperation, 0);
+			}
+			memset(ptr.Object, 0, 4); // Let's assume this minimum size - SIZEOF(CONDITION_VARIABLE) should be 4
+		}
+		break;
+	case NativeMethod::Interop_Kernel32CreateEventEx:
+		{
+		ASSERT(args.size() == 3);
+		Variable handle(VariableKind::AddressOfVariable);
+			handle.Object = xSemaphoreCreateBinary();
+		}
+		break;
+	case NativeMethod::Interop_Kernel32GetLastError:
+		result.Type = VariableKind::Uint32;
+		result.Uint32 = executor->GetLastError();
+		break;
+	case NativeMethod::Interop_Kernel32SetLastError:
+		executor->SetLastError(args[0].Int32);
+		break;
 	case NativeMethod::InterlockedCompareExchange_Object:
 		ASSERT(args.size() == 3);
 	{

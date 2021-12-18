@@ -270,7 +270,12 @@ void setup()
 #ifdef ENABLE_IL_EXECUTOR
 	ilExecutor.Init();
 #endif
-	// Firmata.sendString(F("System booted. Free bytes: 0x"), freeMemory());
+	Firmata.sendStringf(F("Free heap: %dkb"), 4, (uint32_t)freeMemory() / 1024);
+#ifdef ESP32
+	Firmata.sendStringf(F("Total heap: %dkb"), 4, ESP.getHeapSize() / 1024);
+	Firmata.sendStringf(F("Free PSRAM: %dkb"), 4, ESP.getFreePsram() / 1024);
+	Firmata.sendStringf(F("Total PSRAM: %dkb"), 4, ESP.getPsramSize() / 1024);
+#endif
 }
 
 void loop()

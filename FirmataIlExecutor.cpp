@@ -88,6 +88,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_debugBreakActive = false;
 	_debuggerEnabled = false;
 	_commandsToSkip = 0;
+	_lastError = 0;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -6366,6 +6367,26 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					memcpy(dest.Object, &src.Int32, size);
 				}
 				break;
+				case CEE_SIZEOF:
+					{
+					ClassDeclaration* ty = _classes.GetClassWithToken(token);
+						if (!ty->IsValueType())
+						{
+							// Reference types return sizeof(void*)
+							intermediate.setSize(4);
+							intermediate.Type = VariableKind::Uint32;
+							intermediate.Int32 = sizeof(void*);
+							stack->push(intermediate);
+						}
+						else
+						{
+							intermediate.setSize(4);
+							intermediate.Type = VariableKind::Uint32;
+							intermediate.Int32 = ty->ClassDynamicSize;
+							stack->push(intermediate);
+						}
+					break;
+					}
 				default:
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;

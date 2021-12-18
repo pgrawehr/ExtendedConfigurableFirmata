@@ -379,4 +379,9 @@ void shutdown()
 	storage = nullptr;
 }
 
+void* xSemaphoreCreateBinary()
+{
+	auto handle = CreateEventEx(NULL, NULL, 0, STANDARD_RIGHTS_ALL);
+	return handle;
+}
 

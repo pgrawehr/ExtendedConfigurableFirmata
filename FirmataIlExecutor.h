@@ -241,6 +241,16 @@ class FirmataIlExecutor: public FirmataFeature
 
 	static char* GetAsUtf8String(Variable& string);
 
+	void SetLastError(int error)
+	{
+		_lastError = error;
+	}
+
+	int GetLastError()
+	{
+		return _lastError;
+	}
+
  private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
 	void SendReplyHeader(ExecutorCommand subCommand);
@@ -361,6 +371,7 @@ class FirmataIlExecutor: public FirmataFeature
 	Variable _clearVariable;
 	FlashMemoryManager* _flashMemoryManager;
 	stdSimple::vector<LowlevelInterface*> _lowLevelLibraries;
+	uint32_t _lastError;
 
 	// The debugger is active
 	bool _debuggerEnabled;

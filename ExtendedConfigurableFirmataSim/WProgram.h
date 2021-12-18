@@ -45,6 +45,9 @@ void detachInterrupt(uint8_t pin);
 void noInterrupts();
 void interrupts();
 
+/* RTOS implementation functions */
+void* xSemaphoreCreateBinary();
+
 #define INPUT 0
 #define OUTPUT 1
 #define INPUT_PULLUP 2

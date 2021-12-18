@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <inttypes.h>
 #include <queue>
@@ -12,6 +12,7 @@
 #define B00001000 0x08
 #define B00000000 0x00
 #define B00010000 0x10
+#define B00000111 0x07
 
 // WIRE_HAS_END means Wire has end()
 #define WIRE_HAS_END 1

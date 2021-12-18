@@ -16,7 +16,6 @@ std::vector<File> fileHandles;
 
 Esp32FatSupport::Esp32FatSupport()
 {
-	_lastError = 0;
 }
 
 void Esp32FatSupport::Init()
@@ -36,15 +35,6 @@ void Esp32FatSupport::Init()
 	
 	Firmata.sendStringf(F("Total space on data partition: %10u\n"), 8, FFat.totalBytes());
 	Firmata.sendStringf(F("Free space on data partition: %10u\n"), 8, FFat.freeBytes());
-}
-
-void Esp32FatSupport::SetLastError(int error)
-{
-	_lastError = error;
-	if (_lastError != 0)
-	{
-		Firmata.sendStringf(F("SetLastError called with error code %d."), 4, error);
-	}
 }
 
 bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
@@ -75,7 +65,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		const char* mode = 0;
 		int dwCreationDisposition = args[4].Int32;
 
-		_lastError = 0;
+		executor->SetLastError(0);
 		switch (dwCreationDisposition)
 		{
 		case 2: // CreateNew
@@ -85,7 +75,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 1: // Create
 			if (exists)
 			{
-				SetLastError(80); // file exists
+				ilExecutor.SetLastError(80); // file exists
 				result.Object = nullptr;
 				break;
 			}
@@ -94,7 +84,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 3:  // Open:
 			if (!exists)
 			{
-				SetLastError(2); // file does not exist
+				executor->SetLastError(2); // file does not exist
 				result.Object = nullptr;
 				break;
 			}
@@ -103,7 +93,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 4: // OpenOrCreate
 			if (exists)
 			{
-				SetLastError(183); // Already exists
+				executor->SetLastError(183); // Already exists
 				mode = "r+b";
 			}
 			else
@@ -122,7 +112,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		if (!f)
 		{
 			result.Object = nullptr;
-			SetLastError(2); // File not found
+			executor->SetLastError(2); // File not found
 		}
 		else
 		{
@@ -132,13 +122,6 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		Firmata.sendStringf(F("Opened file %s at handle %d."), 8, path, result.Int32);
 		break;
 	}
-	case NativeMethod::Interop_Kernel32GetLastError:
-		result.Type = VariableKind::Uint32;
-		result.Uint32 = _lastError;
-		break;
-	case NativeMethod::Interop_Kernel32SetLastError:
-		_lastError = args[0].Int32;
-		break;
 	case NativeMethod::Interop_Kernel32WriteFile:
 		{
 		result.Type = VariableKind::Int32; // Number of bytes written
@@ -148,11 +131,11 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		Firmata.sendStringf(F("Writing %d bytes to handle %d"), 8, len, args[0].Int32);
 		if (index < 0 || index >= fileHandles.size())
 		{
-			SetLastError(6); // Invalid handle
+			executor->SetLastError(6); // Invalid handle
 			result.Int32 = -1;
 			break;
 		}
-		_lastError = 0;
+		executor->SetLastError(0);
 		result.Int32 = fileHandles[index].write(buffer, len);
 		break;
 		}
@@ -165,11 +148,12 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		Firmata.sendStringf(F("Reading %d bytes from handle %d"), 8, len, args[0].Int32);
 		if (index < 0 || index >= fileHandles.size())
 		{
-			SetLastError(6); // Invalid handle
+			executor->SetLastError(6); // Invalid handle
 			result.Int32 = -1;
 			break;
 		}
-		_lastError = 0;
+
+		executor->SetLastError(0);
 		result.Int32 = fileHandles[index].readBytes(buffer, len);
 		Firmata.sendStringf(F("Successfuly read %d bytes"), 4, result.Int32);
 		break;
@@ -181,10 +165,13 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		Firmata.sendStringf(F("Closing handle %d"), 4, args[0].Int32);
 		if (index < 0 || index >= fileHandles.size())
 		{
-			SetLastError(6); // Invalid handle
+			executor->SetLastError(6); // Invalid handle
 			result.Boolean = false;
 			break;
 		}
+
+		executor->SetLastError(0);
+
 		fileHandles[index].close();
 		result.Boolean = true;
 		break;
