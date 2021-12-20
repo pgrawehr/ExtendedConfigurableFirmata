@@ -133,6 +133,9 @@
     <ClCompile Include="..\ClrException.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\DependentHandle.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -289,6 +292,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\ClrException.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\DependentHandle.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

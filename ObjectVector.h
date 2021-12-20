@@ -109,7 +109,12 @@ namespace stdSimple
 			_count = 0;
 		}
 
-		void push_back(T& object)
+		/// <summary>
+		/// Adds an element to the end of the list
+		/// </summary>
+		/// <param name="object">The object to insert. It will be copied</param>
+		/// <returns>The 0-based index of the new element</returns>
+		int push_back(T& object)
 		{
 			if (_count < _size)
 			{
@@ -124,7 +129,7 @@ namespace stdSimple
 					if (_data == nullptr)
 					{
 						OutOfMemoryException::Throw("Out of memory pushing first element of vector");
-						return;
+						return -1;
 					}
 				}
 				else
@@ -136,13 +141,14 @@ namespace stdSimple
 					{
 						Firmata.sendStringf(F("Bad: No more memory for %d elements"), 4, _size);
 						OutOfMemoryException::Throw("Out of memory resizing vector");
-						return;
+						return -1;
 					}
 					_data = temp;
 				}
 				
 				_data[_count++] = object;
 			}
+			return _count - 1;
 		}
 
 		void push_back(const T& object)

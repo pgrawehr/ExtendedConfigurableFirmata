@@ -26,6 +26,8 @@ extern I2CFirmata i2c;
 // this pin is used as input for the random number generator
 const int OPEN_ANALOG_PIN = A0;
 
+const int IO_COMPLETIONPORT_DUMMY = 0x00DDDBAD;
+
 int64_t HardwareAccess::_tickCountFrequency = 1000000;
 int64_t HardwareAccess::_tickCount64 = 0; // Only upper 32 bits used
 uint32_t HardwareAccess::_lastTickCount = 0;
@@ -341,9 +343,11 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32CreateEventEx:
 		{
-		ASSERT(args.size() == 3);
-		Variable handle(VariableKind::AddressOfVariable);
-			handle.Object = xSemaphoreCreateBinary();
+			ASSERT(args.size() == 3);
+			result.Type = VariableKind::AddressOfVariable;
+			result.Object = xSemaphoreCreateBinary();
+			result.setSize(4);
+			executor->SetLastError(0);
 		}
 		break;
 	case NativeMethod::Interop_Kernel32GetLastError:
@@ -352,6 +356,11 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32SetLastError:
 		executor->SetLastError(args[0].Int32);
+		break;
+	case NativeMethod::Interop_Kernel32CreateIoCompletionPort:
+		result.Type = VariableKind::AddressOfVariable;
+		result.Int32 = IO_COMPLETIONPORT_DUMMY; // For now, just return a dummy handle (we won't be using this just yet)
+		result.setSize(4);
 		break;
 	case NativeMethod::InterlockedCompareExchange_Object:
 		ASSERT(args.size() == 3);
@@ -381,6 +390,17 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		int firstValue = *AddBytes((int*)args[0].Object, 0);
 		int sum = firstValue + args[1].Int32;
 		*AddBytes((int*)args[0].Object, 0) = sum;
+		interrupts();
+		result.Int32 = firstValue;
+		}
+		break;
+	case NativeMethod::InterlockedExchangeInt:
+		{
+		result.Type = VariableKind::Int32;
+		noInterrupts();
+		int firstValue = *AddBytes((int*)args[0].Object, 0);
+		int newValue = args[1].Int32;
+		*AddBytes((int*)args[0].Object, 0) = newValue;
 		interrupts();
 		result.Int32 = firstValue;
 		}

@@ -163,6 +163,7 @@
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\FirmataScheduler.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\Frequency.cpp" />
     <ClCompile Include="..\ClrException.cpp" />
+    <ClCompile Include="..\DependentHandle.cpp" />
     <ClCompile Include="..\FreeMemory.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\I2CFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\SerialFirmata.cpp" />
@@ -216,6 +217,7 @@
     <ClInclude Include="..\ClassDeclaration.h" />
     <ClInclude Include="..\ClrException.h" />
     <ClInclude Include="..\CustomClrException.h" />
+    <ClInclude Include="..\DependentHandle.h" />
     <ClInclude Include="..\Ds1307.h" />
     <ClInclude Include="..\Esp32FatSupport.h" />
     <ClInclude Include="..\Exceptions.h" />

@@ -109,6 +109,7 @@
     <ClInclude Include="ClassDeclaration.h" />
     <ClInclude Include="ClrException.h" />
     <ClInclude Include="CustomClrException.h" />
+    <ClInclude Include="DependentHandle.h" />
     <ClInclude Include="Ds1307.h" />
     <ClInclude Include="Esp32FatSupport.h" />
     <ClInclude Include="Esp32FlashStorage.h" />

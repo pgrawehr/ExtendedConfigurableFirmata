@@ -19,6 +19,7 @@
 #include "Encoder7Bit.h"
 #include "SelfTest.h"
 #include "HardwareAccess.h"
+#include "DependentHandle.h"
 #include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
 #include "Esp32FatSupport.h"
@@ -148,6 +149,9 @@ void FirmataIlExecutor::Init()
 		HardwareAccess* access = new HardwareAccess();
 		access->Init();
 		_lowLevelLibraries.push_back(access);
+		DependentHandle* dp = new DependentHandle();
+		dp->Init();
+		_lowLevelLibraries.push_back(dp);
 #ifdef ESP32
 		Esp32FatSupport* fat = new Esp32FatSupport();
 		fat->Init();
@@ -1257,7 +1261,12 @@ ClassDeclaration* FirmataIlExecutor::GetTypeFromTypeInstance(Variable& ownTypeIn
 
 bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 {
-	ASSERT(args.size() == 2);
+	return StringEquals(args, 0);
+}
+
+bool FirmataIlExecutor::StringEquals(const VariableVector& args, int stringComparison)
+{
+	ASSERT(args.size() >= 2);
 	Variable& a = args[0];
 	Variable& b = args[1];
 	if (a.Object == b.Object)
@@ -1269,9 +1278,6 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 		return true;
 	}
 
-	// This function seems to be broken on the Arduino DUE, therefore we implement it manually.
-	// (The possibly missing terminating 0 cannot be the issue, since it works in simulation)
-	// int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
 	ClassDeclaration* ty1 = GetClassDeclaration(a);
 	ClassDeclaration* ty2 = GetClassDeclaration(b);
 	ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String);
@@ -1282,8 +1288,34 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 	{
 		return false;
 	}
-	int cmp = memcmp(AddBytes(a.Object, STRING_DATA_START), AddBytes(b.Object, STRING_DATA_START), len1 * 2);
-	return cmp == 0;
+
+	// The even members of StringComparison are CurrentCulture, InvariantCulture and Ordinal ->
+	// We handle them all as ordinal
+	if (stringComparison % 2 == 0)
+	{
+		// This function seems to be broken on the Arduino DUE, therefore we implement it manually.
+		// (The possibly missing terminating 0 cannot be the issue, since it works in simulation)
+		// int cmp = wcscmp((wchar_t*)AddBytes(a.Object, STRING_DATA_START), (wchar_t*)AddBytes(b.Object, STRING_DATA_START));
+		
+		int cmp = memcmp(AddBytes(a.Object, STRING_DATA_START), AddBytes(b.Object, STRING_DATA_START), len1 * 2);
+		return cmp == 0;
+	}
+	else
+	{
+		// The odd members use IgnoreCase. For the invariant culture.
+		wchar_t* left = (wchar_t*)AddBytes(a.Object, STRING_DATA_START);
+		wchar_t* right = (wchar_t*)AddBytes(b.Object, STRING_DATA_START);
+		for (int i = 0; i < len1; i++)
+		{
+			if (towlower(*left) != towlower(*right))
+			{
+				return false;
+			}
+			left += 1;
+			right += 1;
+		}
+		return true;
+	}
 }
 
 /// <summary>
@@ -1967,6 +1999,10 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Boolean = StringEquals(args);
 		}
 	break;
+	case NativeMethod::StringEqualsStringComparison:
+		result.Type = VariableKind::Boolean;
+		result.Boolean = StringEquals(args, args[2].Int32);
+		break;
 	case NativeMethod::StringUnEqualsStatic:
 	{
 		result.Type = VariableKind::Boolean;
@@ -2023,6 +2059,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Boolean = cls1->ClassToken == cls2->ClassToken;
 	}
 		break;
+	case NativeMethod::RuntimeHelpersGetHashCode:
 	case NativeMethod::ObjectGetHashCode:
 		{
 		ASSERT(args.size() == 1);
@@ -5535,6 +5572,9 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				int32_t tk = ReadUint32FromArbitraryAddress(pCode + PC);
 				PC += 4;
 
+				// Save return PC
+				currentFrame->UpdatePc(PC);
+
 				MethodBody* newMethod = nullptr;
 				if (instr == CEE_CALLI)
 				{
@@ -5614,7 +5654,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					
 					if (instance.Object == nullptr)
 					{
-						throw ClrException("Null reference exception calling virtual method", SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+						throw ClrException("Null reference exception calling virtual method", SystemException::NullReference, tk);
 					}
 
 					if (cls == nullptr)
@@ -5651,7 +5691,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								newMethod = GetMethodByToken(metToken);
 								if (newMethod == nullptr)
 								{
-									throw ClrException("Implementation for token not found", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
+									throw ClrException("Implementation for token not found", SystemException::MissingMethod, metToken);
 								}
 								goto outer;
 
@@ -5772,10 +5812,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					stack->push(ftptr);
 					break;
 				}
-				
-            	// Save return PC
-                currentFrame->UpdatePc(PC);
-				
+								
 				uint16_t argumentCount = newMethod->NumberOfArguments();
 				// While generating locals, assign their types (or a value used as out parameter will never be correctly typed, causing attempts
 				// to calculate on void types)
@@ -7256,6 +7293,7 @@ void FirmataIlExecutor::reset()
 	freeEx(_specialTypeListRam);
 
 	_gc.Clear();
+	_weakDependencies.clear(true);
 	
-	Firmata.sendStringf(F("Execution memory cleared. Free bytes: 0x%x"), 4, freeMemory());
+	Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), 4, freeMemory());
 }

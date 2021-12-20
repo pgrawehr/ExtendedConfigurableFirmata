@@ -306,6 +306,7 @@ class FirmataIlExecutor: public FirmataFeature
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
+	bool StringEquals(const VariableVector& args, int stringComparison);
 	bool StringEquals(const VariableVector& args);
 	void CreateFatalException(SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
@@ -384,6 +385,9 @@ class FirmataIlExecutor: public FirmataFeature
 
 	stdSimple::vector<Breakpoint> _breakpoints;
 	Breakpoint _nextStepBehavior;
+public:
+	// Currently public, because DependentHandle is separate
+	stdSimple::vector<pair<void*, void*>> _weakDependencies; // Garbage collector weak dependencies (created using DependentObject)
 };
 
 

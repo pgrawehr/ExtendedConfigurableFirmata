@@ -40,6 +40,13 @@ enum class NativeMethod
     DateTimeUtcNow = -447555837,
     DebugWriteLine = 248714606,
     DelegateInternalEqualTypes = 680339889,
+    DependentHandle_InternalFree = 518668377,
+    DependentHandle_InternalGetDependent = -201952504,
+    DependentHandle_InternalGetTarget = 170504144,
+    DependentHandle_InternalGetTargetAndDependent = -1826757260,
+    DependentHandle_InternalInitialize = 1193232500,
+    DependentHandle_InternalSetDependent = -1485745640,
+    DependentHandle_InternalSetTarget = -933452501,
     EnumGetHashCode = -1228132009,
     EnumInternalBoxEnum = 801432671,
     EnumInternalGetValues = -1559369991,
@@ -65,6 +72,7 @@ enum class NativeMethod
     InterlockedCompareExchange_Int32 = -587970409,
     InterlockedCompareExchange_Object = 147404285,
     InterlockedExchangeAdd = -165642107,
+    InterlockedExchangeInt = -1523659710,
     Interop_GlobalizationGetCalendarInfo = -2143386112,
     Interop_Kernel32AllocHGlobal = -453445298,
     Interop_Kernel32CancelIoEx = 523,
@@ -195,6 +203,7 @@ enum class NativeMethod
 -1901592290 -> Interop_Kernel32FindStringOrdinal
 -1872927992 -> GcTotalAvailableMemoryBytes
 -1854194542 -> ArraySetValue1
+-1826757260 -> DependentHandle_InternalGetTargetAndDependent
 -1798204696 -> TypeIsAssignableFrom
 -1781988885 -> BitConverterHalfToInt16Bits
 -1736142368 -> ArrayInternalCreate
@@ -203,7 +212,9 @@ enum class NativeMethod
 -1619611066 -> ArrayCopyCore
 -1618984944 -> MemoryMarshalGetArrayDataReferenceByte
 -1559369991 -> EnumInternalGetValues
+-1523659710 -> InterlockedExchangeInt
 -1509382087 -> InteropGetRandomBytes
+-1485745640 -> DependentHandle_InternalSetDependent
 -1460725006 -> UInt64BitsToDouble
 -1392757721 -> MonitorWait
 -1277951056 -> Interop_Kernel32SleepConditionVariableCS
@@ -214,6 +225,7 @@ enum class NativeMethod
 -1079910119 -> RuntimeHelpersEnumCompareTo
 -1032758321 -> BitConverterInt64BitsToDouble
 -952512669 -> TypeIsArray
+-933452501 -> DependentHandle_InternalSetTarget
 -893084679 -> BitConverterDoubleToUInt64Bits
 -890999559 -> Interop_Kernel32InitializeConditionVariable
 -839695033 -> RuntimeTypeHandleValue
@@ -237,6 +249,7 @@ enum class NativeMethod
 -237133270 -> TypeGetElementType
 -209849911 -> TypeMakeGenericType
 -208339876 -> BitOperationsTrailingZeroCount
+-201952504 -> DependentHandle_InternalGetDependent
 -181103992 -> TypeIsEnum
 -165642107 -> InterlockedExchangeAdd
 -146973688 -> MonitorEnter
@@ -320,6 +333,7 @@ enum class NativeMethod
 39180815 -> RuntimeHelpersGetHashCode
 137672381 -> TypeName
 147404285 -> InterlockedCompareExchange_Object
+170504144 -> DependentHandle_InternalGetTarget
 202882892 -> BufferMemmove
 248714606 -> DebugWriteLine
 407822491 -> TypeEquals
@@ -328,6 +342,7 @@ enum class NativeMethod
 457920421 -> BufferZeroMemory
 492564913 -> ValueTypeGetHashCode
 514746549 -> MonitorExit
+518668377 -> DependentHandle_InternalFree
 549545230 -> TypeIsSubclassOf
 662001313 -> RuntimeHelpersIsBitwiseEquatable
 680339889 -> DelegateInternalEqualTypes
@@ -344,6 +359,7 @@ enum class NativeMethod
 1099867326 -> FileSystemCreateDirectory
 1139675769 -> GcGetTotalAllocatedBytes
 1146509511 -> GcCollect
+1193232500 -> DependentHandle_InternalInitialize
 1217981428 -> TypeGetHashCode
 1298308614 -> BitConverterDoubleToInt64Bits
 1393130648 -> BitConverterSingleToUInt32Bits
