@@ -224,5 +224,8 @@
     <ClCompile Include="ClrException.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DependentHandle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

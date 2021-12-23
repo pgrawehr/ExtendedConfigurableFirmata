@@ -68,6 +68,9 @@ enum class ExecutionError : byte
 #define STRING_DATA_START 8 /* String type token, string length (in chars) */
 #define SIZEOF_CHAR (sizeof(uint16_t))
 
+// The function prototype for critical finalizer functions (closing file handles, releasing mutexes etc.)
+typedef void (*FinalizerFunction)(void*);
+
 class RuntimeException
 {
 public:
@@ -388,6 +391,7 @@ class FirmataIlExecutor: public FirmataFeature
 public:
 	// Currently public, because DependentHandle is separate
 	stdSimple::vector<pair<void*, void*>> _weakDependencies; // Garbage collector weak dependencies (created using DependentObject)
+	stdSimple::vector<pair<FinalizerFunction, void*>> _criticalFinalizers;
 };
 
 

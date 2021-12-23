@@ -27,6 +27,7 @@
 #include <cwchar>
 #include <new>
 #include <math.h>
+#include <wctype.h>
 #include "Exceptions.h"
 #include "CustomClrException.h"
 #include "FreeMemory.h"

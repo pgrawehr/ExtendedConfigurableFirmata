@@ -75,7 +75,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 1: // Create
 			if (exists)
 			{
-				ilExecutor.SetLastError(80); // file exists
+				executor->SetLastError(80); // file exists
 				result.Object = nullptr;
 				break;
 			}
