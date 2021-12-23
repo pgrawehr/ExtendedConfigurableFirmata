@@ -93,6 +93,7 @@ public:
 	byte* Allocate(uint32_t size);
 	void ValidateBlocks();
 
+	void MarkDependentHandles(FirmataIlExecutor* referenceContainer);
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
 
 	void Clear();

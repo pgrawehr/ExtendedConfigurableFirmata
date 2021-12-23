@@ -337,12 +337,30 @@ int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContai
 	MarkAllFree();
 	MarkStatics(referenceContainer);
 	MarkStack(referenceContainer);
+
+	MarkDependentHandles(referenceContainer);
 	int result = ComputeFreeBlockSizes();
 	TRACE(Firmata.sendString(F("GC done")));
 	_numAllocsSinceLastGc = 0;
 	_bytesAllocatedSinceLastGc = 0;
 	return result;
 }
+
+void GarbageCollector::MarkDependentHandles(FirmataIlExecutor* referenceContainer)
+{
+	for (size_t i = 0; i < referenceContainer->_weakDependencies.size(); i++)
+	{
+		auto p = referenceContainer->_weakDependencies[i];
+		BlockHd* hd = BlockHd::Cast((byte*)p.first - (int32_t)ALLOCATE_ALLIGNMENT);
+		if (!hd->IsFree())
+		{
+			// If I got the concept of DependentHandle right, we shall mark the second as used when the first is.
+			hd = BlockHd::Cast((byte*)p.second - (int32_t)ALLOCATE_ALLIGNMENT);
+			hd->flags = BlockFlags::Used;
+		}
+	}
+}
+
 
 void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 {
