@@ -1834,11 +1834,24 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Int32;
 		}
 		break;
+	case NativeMethod::BitConverterDoubleToUInt64Bits:
+		ASSERT(args.size() == 1);
+		result.setSize(8);
+		result.Type = VariableKind::Uint64;
+		result.Uint64 = args[0].Uint64; // Using the wrong union element here does what we want: A binary conversion from double to int64
+		break;
 	case NativeMethod::BitConverterDoubleToInt64Bits:
 		ASSERT(args.size() == 1);
 		result.setSize(8);
 		result.Type = VariableKind::Int64;
 		result.Int64 = args[0].Int64; // Using the wrong union element here does what we want: A binary conversion from double to int64
+		break;
+	case NativeMethod::UInt64BitsToDouble:
+	case NativeMethod::BitConverterInt64BitsToDouble:
+		ASSERT(args.size() == 1);
+		result.setSize(8);
+		result.Type = VariableKind::Double;
+		result.Double = args[0].Double;
 		break;
 	case NativeMethod::UnsafeNullRef:
 		{

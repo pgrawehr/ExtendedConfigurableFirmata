@@ -352,7 +352,7 @@ void GarbageCollector::MarkDependentHandles(FirmataIlExecutor* referenceContaine
 	{
 		auto p = referenceContainer->_weakDependencies[i];
 		BlockHd* hd = BlockHd::Cast((byte*)p.first - (int32_t)ALLOCATE_ALLIGNMENT);
-		if (!hd->IsFree())
+		if (!hd->IsFree() && IsValidMemoryPointer(p.second))
 		{
 			// If I got the concept of DependentHandle right, we shall mark the second as used when the first is.
 			hd = BlockHd::Cast((byte*)p.second - (int32_t)ALLOCATE_ALLIGNMENT);
@@ -435,6 +435,12 @@ void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)
 /// </summary>
 bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 {
+	if (ptr == nullptr)
+	{
+		// Shortcut
+		return false;
+	}
+
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
 	{
 		// Equality is not valid (an object cannot be at the beginning of the heap nor at the very end)
