@@ -267,7 +267,8 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
 	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd);
 
-    int ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList);
+	int ReverseSearchSpecialTypeList(int32_t genericToken, bool tokenListContainsTypes, void* tokenList);
+	int ReverseSearchSpecialTypeList(int mainToken, void* tokenList, bool tokenListContainsTypes, const int* searchList);
     int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);

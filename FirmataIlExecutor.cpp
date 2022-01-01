@@ -1519,11 +1519,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			if ((argumentType.Int32 & GENERIC_TOKEN_MASK) != 0 || size > 1)
 			{
 				// The argument is not a trivial type -> we have to search the extended type list to find the correct combined token.
-				int newToken = ReverseSearchSpecialTypeList(genericToken, arguments, _specialTypeListRam);
-				if (newToken == 0)
-				{
-					newToken = ReverseSearchSpecialTypeList(genericToken, arguments, _specialTypeListFlash);
-				}
+				int newToken = ReverseSearchSpecialTypeList(genericToken, true, arguments.Object);
 				if (newToken == 0)
 				{
 					// Still 0? That's bad.
@@ -1563,8 +1559,26 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			Variable tok2 = GetField(ty, type2, 0);
 			int token = tok1.Int32;
 			token = token & GENERIC_TOKEN_MASK;
-			token = token + tok2.Int32;
-			
+			int searchArray[4];
+			// Create a temporary array instance on the stack
+			searchArray[0] = 9; // Array
+			searchArray[1] = 1; // Length
+			searchArray[2] = 20; // Int
+			searchArray[3] = tok2.Int32;
+			if (tok2.Int32 & GENERIC_TOKEN_MASK)
+			{
+				// The new token is a special token
+				token = ReverseSearchSpecialTypeList(token, false, searchArray);
+				if (token == 0)
+				{
+					throw ClrException(SystemException::ClassNotFound, tok2.Int32);
+				}
+			}
+			else
+			{
+				token = token + tok2.Int32; // Default case
+			}
+						
 			void* ptr = CreateInstanceOfClass(token, 0);
 
 			// TODO: We still have to execute the newly created instance's ctor
@@ -2442,6 +2456,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		free(cstr);
 		break;
 		}
+	case NativeMethod::NoOp:
+		// this is used for methods that should just be suppressed (e.g. some variants of Debug.Write)
+		// This saves a few bytes of memory each time, because we don't have to provide an empty implementation
+		result.Type = VariableKind::Void;
+		break;
 	default:
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
@@ -2452,10 +2471,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 /// Finds the token that is the class constructed from all elements in tokenList. This is used for extended cases of Type.MakeGenericType()
 /// </summary>
 /// <param name="mainToken">Token of the main class (i.e. token of IEnumerable{T}, or Dictionary{TKey, TValue})</param>
-/// <param name="tokenList">A variable containing the array of concrete parameters for the generic variables</param>
+/// <param name="tokenList">Pointer to a managed array</param>
+///	<param name="tokenListContainsTypes">True if the token list contains object references to instances of System.Type, false if it directly contains tokens</param>
 /// <param name="searchList">The list to search (either RAM or Flash)</param>
 /// <returns>The token that can be used to construct the combined type</returns>
-int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tokenList, const int* searchList)
+int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, void* tokenList, bool tokenListContainsTypes, const int* searchList)
 {
 	if (searchList != nullptr)
 	{
@@ -2468,18 +2488,27 @@ int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tok
 			// Every entry has at least 4 values (the length, the token we're looking for, the main token and one sub-token)
 			if (searchList[index + 2] == mainToken)
 			{
-				int* data = (int*)tokenList.Object;
+				int* data = (int*)tokenList;
 				int32_t size = *(data + 1);
 				for (int param = 0; param < size; param++)
 				{
 					uint32_t parameter = *(data + param + ARRAY_DATA_START / 4); // Element of array
-					Variable argumentTypeInstance;
-					// First, get element of array (an object)
-					argumentTypeInstance.Uint32 = parameter;
-					argumentTypeInstance.Type = VariableKind::Object;
-					// then get its first field, which is the type token
-					Variable argumentType = GetField(typeOfType, argumentTypeInstance, 0);
-					if (argumentType.Int32 != searchList[index + 3 + param])
+					int tokenToFind = 0;
+					if (tokenListContainsTypes)
+					{
+						Variable argumentTypeInstance;
+						// First, get element of array (an object)
+						argumentTypeInstance.Uint32 = parameter;
+						argumentTypeInstance.Type = VariableKind::Object;
+						// then get its first field, which is the type token
+						Variable argumentType = GetField(typeOfType, argumentTypeInstance, 0);
+						tokenToFind = argumentType.Int32;
+					}
+					else
+					{
+						tokenToFind = (int)parameter;
+					}
+					if (tokenToFind != searchList[index + 3 + param])
 					{
 						goto doContinue;
 					}
@@ -2496,6 +2525,17 @@ int FirmataIlExecutor::ReverseSearchSpecialTypeList(int mainToken, Variable& tok
 	}
 
 	return 0;
+}
+
+int FirmataIlExecutor::ReverseSearchSpecialTypeList(int32_t genericToken, bool tokenListContainsTypes, void* tokenList)
+{
+	int newToken = ReverseSearchSpecialTypeList(genericToken, tokenList, tokenListContainsTypes, _specialTypeListRam);
+	if (newToken == 0)
+	{
+		newToken = ReverseSearchSpecialTypeList(genericToken, tokenList, tokenListContainsTypes, _specialTypeListFlash);
+	}
+
+	return newToken;
 }
 
 int* FirmataIlExecutor::GetSpecialTokenListEntry(int token, bool searchWithMainToken)
@@ -3218,6 +3258,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		ClassDeclaration* exceptionType = GetClassDeclaration(value1);
 		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
 		char* cstr = GetAsUtf8String(messageField);
+		currentFrame->UpdatePc(PC);
 		Firmata.sendStringf(F("Exception thrown at 0x%x in 0x%x: %s"), 12, PC, currentFrame->_executingMethod->methodToken, cstr);
 		free(cstr);
 		throw CustomClrException(value1, exceptionType->ClassToken);
@@ -6725,6 +6766,7 @@ Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptio
 {
 	Variable message = CreateStringInstance(strlen(errorMessage), errorMessage);
 	KnownTypeTokens typeToInstantiate = KnownTypeTokens::None;
+	// Note: Do not add cases that cause a fatal error, such as MissingMethodException below, as it will cause improper error reporting
 	switch(exceptionType)
 	{
 	case SystemException::DivideByZero:
@@ -6733,26 +6775,17 @@ Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptio
 	case SystemException::Arithmetic:
 		typeToInstantiate = KnownTypeTokens::ArithmeticException;
 		break;
-	case SystemException::ClassNotFound:
-		typeToInstantiate = KnownTypeTokens::ClassNotFoundException;
-		break;
 	case SystemException::ArrayTypeMismatch:
 		typeToInstantiate = KnownTypeTokens::ArrayTypeMismatchException;
 		break;
 	case SystemException::IndexOutOfRange:
 		typeToInstantiate = KnownTypeTokens::IndexOutOfRangeException;
 		break;
-	case SystemException::FieldAccess:
-		typeToInstantiate = KnownTypeTokens::FieldAccessException;
-		break;
 	case SystemException::InvalidCast:
 		typeToInstantiate = KnownTypeTokens::InvalidCastException;
 		break;
 	case SystemException::InvalidOperation:
 		typeToInstantiate = KnownTypeTokens::InvalidOperationException;
-		break;
-	case SystemException::MissingMethod:
-		typeToInstantiate = KnownTypeTokens::MissingMethodException;
 		break;
 	case SystemException::NullReference:
 		typeToInstantiate = KnownTypeTokens::NullReferenceException;

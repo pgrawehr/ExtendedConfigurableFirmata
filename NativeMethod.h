@@ -57,6 +57,7 @@ enum class NativeMethod
     EnvironmentTickCount = 995695910,
     EnvironmentTickCount64 = -828523620,
     FileSystemCreateDirectory = 1099867326,
+    FileSystemDeleteFile = -1262198801,
     FileSystemDirectoryExists = 1550815971,
     FileSystemFileExists = -129145360,
     GcCollect = 1146509511,
@@ -108,6 +109,9 @@ enum class NativeMethod
     InteropGetRandomBytes = -1509382087,
     InteropQueryPerformanceCounter = 513,
     InteropQueryPerformanceFrequency = 512,
+    MarshalCopy4 = -115372708,
+    MarshalGetDelegateForFunctionPointer = 616053085,
+    MarshalUnsafeAddrOfPinnedArrayElement = -1120930306,
     MathAbs = 111,
     MathCeiling = 100,
     MathCos = 107,
@@ -125,6 +129,7 @@ enum class NativeMethod
     MonitorEnter = -146973688,
     MonitorExit = 514746549,
     MonitorWait = -1392757721,
+    NoOp = -506122030,
     ObjectEquals = 2,
     ObjectGetHashCode = 3,
     ObjectGetType = 5,
@@ -220,8 +225,10 @@ enum class NativeMethod
 -1277951056 -> Interop_Kernel32SleepConditionVariableCS
 -1276420311 -> EnvironmentProcessorCount
 -1266995046 -> BitConverterInt32BitsToSingle
+-1262198801 -> FileSystemDeleteFile
 -1228132009 -> EnumGetHashCode
 -1156966334 -> TypeGetBaseType
+-1120930306 -> MarshalUnsafeAddrOfPinnedArrayElement
 -1079910119 -> RuntimeHelpersEnumCompareTo
 -1032758321 -> BitConverterInt64BitsToDouble
 -952512669 -> TypeIsArray
@@ -235,6 +242,7 @@ enum class NativeMethod
 -587970409 -> InterlockedCompareExchange_Int32
 -576391646 -> RuntimeHelpersRunClassConstructor
 -524065545 -> ArrayClear
+-506122030 -> NoOp
 -478934591 -> TypeGetGenericArguments
 -453445298 -> Interop_Kernel32AllocHGlobal
 -447555837 -> DateTimeUtcNow
@@ -256,6 +264,7 @@ enum class NativeMethod
 -129692225 -> Interop_Kernel32SetFileInformationByHandle
 -129145360 -> FileSystemFileExists
 -115610375 -> TypeCtor
+-115372708 -> MarshalCopy4
 -30264143 -> RuntimeHelpersIsReferenceOrContainsReferencesCore
 1 -> ObjectReferenceEquals
 2 -> ObjectEquals
@@ -344,6 +353,7 @@ enum class NativeMethod
 514746549 -> MonitorExit
 518668377 -> DependentHandle_InternalFree
 549545230 -> TypeIsSubclassOf
+616053085 -> MarshalGetDelegateForFunctionPointer
 662001313 -> RuntimeHelpersIsBitwiseEquatable
 680339889 -> DelegateInternalEqualTypes
 691743717 -> TypeGetTypeFromHandle
