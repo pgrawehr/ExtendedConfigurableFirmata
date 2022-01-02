@@ -10,6 +10,7 @@
 #include "Ds1307.h"
 #include "Esp32Rtc.h"
 #include "SimulatorClock.h"
+#include "ArduinoDueSupport.h"
 
 // Enable if a DS1307 hardware real-time-clock is attached via I2C
 #if ESP32

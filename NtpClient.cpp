@@ -9,7 +9,8 @@
 #include <time.h>
 #include <sys/time.h>
 
-
+// This one is ESP specific
+#ifdef ESP32
 #include "esp_sntp.h"
 
 NtpClient::NtpClient()
@@ -53,3 +54,5 @@ void NtpClient::StartTimeSync(int blinkPin)
 		digitalWrite(blinkPin, 0);
 	}
 }
+
+#endif

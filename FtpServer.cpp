@@ -4,6 +4,7 @@
 #include <ConfigurableFirmata.h>
 #include "FtpServer.h"
 
+#ifdef ESP32
 void ftp_task(void* args);
 
 void FtpServerClass::Init()
@@ -14,3 +15,4 @@ void FtpServerClass::Init()
 
 FtpServerClass FtpServer;
 
+#endif

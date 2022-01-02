@@ -28,7 +28,7 @@ errno_t strncpy_s(char* strDest, size_t numberOfElements, const char* strSource,
 		maxLen = numberOfElements;
 	}
 
-	for (int i = 0; i < maxLen; i++)
+	for (size_t i = 0; i < maxLen; i++)
 	{
 		strDest[i] = strSource[i];
 	}

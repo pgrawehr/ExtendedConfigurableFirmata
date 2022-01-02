@@ -4,7 +4,7 @@
 
 #include <ConfigurableFirmata.h>
 #include "WifiCachingStream.h"
-
+#ifdef ESP32
 void WifiCachingStream::Init()
 {
 	// Also initializes other background processes
@@ -85,3 +85,5 @@ void WifiCachingStream::maintain()
 	}
 	yield();
 }
+
+#endif

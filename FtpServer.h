@@ -3,12 +3,8 @@
 #ifndef _FTPSERVER_h
 #define _FTPSERVER_h
 
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
-#else
-	#include "WProgram.h"
-#endif
-
+#include <ConfigurableFirmata.h>
+#ifdef ESP32
 class FtpServerClass
 {
  protected:
@@ -24,4 +20,4 @@ private:
 extern FtpServerClass FtpServer;
 
 #endif
-
+#endif

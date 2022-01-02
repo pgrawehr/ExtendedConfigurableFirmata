@@ -8,7 +8,9 @@
 #include "Exceptions.h"
 #include "StandardErrorCodes.h"
 
-#ifdef ESP32
+// Not on Arduino Due (has no built-in file system support)
+// Implementation would be possible when using a library for a SD card
+#ifndef __SAM3X8E__
 #include <FS.h>
 #include <FFat.h>
 #include <vector>

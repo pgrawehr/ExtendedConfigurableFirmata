@@ -31,6 +31,8 @@
  */
 
 #include <ConfigurableFirmata.h>
+
+#ifdef ESP32
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
@@ -1470,3 +1472,5 @@ void ftp_task (void *pvParameters)
 	// xEventGroupSetBits(xEventTask, FTP_TASK_FINISH_BIT);
 	vTaskDelete(NULL);
 }
+
+#endif

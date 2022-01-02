@@ -3,12 +3,8 @@
 #ifndef _WifiCachingStream_h
 #define _WifiCachingStream_h
 
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
-#else
-	#include "WProgram.h"
-#endif
-
+#include <ConfigurableFirmata.h>
+#ifdef ESP32
 #include <WiFi.h>
 /// <summary>
 /// A stream to read data from a TCP connection (server side).
@@ -62,3 +58,4 @@ public:
 };
 #endif
 
+#endif

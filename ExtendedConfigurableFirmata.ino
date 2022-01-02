@@ -7,9 +7,8 @@
 
 #include "FreeMemory.h"
 
-// Use this to enable WIFI instead of serial communication. Tested on ESP32, but should also
-// work with Wifi-enabled Arduinos
-#ifndef SIM
+// Use this to enable WIFI instead of serial communication. Tested on ESP32.
+#ifdef ESP32
 #define ENABLE_WIFI
 #endif
 

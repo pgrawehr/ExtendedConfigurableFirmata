@@ -70,7 +70,7 @@ inline bool usub_overflow(uint64_t x, uint64_t y, uint64_t* result)
 	return UInt64Sub(x, y, result) != S_OK;
 }
 
-#else
+#elif defined ESP32
 
 inline bool uadd_overflow(uint32_t x, uint32_t y, uint32_t* sum)
 {
@@ -130,6 +130,118 @@ inline bool sadd_overflow(int32_t x, int32_t y, int32_t* sum)
 inline bool sadd_overflow(int64_t x, int64_t y, int64_t* sum)
 {
 	return __builtin_saddll_overflow(x, y, sum);
+}
+
+#else // Neither MSVC nor ESP32 (can be SAM3X3) - Use manual implementation
+
+// TODO: Many of these temporary implementations do NO overflow check or use a long, which is bad for performance
+
+inline bool uadd_overflow(uint32_t x, uint32_t y, uint32_t* sum)
+{
+	long result = (long)x + (long)y;
+	if (result < UINT32_MAX)
+	{
+		*sum = result;
+		return false;
+	}
+	*sum = 0;
+	return true;
+};
+
+inline bool uadd_overflow(uint64_t x, uint64_t y, uint64_t* sum)
+{
+	*sum = x + y;
+	return false;
+};
+
+inline bool usub_overflow(uint32_t x, uint32_t y, uint32_t* result)
+{
+	if (y > x)
+	{
+		*result = 0;
+		return false;
+	}
+
+	*result = x - y;
+	return true;
+}
+
+inline bool usub_overflow(uint64_t x, uint64_t y, uint64_t* result)
+{
+	if (y > x)
+	{
+		*result = 0;
+		return false;
+	}
+
+	*result = x - y;
+	return true;
+}
+
+inline bool smul_overflow(int32_t x, int32_t y, int32_t* result)
+{
+	long result1 = (long)x * (long)y;
+	if (result1 < INT32_MAX || result1 > INT32_MIN)
+	{
+		*result = result1;
+		return false;
+	}
+	*result = 0;
+	return true;
+}
+
+inline bool umul_overflow(uint32_t x, uint32_t y, uint32_t* result)
+{
+	long result1 = (long)x * (long)y;
+	if (result1 < UINT32_MAX)
+	{
+		*result = result1;
+		return false;
+	}
+	*result = 0;
+	return true;
+}
+
+inline bool smul_overflow(int64_t x, int64_t y, int64_t* result)
+{
+	*result = x * y;
+	return true;
+}
+
+inline bool umul_overflow(uint64_t x, uint64_t y, uint64_t* result)
+{
+	*result = x * y;
+	return true;
+}
+
+inline bool ssub_overflow(int32_t x, int32_t y, int32_t* result)
+{
+	*result = x - y;
+	return true;
+}
+
+inline bool ssub_overflow(int64_t x, int64_t y, int64_t* result)
+{
+	*result = x - y;
+	return true;
+}
+
+inline bool sadd_overflow(int32_t x, int32_t y, int32_t* result)
+{
+	long result1 = (long)x + (long)y;
+	if (result1 < INT32_MAX || result1 > INT32_MIN)
+	{
+		*result = result1;
+		return false;
+	}
+	*result = 0;
+	return true;
+};
+
+inline bool sadd_overflow(int64_t x, int64_t y, int64_t* sum)
+{
+	*sum = x + y;
+	return true;
 }
 
 #endif
