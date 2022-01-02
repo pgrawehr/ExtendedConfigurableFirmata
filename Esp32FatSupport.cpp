@@ -6,6 +6,7 @@
 #include "FirmataIlExecutor.h"
 #include "Esp32FatSupport.h"
 #include "Exceptions.h"
+#include "StandardErrorCodes.h"
 
 #ifdef ESP32
 #include <FS.h>
@@ -60,6 +61,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 	{
 			// Argument list according to https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
 		result.Type = VariableKind::NativeHandle;
+		result.Int32 = 0;
 		char* path = FirmataIlExecutor::GetAsUtf8String(args[0]);
 		bool exists = FFat.exists(path);
 		const char* mode = 0;
@@ -75,7 +77,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 1: // Create
 			if (exists)
 			{
-				executor->SetLastError(80); // file exists
+				executor->SetLastError(ERROR_FILE_EXISTS); // file exists
 				result.Object = nullptr;
 				break;
 			}
@@ -84,7 +86,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 3:  // Open:
 			if (!exists)
 			{
-				executor->SetLastError(2); // file does not exist
+				executor->SetLastError(ERROR_FILE_NOT_FOUND); // file does not exist
 				result.Object = nullptr;
 				break;
 			}
@@ -93,7 +95,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		case 4: // OpenOrCreate
 			if (exists)
 			{
-				executor->SetLastError(183); // Already exists
+				executor->SetLastError(ERROR_ALREADY_EXISTS); // Already exists
 				mode = "r+b";
 			}
 			else
@@ -105,6 +107,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 			mode = "w+b";
 			break;
 		default:
+			// This would be a bug in the CLR
 			throw ClrException("Unknown file mode", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		Firmata.sendStringf(F("Opening file %s in mode %s"), 8, path, mode);
@@ -112,12 +115,34 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		if (!f)
 		{
 			result.Object = nullptr;
-			executor->SetLastError(2); // File not found
+			executor->SetLastError(ERROR_FILE_NOT_FOUND); // File not found
 		}
 		else
 		{
-			fileHandles.push_back(f);
-			result.Int32 = fileHandles.size(); // Index + 1, because 0 is not a valid handle
+			// Try finding closed files instead of growing the array further.
+			for (size_t pos = 0; pos < fileHandles.size(); pos++)
+			{
+				if (!fileHandles[pos])
+				{
+					fileHandles[pos] = f;
+					result.Int32 = pos;
+					break;
+				}
+			}
+
+			if (result.Int32 == 0) // Still unassigned?
+			{
+				if (fileHandles.size() > 0xBFFE)
+				{
+					f.close();
+					executor->SetLastError(ERROR_TOO_MANY_OPEN_FILES);
+				}
+				else
+				{
+					fileHandles.push_back(f);
+					result.Int32 = fileHandles.size(); // Index + 1, because 0 is not a valid handle
+				}
+			}
 		}
 		Firmata.sendStringf(F("Opened file %s at handle %d."), 8, path, result.Int32);
 		break;
@@ -125,17 +150,39 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 	case NativeMethod::Interop_Kernel32WriteFile:
 		{
 		result.Type = VariableKind::Int32; // Number of bytes written
-		int index = args[0].Int32 - 1;
 		const uint8_t* buffer = (uint8_t*)args[1].Object;
 		int32_t len = args[2].Int32;
+		int handle = args[0].Int32;
+			if (handle == 0 || handle == -1)
+			{
+				executor->SetLastError(ERROR_INVALID_HANDLE);
+				result.Int32 = -1;
+				break;
+			}
+			if (handle == 0xCEEE)
+			{
+				// Writing to standard input?
+				executor->SetLastError(ERROR_WRITE_PROTECT);
+				result.Int32 = -1;
+				break;
+			}
+			if (handle == 0xCEEF)
+			{
+				// Write to console
+				Firmata.sendString(STRING_DATA, (char*)buffer);
+				result.Int32 = len;
+				break;
+			}
+		int index = handle - 1;
+		
 		Firmata.sendStringf(F("Writing %d bytes to handle %d"), 8, len, args[0].Int32);
 		if (index < 0 || index >= fileHandles.size())
 		{
-			executor->SetLastError(6); // Invalid handle
+			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
 			result.Int32 = -1;
 			break;
 		}
-		executor->SetLastError(0);
+		executor->SetLastError(ERROR_SUCCESS);
 		result.Int32 = fileHandles[index].write(buffer, len);
 		break;
 		}
@@ -148,7 +195,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		Firmata.sendStringf(F("Reading %d bytes from handle %d"), 8, len, args[0].Int32);
 		if (index < 0 || index >= fileHandles.size())
 		{
-			executor->SetLastError(6); // Invalid handle
+			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
 			result.Int32 = -1;
 			break;
 		}

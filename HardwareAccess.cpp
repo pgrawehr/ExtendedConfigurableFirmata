@@ -362,6 +362,25 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Int32 = IO_COMPLETIONPORT_DUMMY; // For now, just return a dummy handle (we won't be using this just yet)
 		result.setSize(4);
 		break;
+	case NativeMethod::Interop_Kernel32GetFileType:
+		ASSERT(args.size() == 1);
+	{
+			result.Type = VariableKind::Int32;
+			int handle = args[0].Int32;
+			if (handle == 0xCEEE || handle == 0xCEEF) // Compare MiniKernel.Console.cs
+			{
+				result.Int32 = 2; // FILE_TYPE_CHAR
+			}
+			else if (handle < 0xCEEE)
+			{
+				result.Int32 = 1; // FILE_TYPE_DISK
+			}
+			else
+			{
+				result.Int32 = 0; // FILE_TYPE_UNKNOWN
+			}
+	}		
+		break;
 	case NativeMethod::InterlockedCompareExchange_Object:
 		ASSERT(args.size() == 3);
 	{

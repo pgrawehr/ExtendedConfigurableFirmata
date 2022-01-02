@@ -7,6 +7,8 @@ enum class NativeMethod
 {
     None = 0,
     ActivatorCreateInstance = 971394044,
+    ArduinoNativeBoardActivatePinModeInternal = 1097022735,
+    ArduinoNativeBoardGetDefaultPinAssignmentForI2cInternal = -139149132,
     ArduinoNativeHelpersGetMicroseconds = 272,
     ArduinoNativeHelpersSleepMicroseconds = 273,
     ArduinoNativeI2cDeviceInit = 262,
@@ -78,37 +80,40 @@ enum class NativeMethod
     Interop_Kernel32AllocHGlobal = -453445298,
     Interop_Kernel32CancelIoEx = 523,
     Interop_Kernel32CloseHandle = 516,
-    Interop_Kernel32CreateEventEx = 1603205854,
+    Interop_Kernel32CreateEventEx = 531,
     Interop_Kernel32CreateFile = 514,
-    Interop_Kernel32CreateIoCompletionPort = 1508078548,
-    Interop_Kernel32DeleteCriticalSection = 2130138055,
-    Interop_Kernel32DeleteFile = -2073545606,
-    Interop_Kernel32EnterCriticalSection = -1995826783,
-    Interop_Kernel32FindStringOrdinal = -1901592290,
+    Interop_Kernel32CreateIoCompletionPort = 532,
+    Interop_Kernel32DeleteCriticalSection = 539,
+    Interop_Kernel32DeleteFile = 535,
+    Interop_Kernel32EnterCriticalSection = 537,
+    Interop_Kernel32FindStringOrdinal = 533,
     Interop_Kernel32FlushFileBuffers = 525,
     Interop_Kernel32FreeHGlobal = 1747565902,
     Interop_Kernel32GetFileInformationByHandleEx = 526,
+    Interop_Kernel32GetFileType = 543,
     Interop_Kernel32GetLastError = 518,
-    Interop_Kernel32GetOverlappedResult = 746996268,
-    Interop_Kernel32InitializeConditionVariable = -890999559,
-    Interop_Kernel32InitializeCriticalSection = -419167054,
-    Interop_Kernel32LeaveCriticalSection = -837236994,
+    Interop_Kernel32GetOverlappedResult = 530,
+    Interop_Kernel32InitializeConditionVariable = 541,
+    Interop_Kernel32InitializeCriticalSection = 536,
+    Interop_Kernel32LeaveCriticalSection = 538,
     Interop_Kernel32QueryUnbiasedInterruptTime = 527,
     Interop_Kernel32ReadFile = 522,
     Interop_Kernel32ReadFileOverlapped = 524,
-    Interop_Kernel32ReadFileOverlapped2 = 1541500550,
+    Interop_Kernel32ReadFileOverlapped2 = 529,
     Interop_Kernel32SetEndOfFile = 519,
-    Interop_Kernel32SetFileInformationByHandle = -129692225,
+    Interop_Kernel32SetFileInformationByHandle = 534,
     Interop_Kernel32SetFilePointerEx = 515,
     Interop_Kernel32SetLastError = 517,
-    Interop_Kernel32SleepConditionVariableCS = -1277951056,
-    Interop_Kernel32WakeConditionVariable = 2137074050,
+    Interop_Kernel32SleepConditionVariableCS = 540,
+    Interop_Kernel32WakeConditionVariable = 542,
     Interop_Kernel32WriteFile = 520,
     Interop_Kernel32WriteFileOverlapped = 521,
-    Interop_Kernel32WriteFileOverlapped2 = -329641268,
+    Interop_Kernel32WriteFileOverlapped2 = 528,
     InteropGetRandomBytes = -1509382087,
     InteropQueryPerformanceCounter = 513,
     InteropQueryPerformanceFrequency = 512,
+    Kernel32_WideCharToMultiByte = 325930210,
+    Kernel32_WriteConsole = 1738455401,
     MarshalCopy4 = -115372708,
     MarshalGetDelegateForFunctionPointer = 616053085,
     MarshalUnsafeAddrOfPinnedArrayElement = -1120930306,
@@ -163,25 +168,25 @@ enum class NativeMethod
     StringSetElem = 15,
     StringToString = 14,
     StringUnEqualsStatic = 20,
-    TypeContainsGenericParameters = -2090178041,
-    TypeCreateInstanceForAnotherGenericParameter = -2028381384,
-    TypeCtor = -115610375,
-    TypeEquals = 407822491,
-    TypeGetBaseType = -1156966334,
-    TypeGetElementType = -237133270,
-    TypeGetGenericArguments = -478934591,
-    TypeGetGenericTypeDefinition = 1030938039,
-    TypeGetHashCode = 1217981428,
-    TypeGetTypeFromHandle = 691743717,
-    TypeIsArray = -952512669,
-    TypeIsAssignableFrom = -1798204696,
-    TypeIsAssignableTo = -1975360087,
-    TypeIsEnum = -181103992,
-    TypeIsSubclassOf = 549545230,
-    TypeIsValueType = -276247527,
-    TypeMakeGenericType = -209849911,
-    TypeName = 137672381,
-    TypeTypeHandle = -284466911,
+    TypeContainsGenericParameters = 85,
+    TypeCreateInstanceForAnotherGenericParameter = 89,
+    TypeCtor = 80,
+    TypeEquals = 90,
+    TypeGetBaseType = 84,
+    TypeGetElementType = 98,
+    TypeGetGenericArguments = 97,
+    TypeGetGenericTypeDefinition = 96,
+    TypeGetHashCode = 91,
+    TypeGetTypeFromHandle = 88,
+    TypeIsArray = 82,
+    TypeIsAssignableFrom = 94,
+    TypeIsAssignableTo = 93,
+    TypeIsEnum = 81,
+    TypeIsSubclassOf = 95,
+    TypeIsValueType = 87,
+    TypeMakeGenericType = 92,
+    TypeName = 83,
+    TypeTypeHandle = 86,
     UInt64BitsToDouble = -1460725006,
     UnsafeAddByteOffset = 36,
     UnsafeAreSame = 35,
@@ -198,194 +203,199 @@ enum class NativeMethod
     ValueTypeToString = 708670373,
 };
 /* Reverse lookup list (ordered by value)
--2143386112 -> Interop_GlobalizationGetCalendarInfo
--2119157240 -> BitOperationsLog2SoftwareFallback
--2090178041 -> TypeContainsGenericParameters
--2073545606 -> Interop_Kernel32DeleteFile
--2028381384 -> TypeCreateInstanceForAnotherGenericParameter
--1995826783 -> Interop_Kernel32EnterCriticalSection
--1975360087 -> TypeIsAssignableTo
--1901592290 -> Interop_Kernel32FindStringOrdinal
--1872927992 -> GcTotalAvailableMemoryBytes
--1854194542 -> ArraySetValue1
--1826757260 -> DependentHandle_InternalGetTargetAndDependent
--1798204696 -> TypeIsAssignableFrom
--1781988885 -> BitConverterHalfToInt16Bits
--1736142368 -> ArrayInternalCreate
--1717692367 -> EnvironmentFailFast1
--1696892778 -> RuntimeHelpersInitializeArray
--1619611066 -> ArrayCopyCore
--1618984944 -> MemoryMarshalGetArrayDataReferenceByte
--1559369991 -> EnumInternalGetValues
--1523659710 -> InterlockedExchangeInt
--1509382087 -> InteropGetRandomBytes
--1485745640 -> DependentHandle_InternalSetDependent
--1460725006 -> UInt64BitsToDouble
--1392757721 -> MonitorWait
--1277951056 -> Interop_Kernel32SleepConditionVariableCS
--1276420311 -> EnvironmentProcessorCount
--1266995046 -> BitConverterInt32BitsToSingle
--1262198801 -> FileSystemDeleteFile
--1228132009 -> EnumGetHashCode
--1156966334 -> TypeGetBaseType
--1120930306 -> MarshalUnsafeAddrOfPinnedArrayElement
--1079910119 -> RuntimeHelpersEnumCompareTo
--1032758321 -> BitConverterInt64BitsToDouble
--952512669 -> TypeIsArray
--933452501 -> DependentHandle_InternalSetTarget
--893084679 -> BitConverterDoubleToUInt64Bits
--890999559 -> Interop_Kernel32InitializeConditionVariable
--839695033 -> RuntimeTypeHandleValue
--837236994 -> Interop_Kernel32LeaveCriticalSection
--828523620 -> EnvironmentTickCount64
--635048510 -> BitConverterInt16BitsToHalf
--587970409 -> InterlockedCompareExchange_Int32
--576391646 -> RuntimeHelpersRunClassConstructor
--524065545 -> ArrayClear
--506122030 -> NoOp
--478934591 -> TypeGetGenericArguments
--453445298 -> Interop_Kernel32AllocHGlobal
--447555837 -> DateTimeUtcNow
--419167054 -> Interop_Kernel32InitializeCriticalSection
--390971438 -> ValueTypeEquals
--329641268 -> Interop_Kernel32WriteFileOverlapped2
--309046897 -> RuntimeHelpersEnumEquals
--284466911 -> TypeTypeHandle
--276247527 -> TypeIsValueType
--275005718 -> RuntimeHelpersGetMultiDimensionalArrayBounds
--258615545 -> BitConverterHalfToUInt16Bits
--237133270 -> TypeGetElementType
--209849911 -> TypeMakeGenericType
--208339876 -> BitOperationsTrailingZeroCount
--201952504 -> DependentHandle_InternalGetDependent
--181103992 -> TypeIsEnum
--165642107 -> InterlockedExchangeAdd
--146973688 -> MonitorEnter
--129692225 -> Interop_Kernel32SetFileInformationByHandle
--129145360 -> FileSystemFileExists
--115610375 -> TypeCtor
--115372708 -> MarshalCopy4
--30264143 -> RuntimeHelpersIsReferenceOrContainsReferencesCore
-1 -> ObjectReferenceEquals
-2 -> ObjectEquals
-3 -> ObjectGetHashCode
-4 -> ObjectToString
-5 -> ObjectGetType
-6 -> ObjectMemberwiseClone
-7 -> StringCtorSpan
-8 -> StringCtorCharCount
-9 -> StringCtorCharArray
-10 -> StringCompareTo
-11 -> StringEquals
-12 -> StringEqualsStringComparison
-13 -> StringGetHashCode
-14 -> StringToString
-15 -> StringSetElem
-16 -> StringGetElem
-17 -> StringGetPinnableReference
-18 -> StringEqualsStatic
-20 -> StringUnEqualsStatic
-21 -> StringFastAllocateString
-22 -> StringInternalAllocateString
-24 -> UnsafeIsAddressGreaterThan
-32 -> UnsafeAs2
-33 -> UnsafeAsPointer
-34 -> UnsafeByteOffset
-35 -> UnsafeAreSame
-36 -> UnsafeAddByteOffset
-37 -> UnsafeSizeOfType
-38 -> UnsafeNullRef
-39 -> UnsafeIsAddressLessThan
-40 -> UnsafeSkipInit
-100 -> MathCeiling
-101 -> MathFloor
-102 -> MathPow
-103 -> MathLog
-104 -> MathLog2
-105 -> MathLog10
-106 -> MathSin
-107 -> MathCos
-108 -> MathTan
-109 -> MathSqrt
-110 -> MathExp
-111 -> MathAbs
-256 -> HardwareLevelAccessSetPinMode
-257 -> HardwareLevelAccessWritePin
-258 -> HardwareLevelAccessReadPin
-259 -> HardwareLevelAccessGetPinMode
-260 -> HardwareLevelAccessIsPinModeSupported
-261 -> HardwareLevelAccessGetPinCount
-262 -> ArduinoNativeI2cDeviceInit
-263 -> ArduinoNativeI2cDeviceReadByte
-264 -> ArduinoNativeI2cDeviceReadSpan
-265 -> ArduinoNativeI2cDeviceWriteByte
-266 -> ArduinoNativeI2cDeviceWriteSpan
-267 -> ArduinoNativeI2cDeviceWriteRead
-272 -> ArduinoNativeHelpersGetMicroseconds
-273 -> ArduinoNativeHelpersSleepMicroseconds
-512 -> InteropQueryPerformanceFrequency
-513 -> InteropQueryPerformanceCounter
-514 -> Interop_Kernel32CreateFile
-515 -> Interop_Kernel32SetFilePointerEx
-516 -> Interop_Kernel32CloseHandle
-517 -> Interop_Kernel32SetLastError
-518 -> Interop_Kernel32GetLastError
-519 -> Interop_Kernel32SetEndOfFile
-520 -> Interop_Kernel32WriteFile
-521 -> Interop_Kernel32WriteFileOverlapped
-522 -> Interop_Kernel32ReadFile
-523 -> Interop_Kernel32CancelIoEx
-524 -> Interop_Kernel32ReadFileOverlapped
-525 -> Interop_Kernel32FlushFileBuffers
-526 -> Interop_Kernel32GetFileInformationByHandleEx
-527 -> Interop_Kernel32QueryUnbiasedInterruptTime
-39180815 -> RuntimeHelpersGetHashCode
-137672381 -> TypeName
-147404285 -> InterlockedCompareExchange_Object
-170504144 -> DependentHandle_InternalGetTarget
-202882892 -> BufferMemmove
-248714606 -> DebugWriteLine
-407822491 -> TypeEquals
-441340395 -> MemoryMarshalGetArrayDataReference
-444819903 -> RuntimeTypeHandleGetCorElementType
-457920421 -> BufferZeroMemory
-492564913 -> ValueTypeGetHashCode
-514746549 -> MonitorExit
-518668377 -> DependentHandle_InternalFree
-549545230 -> TypeIsSubclassOf
-616053085 -> MarshalGetDelegateForFunctionPointer
-662001313 -> RuntimeHelpersIsBitwiseEquatable
-680339889 -> DelegateInternalEqualTypes
-691743717 -> TypeGetTypeFromHandle
-708670373 -> ValueTypeToString
-732362155 -> GcGetTotalMemory
-746996268 -> Interop_Kernel32GetOverlappedResult
-801432671 -> EnumInternalBoxEnum
-903276829 -> ArrayGetValue1
-955920983 -> BitConverterUInt16BitsToHalf
-971394044 -> ActivatorCreateInstance
-995695910 -> EnvironmentTickCount
-1030938039 -> TypeGetGenericTypeDefinition
-1099867326 -> FileSystemCreateDirectory
-1139675769 -> GcGetTotalAllocatedBytes
-1146509511 -> GcCollect
-1193232500 -> DependentHandle_InternalInitialize
-1217981428 -> TypeGetHashCode
-1298308614 -> BitConverterDoubleToInt64Bits
-1393130648 -> BitConverterSingleToUInt32Bits
-1445398005 -> RuntimeHelpersGetMethodTable
-1506797768 -> ByReferenceCtor
-1508078548 -> Interop_Kernel32CreateIoCompletionPort
-1541500550 -> Interop_Kernel32ReadFileOverlapped2
-1550815971 -> FileSystemDirectoryExists
-1603205854 -> Interop_Kernel32CreateEventEx
-1726687320 -> RuntimeHelpersGetRawArrayData
-1747565902 -> Interop_Kernel32FreeHGlobal
-1875327221 -> EnvironmentFailFast2
-1890006801 -> ArrayGetLength
-1962863922 -> ByReferenceValue
-2017406763 -> BitConverterSingleToInt32Bits
-2063332583 -> EnumToUInt64
-2130138055 -> Interop_Kernel32DeleteCriticalSection
-2137074050 -> Interop_Kernel32WakeConditionVariable
+-2143386112 (0x803E8600) -> Interop_GlobalizationGetCalendarInfo
+-2119157240 (0x81B03A08) -> BitOperationsLog2SoftwareFallback
+-1872927992 (0x905D6308) -> GcTotalAvailableMemoryBytes
+-1854194542 (0x917B3C92) -> ArraySetValue1
+-1826757260 (0x931DE574) -> DependentHandle_InternalGetTargetAndDependent
+-1781988885 (0x95C901EB) -> BitConverterHalfToInt16Bits
+-1736142368 (0x988491E0) -> ArrayInternalCreate
+-1717692367 (0x999E1831) -> EnvironmentFailFast1
+-1696892778 (0x9ADB7896) -> RuntimeHelpersInitializeArray
+-1619611066 (0x9F76B246) -> ArrayCopyCore
+-1618984944 (0x9F804010) -> MemoryMarshalGetArrayDataReferenceByte
+-1559369991 (0xA30DE6F9) -> EnumInternalGetValues
+-1523659710 (0xA52ECC42) -> InterlockedExchangeInt
+-1509382087 (0xA608A839) -> InteropGetRandomBytes
+-1485745640 (0xA7715218) -> DependentHandle_InternalSetDependent
+-1460725006 (0xA8EF1AF2) -> UInt64BitsToDouble
+-1392757721 (0xACFC3427) -> MonitorWait
+-1276420311 (0xB3EB5F29) -> EnvironmentProcessorCount
+-1266995046 (0xB47B309A) -> BitConverterInt32BitsToSingle
+-1262198801 (0xB4C45FEF) -> FileSystemDeleteFile
+-1228132009 (0xB6CC3157) -> EnumGetHashCode
+-1120930306 (0xBD2FF5FE) -> MarshalUnsafeAddrOfPinnedArrayElement
+-1079910119 (0xBFA1E119) -> RuntimeHelpersEnumCompareTo
+-1032758321 (0xC2715BCF) -> BitConverterInt64BitsToDouble
+-933452501 (0xC85CA52B) -> DependentHandle_InternalSetTarget
+-893084679 (0xCAC49BF9) -> BitConverterDoubleToUInt64Bits
+-839695033 (0xCDF34547) -> RuntimeTypeHandleValue
+-828523620 (0xCE9DBB9C) -> EnvironmentTickCount64
+-635048510 (0xDA25EDC2) -> BitConverterInt16BitsToHalf
+-587970409 (0xDCF44897) -> InterlockedCompareExchange_Int32
+-576391646 (0xDDA4F622) -> RuntimeHelpersRunClassConstructor
+-524065545 (0xE0C364F7) -> ArrayClear
+-506122030 (0xE1D530D2) -> NoOp
+-453445298 (0xE4F8F94E) -> Interop_Kernel32AllocHGlobal
+-447555837 (0xE552D703) -> DateTimeUtcNow
+-390971438 (0xE8B23FD2) -> ValueTypeEquals
+-309046897 (0xED94518F) -> RuntimeHelpersEnumEquals
+-275005718 (0xEF9BBEEA) -> RuntimeHelpersGetMultiDimensionalArrayBounds
+-258615545 (0xF095D707) -> BitConverterHalfToUInt16Bits
+-208339876 (0xF394FC5C) -> BitOperationsTrailingZeroCount
+-201952504 (0xF3F67308) -> DependentHandle_InternalGetDependent
+-165642107 (0xF6208085) -> InterlockedExchangeAdd
+-146973688 (0xF73D5C08) -> MonitorEnter
+-139149132 (0xF7B4C0B4) -> ArduinoNativeBoardGetDefaultPinAssignmentForI2cInternal
+-129145360 (0xF84D65F0) -> FileSystemFileExists
+-115372708 (0xF91F8D5C) -> MarshalCopy4
+-30264143 (0xFE3234B1) -> RuntimeHelpersIsReferenceOrContainsReferencesCore
+1 (0x1) -> ObjectReferenceEquals
+2 (0x2) -> ObjectEquals
+3 (0x3) -> ObjectGetHashCode
+4 (0x4) -> ObjectToString
+5 (0x5) -> ObjectGetType
+6 (0x6) -> ObjectMemberwiseClone
+7 (0x7) -> StringCtorSpan
+8 (0x8) -> StringCtorCharCount
+9 (0x9) -> StringCtorCharArray
+10 (0xA) -> StringCompareTo
+11 (0xB) -> StringEquals
+12 (0xC) -> StringEqualsStringComparison
+13 (0xD) -> StringGetHashCode
+14 (0xE) -> StringToString
+15 (0xF) -> StringSetElem
+16 (0x10) -> StringGetElem
+17 (0x11) -> StringGetPinnableReference
+18 (0x12) -> StringEqualsStatic
+20 (0x14) -> StringUnEqualsStatic
+21 (0x15) -> StringFastAllocateString
+22 (0x16) -> StringInternalAllocateString
+24 (0x18) -> UnsafeIsAddressGreaterThan
+32 (0x20) -> UnsafeAs2
+33 (0x21) -> UnsafeAsPointer
+34 (0x22) -> UnsafeByteOffset
+35 (0x23) -> UnsafeAreSame
+36 (0x24) -> UnsafeAddByteOffset
+37 (0x25) -> UnsafeSizeOfType
+38 (0x26) -> UnsafeNullRef
+39 (0x27) -> UnsafeIsAddressLessThan
+40 (0x28) -> UnsafeSkipInit
+80 (0x50) -> TypeCtor
+81 (0x51) -> TypeIsEnum
+82 (0x52) -> TypeIsArray
+83 (0x53) -> TypeName
+84 (0x54) -> TypeGetBaseType
+85 (0x55) -> TypeContainsGenericParameters
+86 (0x56) -> TypeTypeHandle
+87 (0x57) -> TypeIsValueType
+88 (0x58) -> TypeGetTypeFromHandle
+89 (0x59) -> TypeCreateInstanceForAnotherGenericParameter
+90 (0x5A) -> TypeEquals
+91 (0x5B) -> TypeGetHashCode
+92 (0x5C) -> TypeMakeGenericType
+93 (0x5D) -> TypeIsAssignableTo
+94 (0x5E) -> TypeIsAssignableFrom
+95 (0x5F) -> TypeIsSubclassOf
+96 (0x60) -> TypeGetGenericTypeDefinition
+97 (0x61) -> TypeGetGenericArguments
+98 (0x62) -> TypeGetElementType
+100 (0x64) -> MathCeiling
+101 (0x65) -> MathFloor
+102 (0x66) -> MathPow
+103 (0x67) -> MathLog
+104 (0x68) -> MathLog2
+105 (0x69) -> MathLog10
+106 (0x6A) -> MathSin
+107 (0x6B) -> MathCos
+108 (0x6C) -> MathTan
+109 (0x6D) -> MathSqrt
+110 (0x6E) -> MathExp
+111 (0x6F) -> MathAbs
+256 (0x100) -> HardwareLevelAccessSetPinMode
+257 (0x101) -> HardwareLevelAccessWritePin
+258 (0x102) -> HardwareLevelAccessReadPin
+259 (0x103) -> HardwareLevelAccessGetPinMode
+260 (0x104) -> HardwareLevelAccessIsPinModeSupported
+261 (0x105) -> HardwareLevelAccessGetPinCount
+262 (0x106) -> ArduinoNativeI2cDeviceInit
+263 (0x107) -> ArduinoNativeI2cDeviceReadByte
+264 (0x108) -> ArduinoNativeI2cDeviceReadSpan
+265 (0x109) -> ArduinoNativeI2cDeviceWriteByte
+266 (0x10A) -> ArduinoNativeI2cDeviceWriteSpan
+267 (0x10B) -> ArduinoNativeI2cDeviceWriteRead
+272 (0x110) -> ArduinoNativeHelpersGetMicroseconds
+273 (0x111) -> ArduinoNativeHelpersSleepMicroseconds
+512 (0x200) -> InteropQueryPerformanceFrequency
+513 (0x201) -> InteropQueryPerformanceCounter
+514 (0x202) -> Interop_Kernel32CreateFile
+515 (0x203) -> Interop_Kernel32SetFilePointerEx
+516 (0x204) -> Interop_Kernel32CloseHandle
+517 (0x205) -> Interop_Kernel32SetLastError
+518 (0x206) -> Interop_Kernel32GetLastError
+519 (0x207) -> Interop_Kernel32SetEndOfFile
+520 (0x208) -> Interop_Kernel32WriteFile
+521 (0x209) -> Interop_Kernel32WriteFileOverlapped
+522 (0x20A) -> Interop_Kernel32ReadFile
+523 (0x20B) -> Interop_Kernel32CancelIoEx
+524 (0x20C) -> Interop_Kernel32ReadFileOverlapped
+525 (0x20D) -> Interop_Kernel32FlushFileBuffers
+526 (0x20E) -> Interop_Kernel32GetFileInformationByHandleEx
+527 (0x20F) -> Interop_Kernel32QueryUnbiasedInterruptTime
+528 (0x210) -> Interop_Kernel32WriteFileOverlapped2
+529 (0x211) -> Interop_Kernel32ReadFileOverlapped2
+530 (0x212) -> Interop_Kernel32GetOverlappedResult
+531 (0x213) -> Interop_Kernel32CreateEventEx
+532 (0x214) -> Interop_Kernel32CreateIoCompletionPort
+533 (0x215) -> Interop_Kernel32FindStringOrdinal
+534 (0x216) -> Interop_Kernel32SetFileInformationByHandle
+535 (0x217) -> Interop_Kernel32DeleteFile
+536 (0x218) -> Interop_Kernel32InitializeCriticalSection
+537 (0x219) -> Interop_Kernel32EnterCriticalSection
+538 (0x21A) -> Interop_Kernel32LeaveCriticalSection
+539 (0x21B) -> Interop_Kernel32DeleteCriticalSection
+540 (0x21C) -> Interop_Kernel32SleepConditionVariableCS
+541 (0x21D) -> Interop_Kernel32InitializeConditionVariable
+542 (0x21E) -> Interop_Kernel32WakeConditionVariable
+543 (0x21F) -> Interop_Kernel32GetFileType
+39180815 (0x255DA0F) -> RuntimeHelpersGetHashCode
+147404285 (0x8C935FD) -> InterlockedCompareExchange_Object
+170504144 (0xA29AFD0) -> DependentHandle_InternalGetTarget
+202882892 (0xC17BF4C) -> BufferMemmove
+248714606 (0xED3156E) -> DebugWriteLine
+325930210 (0x136D4CE2) -> Kernel32_WideCharToMultiByte
+441340395 (0x1A4E51EB) -> MemoryMarshalGetArrayDataReference
+444819903 (0x1A8369BF) -> RuntimeTypeHandleGetCorElementType
+457920421 (0x1B4B4FA5) -> BufferZeroMemory
+492564913 (0x1D5BF1B1) -> ValueTypeGetHashCode
+514746549 (0x1EAE68B5) -> MonitorExit
+518668377 (0x1EEA4059) -> DependentHandle_InternalFree
+616053085 (0x24B8395D) -> MarshalGetDelegateForFunctionPointer
+662001313 (0x277556A1) -> RuntimeHelpersIsBitwiseEquatable
+680339889 (0x288D29B1) -> DelegateInternalEqualTypes
+708670373 (0x2A3D73A5) -> ValueTypeToString
+732362155 (0x2BA6F5AB) -> GcGetTotalMemory
+801432671 (0x2FC4E45F) -> EnumInternalBoxEnum
+903276829 (0x35D6E91D) -> ArrayGetValue1
+955920983 (0x38FA3257) -> BitConverterUInt16BitsToHalf
+971394044 (0x39E64BFC) -> ActivatorCreateInstance
+995695910 (0x3B591D26) -> EnvironmentTickCount
+1097022735 (0x41633D0F) -> ArduinoNativeBoardActivatePinModeInternal
+1099867326 (0x418EA4BE) -> FileSystemCreateDirectory
+1139675769 (0x43EE1279) -> GcGetTotalAllocatedBytes
+1146509511 (0x445658C7) -> GcCollect
+1193232500 (0x471F4874) -> DependentHandle_InternalInitialize
+1298308614 (0x4D629E06) -> BitConverterDoubleToInt64Bits
+1393130648 (0x53097C98) -> BitConverterSingleToUInt32Bits
+1445398005 (0x562705F5) -> RuntimeHelpersGetMethodTable
+1506797768 (0x59CFE8C8) -> ByReferenceCtor
+1550815971 (0x5C6F92E3) -> FileSystemDirectoryExists
+1726687320 (0x66EB2858) -> RuntimeHelpersGetRawArrayData
+1738455401 (0x679EB969) -> Kernel32_WriteConsole
+1747565902 (0x6829BD4E) -> Interop_Kernel32FreeHGlobal
+1875327221 (0x6FC738F5) -> EnvironmentFailFast2
+1890006801 (0x70A73711) -> ArrayGetLength
+1962863922 (0x74FEED32) -> ByReferenceValue
+2017406763 (0x783F2F2B) -> BitConverterSingleToInt32Bits
+2063332583 (0x7AFBF4E7) -> EnumToUInt64
 */
