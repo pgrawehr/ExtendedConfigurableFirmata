@@ -67,6 +67,9 @@ enum class ExecutionError : byte
 #define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
 #define STRING_DATA_START 8 /* String type token, string length (in chars) */
 #define SIZEOF_CHAR (sizeof(uint16_t))
+#define STANDARD_INPUT_HANDLE 0xCEEE
+#define STANDARD_OUTPUT_HANDLE 0xCEEF
+#define STANDARD_ERROR_HANDLE 0xCEEF
 
 // The function prototype for critical finalizer functions (closing file handles, releasing mutexes etc.)
 typedef void (*FinalizerFunction)(void*);
@@ -243,6 +246,7 @@ class FirmataIlExecutor: public FirmataFeature
 	Variable GetExceptionObjectFromToken(SystemException exceptionType, const char* errorMessage);
 
 	static char* GetAsUtf8String(Variable& string);
+	static char* GetAsUtf8String(const wchar_t* stringData, int length);
 
 	void SetLastError(int error)
 	{

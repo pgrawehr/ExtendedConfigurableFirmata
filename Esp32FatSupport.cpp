@@ -164,20 +164,20 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 				result.Int32 = -1;
 				break;
 			}
-			if (handle == 0xCEEE)
+			if (handle == STANDARD_INPUT_HANDLE)
 			{
 				// Writing to standard input?
 				executor->SetLastError(ERROR_WRITE_PROTECT);
 				result.Int32 = -1;
 				break;
 			}
-			if (handle == 0xCEEF)
+			if (handle == STANDARD_OUTPUT_HANDLE)
 			{
 				// Write to console
 				if (len == 0)
 				{
 					// The runtime tries to write a letter "A" with zero length to the console to check whether it's writable
-					result.Int32 = 1;
+					result.Int32 = 0; // our C# wrapper converts this into success, as it is equal to the desired length
 				}
 				else
 				{

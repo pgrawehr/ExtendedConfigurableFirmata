@@ -1156,17 +1156,22 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	{
 		VariableDescription& desc = method->GetArgumentAt(i);
 		VariableKind k = desc.Type;
-		if (((int)k & 16) == 0)
-		{
-			rootState->SetArgumentValue(i, DecodeUint32(argv + idx), k);
-			idx += 8;
-		}
-		else
+		if (k == VariableKind::Int64 || k == VariableKind::Uint64 || k == VariableKind::Double)
 		{
 			uint64_t combined = DecodeUint32(argv + idx);
 			combined += static_cast<uint64_t>(DecodeUint32(argv + idx + 8)) << 32;
 			rootState->SetArgumentValue(i, combined, k);
 			idx += 16;
+		}
+		else if (k == VariableKind::ReferenceArray)
+		{
+			// We can't normally call methods with object/array parameters, with one exception: The main method may have a string[] array as argument,
+			// so create a new, empty string array.
+		}
+		else
+		{
+			rootState->SetArgumentValue(i, DecodeUint32(argv + idx), k);
+			idx += 8;
 		}
 	}
 
@@ -1327,7 +1332,22 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args, int stringCompa
 /// <param name="string">An object of type System::String</param>
 char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 {
-	uint16_t* input = (uint16_t*)string.Object;
+	wchar_t* input = (wchar_t*)string.Object;
+	if (input == nullptr)
+	{
+		// Also allocate a dummy element for an empty string - simplifies handling
+		char* empty = (char*)malloc(4);
+		empty[0] = 0;
+		return empty;
+	}
+
+	int length = *AddBytes(input, 4);
+	return GetAsUtf8String(AddBytes(input, STRING_DATA_START), length);
+}
+
+char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
+{
+	uint16_t* input = (uint16_t*)stringData;
 	if (input == nullptr)
 	{
 		// Also allocate a dummy element for an empty string - simplifies handling
@@ -1336,11 +1356,9 @@ char* FirmataIlExecutor::GetAsUtf8String(Variable& string)
 		return empty;
 	}
 	
-	int length = *AddBytes(input, 4);
 	int outLength = 0;
 	char* outbuf = (char*)malloc(length * 4 + 2);
 	char* outStart = outbuf;
-	input = AddBytes(input, STRING_DATA_START);
 	for(int i = 0; i < length; i++)
 	{
 		uint16_t charToEncode = *input;
@@ -2507,6 +2525,21 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			result.Int32 = 0;
 			SetLastError(ERROR_INVALID_PARAMETER);
 		}
+		}
+		break;
+	case NativeMethod::Kernel32_WriteConsole:
+		{
+		ASSERT(args.size() == 5);
+		result.Type = VariableKind::Int32;
+		result.Int32 = ERROR_SUCCESS;
+			if (args[0].Int32 == STANDARD_OUTPUT_HANDLE || args[0].Int32 == STANDARD_ERROR_HANDLE) // Standard or error outputs
+			{
+				char* buf = GetAsUtf8String((wchar_t*)args[1].Object, args[2].Int32);
+				Firmata.sendString(buf);
+				freeEx(buf);
+				int* written = (int*)args[3].Object; // A ref parameter
+				*written = args[2].Int32;
+			}
 		}
 		break;
 	case NativeMethod::NoOp:

@@ -368,7 +368,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	{
 			result.Type = VariableKind::Int32;
 			int handle = args[0].Int32;
-			if (handle == 0xCEEE || handle == 0xCEEF) // Compare MiniKernel.Console.cs
+			if (handle == STANDARD_OUTPUT_HANDLE || handle == STANDARD_ERROR_HANDLE || handle == STANDARD_INPUT_HANDLE) // Compare MiniKernel.Console.cs
 			{
 				result.Int32 = 2; // FILE_TYPE_CHAR
 			}
