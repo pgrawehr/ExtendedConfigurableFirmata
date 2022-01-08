@@ -35,6 +35,7 @@
 #include "FirmataStatusLed.h"
 #include "RuntimeState.h"
 #include "DebuggerCommand.h"
+#include "StandardErrorCodes.h"
 
 typedef byte BYTE;
 
@@ -153,7 +154,7 @@ void FirmataIlExecutor::Init()
 		DependentHandle* dp = new DependentHandle();
 		dp->Init();
 		_lowLevelLibraries.push_back(dp);
-#ifdef ESP32
+#ifndef ARDUINO_DUE
 		Esp32FatSupport* fat = new Esp32FatSupport();
 		fat->Init();
 		_lowLevelLibraries.push_back(fat);
@@ -2456,6 +2457,58 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		free(cstr);
 		break;
 		}
+	case NativeMethod::Kernel32_WideCharToMultiByte:
+		{
+		ASSERT(args.size() == 8);
+		result.Type = VariableKind::Int32;
+			// Arg0 is the destination code page
+		int codePage = args[0].Int32;
+		wchar_t* source = (wchar_t*)args[2].Object;
+		int sourceLen = args[3].Int32;
+		char* destination = (char*)args[4].Object;
+		int destinationLen = args[5].Int32;
+			if (destinationLen == 0)
+			{
+				result.Int32 = sourceLen * 2; // Should be enough
+				break;
+			}
+		int usedDestination = 0;
+		if (codePage == 1200) // UTF-16. Just copy input to output for now
+		{
+			if (destinationLen < 2 * sourceLen)
+			{
+				result.Int32 = 0;
+				SetLastError(ERROR_INSUFFICIENT_BUFFER);
+				break;
+			}
+			memcpy_s(destination, destinationLen, source, sourceLen * 2);
+			result.Int32 = destinationLen;
+		}
+		else if (codePage == 65001) // UTF-8
+		{
+			for (int i = 0; i < sourceLen; i++)
+			{
+				if (usedDestination >= destinationLen - 1)
+				{
+					result.Type = VariableKind::Int32;
+					result.Int32 = 0;
+					SetLastError(ERROR_INSUFFICIENT_BUFFER);
+					break;
+				}
+				uint16_t charToEncode = *source;
+				source++;
+				usedDestination += unicode_to_utf8(charToEncode, destination);
+			}
+			*destination = 0;
+			result.Int32 = usedDestination;
+		}
+		else
+		{
+			result.Int32 = 0;
+			SetLastError(ERROR_INVALID_PARAMETER);
+		}
+		}
+		break;
 	case NativeMethod::NoOp:
 		// this is used for methods that should just be suppressed (e.g. some variants of Debug.Write)
 		// This saves a few bytes of memory each time, because we don't have to provide an empty implementation
@@ -4930,7 +4983,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
     {
 #if DEBUGGER
 
-		if (CheckForBreakCondition(currentFrame, PC))
+		if (CheckForBreakCondition(currentFrame, PC, pCode))
 		{
 			currentFrame->UpdatePc(PC);
 			SendDebugState(rootState);
@@ -6827,8 +6880,9 @@ Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptio
 /// </summary>
 /// <param name="state">Current stack frame</param>
 /// <param name="pc">Current PC</param>
+///	<param name="code">Pointer to code of current method (or null for internal methods)</param>
 /// <returns>True if we should break, false if execution should continue</returns>
-bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t pc)
+bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code)
 {
 	if (!_debuggerEnabled)
 	{
@@ -6841,10 +6895,30 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 		return false;
 	}
 
-	if (_nextStepBehavior.Kind == BreakpointType::Once)
+	if (_nextStepBehavior.Kind == BreakpointType::Once || _nextStepBehavior.Kind == BreakpointType::StepInto)
 	{
 		_nextStepBehavior.Kind = BreakpointType::None;
 		return true;
+	}
+
+	if (_nextStepBehavior.Kind == BreakpointType::StepOver)
+	{
+		// TODO: This steps over until the same method is executed again. This will be unexpected in case of a recursive function call.
+		if (state->_executingMethod->GetKey() == _nextStepBehavior.MethodToken)
+		{
+			_nextStepBehavior.Kind = BreakpointType::None;
+			return true;
+		}
+	}
+	if (_nextStepBehavior.Kind == BreakpointType::StepOut)
+	{
+		// TODO: This steps over until the same method is executed again. This will be unexpected in case of a recursive function call.
+		if (state->_executingMethod->GetKey() == _nextStepBehavior.MethodToken && code != nullptr && (code[pc] == CEE_RET || code[pc] == CEE_THROW))
+		{
+			// Still execute the "ret" instruction itself, so do one more loop
+			_nextStepBehavior.Kind = BreakpointType::Once;
+			return false;
+		}
 	}
 
 	return false;
@@ -7259,11 +7333,42 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 
 ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
 {
+	if (_methodCurrentlyExecuting != nullptr)
+	{
+		auto currentMethod = _methodCurrentlyExecuting;
+		while (currentMethod->_next != nullptr)
+		{
+			currentMethod = currentMethod->_next;
+		}
+		_nextStepBehavior.MethodToken = currentMethod->_executingMethod->GetKey();
+		_nextStepBehavior.Pc = currentMethod->CurrentPc();
+	}
+	else
+	{
+		_nextStepBehavior.MethodToken = 0;
+		_nextStepBehavior.Pc = 0;
+	}
+
 	switch(cmd)
 	{
 	case DebuggerCommand::Break:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::Once;
+		return ExecutionError::None;
+	case DebuggerCommand::StepInto:
+		_debugBreakActive = false;
+		_nextStepBehavior.Kind = BreakpointType::StepInto;
+		_commandsToSkip = 1;
+		return ExecutionError::None;
+	case DebuggerCommand::StepOver:
+		_debugBreakActive = false;
+		_nextStepBehavior.Kind = BreakpointType::StepOver;
+		_commandsToSkip = 1;
+		return ExecutionError::None;
+	case DebuggerCommand::StepOut:
+		_debugBreakActive = false;
+		_nextStepBehavior.Kind = BreakpointType::StepOut;
+		_commandsToSkip = 1;
 		return ExecutionError::None;
 	case DebuggerCommand::Continue:
 		_commandsToSkip = 1; // Execute at least one command now

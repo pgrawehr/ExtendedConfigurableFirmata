@@ -3,13 +3,14 @@
 // 
 
 #include <ConfigurableFirmata.h>
+#include "ArduinoDueSupport.h"
 #ifdef ESP32
 #include "Esp32FlashStorage.h"
 Esp32CliFlashStorage* storage;
 #elif SIM
 #include "SimFlashStorage.h"
 VirtualFlashMemory* storage;
-#elif __SAM3X8E__
+#elif ARDUINO_DUE
 #include <DueFlashStorage.h>
 DueFlashStorage* storage;
 #else

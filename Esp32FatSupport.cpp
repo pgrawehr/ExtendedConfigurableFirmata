@@ -10,9 +10,12 @@
 
 // Not on Arduino Due (has no built-in file system support)
 // Implementation would be possible when using a library for a SD card
-#ifndef __SAM3X8E__
+#ifndef ARDUINO_DUE
+
+#ifdef ESP32
 #include <FS.h>
 #include <FFat.h>
+#endif
 #include <vector>
 
 std::vector<File> fileHandles;
@@ -171,14 +174,22 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 			if (handle == 0xCEEF)
 			{
 				// Write to console
-				Firmata.sendString(STRING_DATA, (char*)buffer);
-				result.Int32 = len;
+				if (len == 0)
+				{
+					// The runtime tries to write a letter "A" with zero length to the console to check whether it's writable
+					result.Int32 = 1;
+				}
+				else
+				{
+					Firmata.sendString(STRING_DATA, (char*)buffer);
+					result.Int32 = len;
+				}
 				break;
 			}
 		int index = handle - 1;
 		
 		Firmata.sendStringf(F("Writing %d bytes to handle %d"), 8, len, args[0].Int32);
-		if (index < 0 || index >= fileHandles.size())
+		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
 			result.Int32 = -1;
@@ -195,7 +206,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		char* buffer = (char*)args[1].Object;
 		int len = args[2].Int32;
 		Firmata.sendStringf(F("Reading %d bytes from handle %d"), 8, len, args[0].Int32);
-		if (index < 0 || index >= fileHandles.size())
+		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
 			result.Int32 = -1;
@@ -212,7 +223,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		result.Type = VariableKind::Boolean;
 		int index = args[0].Int32 - 1;
 		Firmata.sendStringf(F("Closing handle %d"), 4, args[0].Int32);
-		if (index < 0 || index >= fileHandles.size())
+		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(6); // Invalid handle
 			result.Boolean = false;

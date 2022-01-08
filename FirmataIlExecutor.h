@@ -305,7 +305,7 @@ class FirmataIlExecutor: public FirmataFeature
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
 	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
 	                        ExceptionClause** clauseThatMatches);
-	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc);
+	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code);
 	void SendDebugState(ExecutionState* executionState);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);

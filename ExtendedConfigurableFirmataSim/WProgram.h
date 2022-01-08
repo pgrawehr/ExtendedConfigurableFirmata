@@ -73,12 +73,17 @@ void* xSemaphoreCreateBinary();
 #define A0 54
 #define A1 55
 
+/// <summary>
+/// This simulated stream base class is actually a null device
+/// </summary>
 class Stream
 {
 public:
 	virtual void begin();
 	virtual void begin(int baudRate);
 	virtual size_t write(byte b);
+	virtual size_t write(const uint8_t* buf, size_t size);
+	virtual int peek();
 	virtual void flush();
 	virtual int read();
 	virtual int available();
@@ -146,3 +151,4 @@ extern class Serial Serial3;
 // Include standard libs
 #include "pgmspace.h"
 #include "HardwareSerial.h"
+#include "FSSim.h" // File system abstraction functions

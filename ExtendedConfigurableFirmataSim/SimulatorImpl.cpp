@@ -150,6 +150,18 @@ int Stream::available()
 	return 0;
 }
 
+size_t Stream::write(const uint8_t* buf, size_t size)
+{
+	return size;
+}
+
+int Stream::peek()
+{
+	return -1;
+}
+
+
+
 void Serial::end()
 {
 }
@@ -270,12 +282,26 @@ void NetworkConnection::end()
 	WSACleanup();
 }
 
+int NetworkConnection::peek()
+{
+	return read(false);
+}
+
 int NetworkConnection::read()
+{
+	return read(true);
+}
+
+
+int NetworkConnection::read(bool doPop)
 {
 	if (!_queue.empty())
 	{
 		int valueToReturn = _queue.front() & 0xFF; // Otherwise, this is sign-extended here
-		_queue.pop();
+		if (doPop)
+		{
+			_queue.pop();
+		}
 		return valueToReturn;
 	}
 	
@@ -318,6 +344,13 @@ size_t NetworkConnection::write(byte b)
 	send(_client, buf, 1, 0);
 	return 1;
 }
+
+size_t NetworkConnection::write(const uint8_t* data, size_t size)
+{
+	send(_client, (char*)data, (int)size, 0);
+	return size;
+}
+
 
 int NetworkConnection::available()
 {

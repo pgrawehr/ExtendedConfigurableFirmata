@@ -60,7 +60,7 @@ int64_t HardwareAccess::TickCount64()
 
 void HardwareAccess::Reboot()
 {
-#if __SAM3X8E__ && !SIM
+#if ARDUINO_DUE
 	// This function is only available when compiling against the real Due SDK
 	rstc_start_software_reset(RSTC);
 #endif

@@ -1,7 +1,8 @@
 #pragma once
 #include <ConfigurableFirmata.h>
+#include "ArduinoDueSupport.h"
 
-#ifdef __SAM3X8E__
+#ifdef ARDUINO_DUE
 
 /* RTOS implementation functions */
 void* xSemaphoreCreateBinary();

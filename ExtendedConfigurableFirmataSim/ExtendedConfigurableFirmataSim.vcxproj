@@ -186,6 +186,7 @@
     <ClCompile Include="..\SimFlashStorage.cpp" />
     <ClCompile Include="..\SimulatorClock.cpp" />
     <ClCompile Include="ExtendedConfigurableFirmataSim.cpp" />
+    <ClCompile Include="FSSim.cpp" />
     <ClCompile Include="SimulatorImpl.cpp" />
     <ClCompile Include="SPI.cpp" />
     <ClCompile Include="Wire.cpp" />
@@ -243,6 +244,7 @@
     <ClInclude Include="..\SimFlashStorage.h" />
     <ClInclude Include="..\SimulatorClock.h" />
     <ClInclude Include="..\VariableKind.h" />
+    <ClInclude Include="FSSim.h" />
     <ClInclude Include="HardwareSerial.h" />
     <ClInclude Include="pgmspace.h" />
     <ClInclude Include="SimulatorImpl.h" />

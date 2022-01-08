@@ -173,7 +173,11 @@ public:
 	ExceptionClause(int token)
 	{
 		_methodToken = token;
+		FilterToken = 0;
+		ClauseType = ExceptionHandlingClauseOptions::Clause;
+		TryOffset = TryLength = HandlerLength = HandlerOffset = 0;
 	}
+
 	uint32_t GetKey()
 	{
 		return _methodToken;

@@ -2,6 +2,7 @@
 #include "WProgram.h"
 #include "HardwareSerial.h"
 #include <queue>
+#include "FSSim.h"
 
 #undef INPUT
 #include "WinSock2.h"
@@ -28,6 +29,11 @@ public:
 	virtual int read() override;
 
 	virtual size_t write(byte b) override;
+
+	virtual size_t write(const uint8_t* data, size_t size) override;
+
+	virtual int peek() override;
+	int read(bool doPop);
 
 	virtual void end() override;
 
