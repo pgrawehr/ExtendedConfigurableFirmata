@@ -179,6 +179,13 @@ class ExecutionState
 		*locals = &_locals;
 		*arguments = &_arguments;
 	}
+
+	void SetArgumentValue(int argNo, Variable& variable)
+	{
+		_arguments[argNo].Type = variable.Type;
+		_arguments[argNo].setSize(variable.fieldSize());
+		_arguments[argNo].Int64 = variable.Int64;
+	}
 	
 	void SetArgumentValue(int argNo, uint32_t value, VariableKind type)
 	{
@@ -269,7 +276,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
-	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd);
+	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd, uint32_t arg1, uint32_t arg2);
 
 	int ReverseSearchSpecialTypeList(int32_t genericToken, bool tokenListContainsTypes, void* tokenList);
 	int ReverseSearchSpecialTypeList(int mainToken, void* tokenList, bool tokenListContainsTypes, const int* searchList);
@@ -290,7 +297,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void ClearExecutionStack(VariableDynamicStack* stack);
     MethodState BasicStackInstructions(ExecutionState* state, uint16_t PC, VariableDynamicStack* stack, VariableVector* locals, VariableVector* arguments,
 	                                   OPCODE instr, Variable& value1, Variable& value2, Variable& value3);
-    int AllocateArrayInstance(int token, int size, Variable& v1);
+	int AllocateArrayInstance(int tokenOfArrayType, int numberOfElements, Variable& result);
 
     ExecutionError DecodeParametersAndExecute(int methodToken, int taskId, byte argc, byte* argv);
 	uint32_t DecodePackedUint32(byte* argv);
@@ -311,6 +318,8 @@ class FirmataIlExecutor: public FirmataFeature
 	                        ExceptionClause** clauseThatMatches);
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code);
 	void SendDebugState(ExecutionState* executionState);
+	void SendVariables(ExecutionState* stackFrame, int variableType);
+	void SendVariable(const Variable& variable, int& idx);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
@@ -327,6 +336,7 @@ class FirmataIlExecutor: public FirmataFeature
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(int32_t codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(int32_t token);
+	ExecutionState* GetNthMethodOnStack(int n);
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
@@ -387,6 +397,8 @@ class FirmataIlExecutor: public FirmataFeature
 
 	// We're sitting on a break point
 	bool _debugBreakActive;
+
+	bool _breakOnException;
 	// The number of commands to skip until we check for breakpoints again.
 	// This is used to make sure a continue or single step command executes at least one command.
 	int _commandsToSkip;

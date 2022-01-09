@@ -13,4 +13,8 @@ enum class DebuggerCommand
     EnableDebugging = 6,
     DisableDebugging = 7,
     Break = 8,
+    SendLocals = 9,
+    SendArguments = 10,
+    SendEvaluationStack = 11,
+    BreakOnExceptions = 12,
 };

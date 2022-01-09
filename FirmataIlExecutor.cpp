@@ -92,6 +92,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_debuggerEnabled = false;
 	_commandsToSkip = 0;
 	_lastError = 0;
+	_breakOnException = false;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -497,7 +498,17 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::DebuggerCommand:
 				{
 				uint32_t debuggerCommand = DecodePackedUint32(argv + 2);
-				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand));
+				uint32_t debuggerArg1 = 0;
+				uint32_t debuggerArg2 = 0;
+					if (argc >= 17)
+					{
+						debuggerArg1 = DecodePackedUint32(argv + 2 + 5);
+					}
+					if (argc >= 22)
+					{
+						debuggerArg2 = DecodePackedUint32(argv + 2 + 10);
+					}
+				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
 				}
 				break;
 			default:
@@ -850,6 +861,13 @@ void FirmataIlExecutor::KillCurrentTask()
 	// Make sure we stay stopped (hard-reset to restart from flash is possible, but typically the flash is going to be reprogrammed now)
 	_startupFlags = 0;
 	_startupToken = 0;
+	_nextStepBehavior.Kind = BreakpointType::None;
+	_breakpoints.clear(true);
+	_debugBreakActive = false;
+	_debuggerEnabled = false;
+	_commandsToSkip = 0;
+	_lastError = 0;
+	_breakOnException = false;
 }
 
 void FirmataIlExecutor::CleanStack(ExecutionState* state)
@@ -1165,8 +1183,13 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 		}
 		else if (k == VariableKind::ReferenceArray)
 		{
-			// We can't normally call methods with object/array parameters, with one exception: The main method may have a string[] array as argument,
+			// We can't normally call methods with object/array parameters, because we don't currently support serializing them.
+			// With one exception: The main method may have a string[] array as argument,
 			// so create a new, empty string array.
+			idx += 8; // value is ignored
+			Variable arr;
+			AllocateArrayInstance((int)KnownTypeTokens::String, 0, arr);
+			rootState->SetArgumentValue(i, arr);
 		}
 		else
 		{
@@ -6658,6 +6681,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	}
 	catch(ClrException& cx)
 	{
+		if (_breakOnException)
+		{
+			_nextStepBehavior.Kind = BreakpointType::Once;
+			_commandsToSkip = 0;
+		}
+
+		// On an exception, send the state prior to the stack unwinding once
+		if (_debuggerEnabled)
+		{
+			Firmata.sendString("Exception caught. First follows the state before stack unwinding, then after: ");
+			SendDebugState(rootState);
+		}
+
 		_instructionsExecuted += instructionsExecutedThisLoop;
 		currentFrame->UpdatePc(PC);
 		Variable v(VariableKind::Object);
@@ -6928,6 +6964,12 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 		return false;
 	}
 
+	// Attempt to break before the exception is actually thrown
+	if (_breakOnException && code != nullptr && (code[pc] == CEE_THROW))
+	{
+		return true;
+	}
+
 	if (_nextStepBehavior.Kind == BreakpointType::Once || _nextStepBehavior.Kind == BreakpointType::StepInto)
 	{
 		_nextStepBehavior.Kind = BreakpointType::None;
@@ -6977,6 +7019,61 @@ void FirmataIlExecutor::SendDebugState(ExecutionState* state)
 
 	Firmata.endSysex();
 }
+
+/// <summary>
+/// Returns the given variable list
+/// </summary>
+/// <param name="stackFrame">The stack frame to consider</param>
+/// <param name="variableType">The variable type (0 = locals, 1 = arguments, 2 = evaluation stack)</param>
+void FirmataIlExecutor::SendVariables(ExecutionState* stackFrame, int variableType)
+{
+	SendReplyHeader(ExecutorCommand::Variables);
+	Firmata.sendPackedUInt14((uint16_t)stackFrame->TaskId());
+	uint16_t pc;
+	VariableDynamicStack* stack;
+	VariableVector* locals;
+	VariableVector* arguments;
+	stackFrame->ActivateState(&pc, &stack, &locals, &arguments);
+	Firmata.write((byte)variableType);
+	int idx = 0;
+	if (variableType == 2)
+	{
+		VariableDynamicStack::Iterator stackIterator = stack->GetIterator();
+		Variable* var;
+		while ((var = stackIterator.next()) != nullptr)
+		{
+			SendVariable(*var, idx);
+		}
+	}
+	else if (variableType == 0)
+	{
+		for (int i = 0; i < locals->size(); i++)
+		{
+			Variable& v = locals->at(i);
+			SendVariable(v, idx);
+		}
+	}
+	else if (variableType == 0)
+	{
+		for (int i = 0; i < arguments->size(); i++)
+		{
+			Variable& v = arguments->at(i);
+			SendVariable(v, idx);
+		}
+	}
+
+	Firmata.endSysex();
+}
+
+void FirmataIlExecutor::SendVariable(const Variable& variable, int& idx)
+{
+	Firmata.sendPackedUInt32(idx);
+	idx++;
+	Firmata.sendPackedUInt14((uint16_t)variable.Type);
+	Firmata.sendPackedUInt64(variable.Int64);
+	// Todo: Send content for object type variables
+}
+
 
 
 void FirmataIlExecutor::SignExtend(Variable& variable, int inputSize)
@@ -7364,15 +7461,29 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 	return nullptr;
 }
 
-ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
+/// <summary>
+/// Returns the n'th method on the stack (where 0 is the oldest and n is the currently executing method)
+/// </summary>
+/// <param name="n">Number of method to return, 0-based</param>
+/// <returns>The stack frame for the given number. If there are not as many stack frames as specified, the last one is returned</returns>
+ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(int n)
+{
+	auto currentMethod = _methodCurrentlyExecuting;
+	int realn = 0;
+	while (currentMethod->_next != nullptr && realn != n) // iterate zero times if n is zero
+	{
+		currentMethod = currentMethod->_next;
+		realn++;
+	}
+
+	return currentMethod;
+}
+
+ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, uint32_t arg1, uint32_t arg2)
 {
 	if (_methodCurrentlyExecuting != nullptr)
 	{
-		auto currentMethod = _methodCurrentlyExecuting;
-		while (currentMethod->_next != nullptr)
-		{
-			currentMethod = currentMethod->_next;
-		}
+		auto currentMethod = GetNthMethodOnStack(-1);
 		_nextStepBehavior.MethodToken = currentMethod->_executingMethod->GetKey();
 		_nextStepBehavior.Pc = currentMethod->CurrentPc();
 	}
@@ -7387,40 +7498,70 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd)
 	case DebuggerCommand::Break:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::Once;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::StepInto:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::StepInto;
 		_commandsToSkip = 1;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::StepOver:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::StepOver;
 		_commandsToSkip = 1;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::StepOut:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::StepOut;
 		_commandsToSkip = 1;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::Continue:
 		_commandsToSkip = 1; // Execute at least one command now
 		_debugBreakActive = false;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::EnableDebugging:
 		_debugBreakActive = false;
 		_debuggerEnabled = true;
-		return ExecutionError::None;
+		break;
 	case DebuggerCommand::DisableDebugging:
 		_debugBreakActive = false;
 		_debuggerEnabled = false;
 		_nextStepBehavior.Kind = BreakpointType::None;
 		_breakpoints.clear();
-		return ExecutionError::None;
-	default:
+		break;
+	case DebuggerCommand::BreakOnExceptions:
+		_breakOnException = !_breakOnException;
+		if (_breakOnException)
+		{
+			Firmata.sendString(F("Breaking execution when an exception occurs"));
+		}
+		else
+		{
+			Firmata.sendString(F("Not breaking execution when an exception occurs"));
+		}
+		break;
+	case DebuggerCommand::SendLocals:
+	{
+		auto stackFrame = GetNthMethodOnStack(arg1);
+		SendVariables(stackFrame, 0);
 		break;
 	}
-	return ExecutionError::InvalidArguments;
+	case DebuggerCommand::SendEvaluationStack:
+	{
+		auto stackFrame = GetNthMethodOnStack(arg1);
+		SendVariables(stackFrame, 2);
+		break;
+	}
+	case DebuggerCommand::SendArguments:
+		{
+		auto stackFrame = GetNthMethodOnStack(arg1);
+		SendVariables(stackFrame, 1);
+		break;
+		}
+	default:
+		return ExecutionError::InvalidArguments;
+	}
+
+	return ExecutionError::None;
 }
 
 

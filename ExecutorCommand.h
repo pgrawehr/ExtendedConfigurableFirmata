@@ -26,6 +26,7 @@ enum class ExecutorCommand
     QueryHardware = 20,
     ConditionalBreakpointHit = 30,
     BreakpointHit = 31,
+    Variables = 32,
     DebuggerCommand = 35,
     Reply = 125,
     Nack = 126,

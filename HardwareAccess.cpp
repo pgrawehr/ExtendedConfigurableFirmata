@@ -5,12 +5,12 @@
 #include "I2CFirmata.h"
 #include <Wire.h>
 
-
 #include "RtcBase.h"
 #include "Ds1307.h"
 #include "Esp32Rtc.h"
 #include "SimulatorClock.h"
 #include "ArduinoDueSupport.h"
+#include "PinUsage.h"
 
 // Enable if a DS1307 hardware real-time-clock is attached via I2C
 #if ESP32
@@ -187,6 +187,64 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		i2c.handleSysex(I2C_CONFIG, 2, zero); // Configure and enable the bus
 	}
 	break;
+	case NativeMethod::ArduinoNativeBoardGetDefaultPinAssignmentForI2cInternal:
+		{
+			// This shall return an int with bits 0-7 SCL and bits 8-15 SDA (or vice-versa, doesn't really matter)
+		result.Type = VariableKind::Int32;
+		int pin1 = -1;
+		int pin2 = -1;
+			for (int i = 0; i < TOTAL_PINS; i++)
+			{
+				if (IS_PIN_I2C(i))
+				{
+					if (pin1 == -1)
+					{
+						pin1 = i;
+					}
+					else
+					{
+						pin2 = i;
+						break;
+					}
+				}
+			}
+
+			result.Int32 = pin1 << 8 | pin2;
+		}
+		break;
+	case NativeMethod::ArduinoNativeBoardActivatePinModeInternal:
+		{
+		ASSERT(args.size() == 3);
+		byte pin = (byte)args[1].Int32;
+		PinUsage usage = (PinUsage)args[2].Int32;
+			switch(usage)
+			{
+			case PinUsage::AnalogIn:
+				{
+					Firmata.setPinMode(pin, PIN_MODE_ANALOG);
+					break;
+				}
+			case PinUsage::Gpio:
+				{
+					Firmata.setPinMode(pin, PIN_MODE_INPUT);
+					break;
+				}
+			case PinUsage::I2c:
+				{
+				Firmata.setPinMode(pin, PIN_MODE_I2C);
+				break;
+				}
+			case PinUsage::Pwm:
+				{
+				Firmata.setPinMode(pin, PIN_MODE_PWM);
+				break;
+				}
+			default:
+				Firmata.sendString(F("Unknown pin mode requested"));
+				break;
+			}
+		}
+		break;
 	case NativeMethod::ArduinoNativeI2cDeviceWriteByte:
 		{
 		ASSERT(args.size() == 2);
@@ -455,6 +513,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	case NativeMethod::MonitorExit:
 		result.Type = VariableKind::Void;
 		break;
+	
 	default:
 		return false;
 	}

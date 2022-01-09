@@ -1,4 +1,4 @@
-﻿// Simulator implementation for Wire.h (Arduino i2c library)
+// Simulator implementation for Wire.h (Arduino i2c library)
 #include "WProgram.h"
 #include <utility/Boards.h>
 
@@ -48,8 +48,8 @@ void TwoWire::ReplyShort(int16_t value)
 uint8_t TwoWire::requestFrom(uint8_t address, uint8_t numBytes)
 {
 	_currentDevice = address;
-	// BME680 Chip ID
-	if (_currentDevice == 0x76)
+	// BME680 Chip IDs
+	if (_currentDevice == 0x76 || _currentDevice == 0x77)
 	{
 		// Chip ID
 		if (_currentRegister == 0xD0)
