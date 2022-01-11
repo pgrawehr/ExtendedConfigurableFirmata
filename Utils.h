@@ -46,4 +46,6 @@ errno_t strncpy_s(
 	size_t count
 );
 
+errno_t memcpy_s(void* dest, size_t destinationLength, void* source, size_t sourceLength);
+
 #endif

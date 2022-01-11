@@ -5,6 +5,7 @@
 #include <ConfigurableFirmata.h>
 #include "Utils.h"
 
+#ifndef _MSC_VER
 /// <summary>
 /// Mimics the behavior of strncpy_s, but without the error handling
 /// </summary>
@@ -35,3 +36,11 @@ errno_t strncpy_s(char* strDest, size_t numberOfElements, const char* strSource,
 
 	return 0;
 }
+
+errno_t memcpy_s(void* dest, size_t destinationLength, void* source, size_t sourceLength)
+{
+	memcpy(dest, source, sourceLength);
+	return 0;
+}
+
+#endif

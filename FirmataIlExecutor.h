@@ -67,8 +67,8 @@ enum class ExecutionError : byte
 #define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
 #define STRING_DATA_START 8 /* String type token, string length (in chars) */
 #define SIZEOF_CHAR (sizeof(uint16_t))
-#define STANDARD_INPUT_HANDLE 0xCEEE
-#define STANDARD_OUTPUT_HANDLE 0xCEEF
+#define STANDARD_INPUT_HANDLE 0xCEED
+#define STANDARD_OUTPUT_HANDLE 0xCEEE
 #define STANDARD_ERROR_HANDLE 0xCEEF
 
 // The function prototype for critical finalizer functions (closing file handles, releasing mutexes etc.)
@@ -220,6 +220,13 @@ class ExecutionState
 class Breakpoint
 {
 public:
+	Breakpoint()
+	{
+		Kind = BreakpointType::None;
+		MethodToken = 0;
+		Pc = 0;
+	}
+
 	BreakpointType Kind;
 	int MethodToken;
 	int Pc;
@@ -318,7 +325,7 @@ class FirmataIlExecutor: public FirmataFeature
 	                        ExceptionClause** clauseThatMatches);
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code);
 	void SendDebugState(ExecutionState* executionState);
-	void SendVariables(ExecutionState* stackFrame, int variableType);
+	void SendVariables(ExecutionState* stackFrame, uint32_t frameNo, int variableType);
 	void SendVariable(const Variable& variable, int& idx);
 	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
@@ -336,7 +343,7 @@ class FirmataIlExecutor: public FirmataFeature
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(int32_t codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(int32_t token);
-	ExecutionState* GetNthMethodOnStack(int n);
+	ExecutionState* GetNthMethodOnStack(uint32_t& n);
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);

@@ -74,6 +74,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 }
 
 FirmataIlExecutor::FirmataIlExecutor()
+	: _nextStepBehavior()
 {
 	_methodCurrentlyExecuting = nullptr;
 	_stringHeapRam = nullptr;
@@ -2558,7 +2559,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 			if (args[0].Int32 == STANDARD_OUTPUT_HANDLE || args[0].Int32 == STANDARD_ERROR_HANDLE) // Standard or error outputs
 			{
 				char* buf = GetAsUtf8String((wchar_t*)args[1].Object, args[2].Int32);
-				Firmata.sendString(buf);
+				Firmata.sendString(STRING_DATA, buf);
 				freeEx(buf);
 				int* written = (int*)args[3].Object; // A ref parameter
 				*written = args[2].Int32;
@@ -6690,7 +6691,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		// On an exception, send the state prior to the stack unwinding once
 		if (_debuggerEnabled)
 		{
-			Firmata.sendString("Exception caught. First follows the state before stack unwinding, then after: ");
+			Firmata.sendString(F("Exception caught. First follows the state before stack unwinding, then after: "));
 			SendDebugState(rootState);
 		}
 
@@ -7025,7 +7026,7 @@ void FirmataIlExecutor::SendDebugState(ExecutionState* state)
 /// </summary>
 /// <param name="stackFrame">The stack frame to consider</param>
 /// <param name="variableType">The variable type (0 = locals, 1 = arguments, 2 = evaluation stack)</param>
-void FirmataIlExecutor::SendVariables(ExecutionState* stackFrame, int variableType)
+void FirmataIlExecutor::SendVariables(ExecutionState* stackFrame, uint32_t frameNo, int variableType)
 {
 	SendReplyHeader(ExecutorCommand::Variables);
 	Firmata.sendPackedUInt14((uint16_t)stackFrame->TaskId());
@@ -7035,6 +7036,8 @@ void FirmataIlExecutor::SendVariables(ExecutionState* stackFrame, int variableTy
 	VariableVector* arguments;
 	stackFrame->ActivateState(&pc, &stack, &locals, &arguments);
 	Firmata.write((byte)variableType);
+	Firmata.sendPackedUInt32(frameNo);
+	Firmata.sendPackedUInt32(stackFrame->_executingMethod->GetKey());
 	int idx = 0;
 	if (variableType == 2)
 	{
@@ -7053,7 +7056,7 @@ void FirmataIlExecutor::SendVariables(ExecutionState* stackFrame, int variableTy
 			SendVariable(v, idx);
 		}
 	}
-	else if (variableType == 0)
+	else if (variableType == 1)
 	{
 		for (int i = 0; i < arguments->size(); i++)
 		{
@@ -7464,9 +7467,9 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 /// <summary>
 /// Returns the n'th method on the stack (where 0 is the oldest and n is the currently executing method)
 /// </summary>
-/// <param name="n">Number of method to return, 0-based</param>
+/// <param name="n">Number of method to return, 0-based (will return the actual stack number used)</param>
 /// <returns>The stack frame for the given number. If there are not as many stack frames as specified, the last one is returned</returns>
-ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(int n)
+ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(uint32_t& n)
 {
 	auto currentMethod = _methodCurrentlyExecuting;
 	int realn = 0;
@@ -7476,6 +7479,7 @@ ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(int n)
 		realn++;
 	}
 
+	n = realn;
 	return currentMethod;
 }
 
@@ -7483,7 +7487,8 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, ui
 {
 	if (_methodCurrentlyExecuting != nullptr)
 	{
-		auto currentMethod = GetNthMethodOnStack(-1);
+		uint32_t idx = INT32_MAX;
+		auto currentMethod = GetNthMethodOnStack(idx);
 		_nextStepBehavior.MethodToken = currentMethod->_executingMethod->GetKey();
 		_nextStepBehavior.Pc = currentMethod->CurrentPc();
 	}
@@ -7542,19 +7547,19 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, ui
 	case DebuggerCommand::SendLocals:
 	{
 		auto stackFrame = GetNthMethodOnStack(arg1);
-		SendVariables(stackFrame, 0);
+		SendVariables(stackFrame, arg1, 0);
 		break;
 	}
 	case DebuggerCommand::SendEvaluationStack:
 	{
 		auto stackFrame = GetNthMethodOnStack(arg1);
-		SendVariables(stackFrame, 2);
+		SendVariables(stackFrame, arg1, 2);
 		break;
 	}
 	case DebuggerCommand::SendArguments:
 		{
 		auto stackFrame = GetNthMethodOnStack(arg1);
-		SendVariables(stackFrame, 1);
+		SendVariables(stackFrame, arg1, 1);
 		break;
 		}
 	default:

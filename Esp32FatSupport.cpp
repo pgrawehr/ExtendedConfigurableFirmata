@@ -171,7 +171,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 				result.Int32 = -1;
 				break;
 			}
-			if (handle == STANDARD_OUTPUT_HANDLE)
+			if (handle == STANDARD_OUTPUT_HANDLE || handle == STANDARD_ERROR_HANDLE)
 			{
 				// Write to console
 				if (len == 0)

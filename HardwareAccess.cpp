@@ -430,7 +430,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			{
 				result.Int32 = 2; // FILE_TYPE_CHAR
 			}
-			else if (handle < 0xCEEE)
+			else if (handle < STANDARD_INPUT_HANDLE)
 			{
 				result.Int32 = 1; // FILE_TYPE_DISK
 			}

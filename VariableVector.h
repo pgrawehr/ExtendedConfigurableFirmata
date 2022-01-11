@@ -46,15 +46,13 @@ public:
 			
 			memset(_data, 0, numDescriptions * sizeof(Variable));
 
-			int idx = 0;
 			for (int i = 0; i < numDescriptions; i++)
 			{
 				VariableDescription* start = variableDescriptions + i;
 				size_t fieldSize = start->fieldSize();
-				_data[idx].setSize((uint16_t)fieldSize);
-				_data[idx].Type = start->Type;
-				_data[idx].Marker = start->Marker;
-				idx++;
+				_data[i].setSize((uint16_t)fieldSize);
+				_data[i].Type = start->Type;
+				_data[i].Marker = start->Marker;
 			}
 		}
 		else
