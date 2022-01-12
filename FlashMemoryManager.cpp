@@ -4,15 +4,17 @@
 
 #include <ConfigurableFirmata.h>
 #include "ArduinoDueSupport.h"
+
 #ifdef ESP32
 #include "Esp32FlashStorage.h"
 Esp32CliFlashStorage* storage;
 #elif SIM
 #include "SimFlashStorage.h"
 VirtualFlashMemory* storage;
-#elif ARDUINO_DUE
+#elif defined ARDUINO_DUE
 #include <DueFlashStorage.h>
 DueFlashStorage* storage;
+
 #else
 	// TODO: Create a dummy storage driver (with zero bytes size)
 #error No storage driver available

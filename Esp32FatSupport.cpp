@@ -7,6 +7,7 @@
 #include "Esp32FatSupport.h"
 #include "Exceptions.h"
 #include "StandardErrorCodes.h"
+#include "ArduinoDueSupport.h"
 
 // Not on Arduino Due (has no built-in file system support)
 // Implementation would be possible when using a library for a SD card

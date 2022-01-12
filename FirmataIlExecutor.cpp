@@ -36,6 +36,7 @@
 #include "RuntimeState.h"
 #include "DebuggerCommand.h"
 #include "StandardErrorCodes.h"
+#include "ArduinoDueSupport.h"
 
 typedef byte BYTE;
 
