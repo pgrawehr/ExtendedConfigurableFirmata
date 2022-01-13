@@ -64,6 +64,9 @@ void HardwareAccess::Reboot()
 	// This function is only available when compiling against the real Due SDK
 	rstc_start_software_reset(RSTC);
 #endif
+#ifdef ESP32
+	ESP.restart();
+#endif 
 }
 
 

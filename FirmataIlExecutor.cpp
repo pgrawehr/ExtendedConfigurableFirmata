@@ -487,7 +487,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_startedFromFlash = false;
 				SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				SendQueryHardwareReply();
-				// Firmata.sendStringf(F("Free main memory: %d"), 4, freeMemory());
+				printMemoryStatistics();
 			}
 			break;
 
