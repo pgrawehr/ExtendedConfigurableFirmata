@@ -31,10 +31,10 @@ void deleteEx(T*& ptr)
 	{
 		ptr->~T();
 		freeEx(ptr);
-		ptr = nullptr;
 	}
 }
 
+void SetMemoryExecutionMode(bool executionModeEnabled);
 
 
 #endif

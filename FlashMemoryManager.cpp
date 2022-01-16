@@ -49,6 +49,8 @@ public:
 	// Bit 0: Auto-Restart task after crash
 	int StartupFlags;
 
+	uint32_t StaticVectorMemorySize;
+
 	// These two are used to check that the contents of the flash memory matches the firmware.
 	// Since we're storing objects that include code references (vtables) in flash, updating the build invalidates it.
 	char FirmwareBuildTime[TIMESTAMP_SIZE];
@@ -91,7 +93,8 @@ long FlashMemoryManager::UsedFlashMemory()
 
 
 
-void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int& startupToken, int& startupFlags)
+void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList,
+	void*& clauses, int& startupToken, int& startupFlags, uint32_t& staticVectorMemorySize)
 {
 	bool tryRead = ValidateFlashContents();
 	if (tryRead && _header->DataVersion != -1 && _header->DataVersion != 0)
@@ -106,6 +109,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		startupToken = _header->StartupToken;
 		startupFlags = _header->StartupFlags;
 		specialTokenList = _header->SpecialTokenList;
+		staticVectorMemorySize = _header->StaticVectorMemorySize;
 	}
 	else
 	{
@@ -117,6 +121,7 @@ void FlashMemoryManager::Init(void*& classes, void*& methods, void*& constants, 
 		startupToken = 0;
 		startupFlags = 0;
 		specialTokenList = nullptr;
+		staticVectorMemorySize = 0;
 	}
 }
 
@@ -203,7 +208,8 @@ void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length
 	}
 }
 
-void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags)
+void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr,
+	void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags, int staticVectorMemorySize)
 {
 	_flashClear = false;
 	FlashMemoryHeader hd;
@@ -220,6 +226,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	hd.SpecialTokenList = specialTokenList;
 	hd.StartupToken = startupToken;
 	hd.StartupFlags = startupFlags;
+	hd.StaticVectorMemorySize = staticVectorMemorySize;
 	strncpy_s(hd.FirmwareBuildTime, TIMESTAMP_SIZE, __TIMESTAMP__, _TRUNCATE);
 	
 	storage->write(_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));

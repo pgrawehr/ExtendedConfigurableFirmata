@@ -23,7 +23,8 @@ private:
 public:
 	FlashMemoryManager();
 
-	void Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int& startupToken, int& startupFlags);
+	void Init(void*& classes, void*& methods, void*& constants, void*& stringHeap, int*& specialTokenList, void*& clauses, int&
+	          startupToken, int& startupFlags, uint32_t& staticVectorMemorySize);
 	/// <summary>
 	/// Allocate memory in flash.
 	/// Note that: a) The memory cannot be freed so far, except clearing the whole block. b) The returned address cannot be used directly as a target for
@@ -34,7 +35,8 @@ public:
 	void* FlashAlloc(size_t bytes);
 
 	void CopyToFlash(void* src, void* flashTarget, size_t length);
-	void WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int* specialTokenList, void* clauses, int startupToken, int startupFlags);
+	void WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int*
+	                 specialTokenList, void* clauses, int startupToken, int startupFlags, int staticVectorMemorySize);
 
 	/// <summary>
 	/// Marks the flash as empty. It does not write anything yet, so if this is called without a subsequent CopyToFlash or WriteHeader, the memory will still be there after bootup

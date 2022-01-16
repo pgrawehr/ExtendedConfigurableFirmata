@@ -118,6 +118,7 @@ bool FirmataIlExecutor::AutoStartProgram()
 			return false;
 		}
 
+		SetMemoryExecutionMode(true);
 		// There's a problem: Because we're writing full objects to flash (including the vtable pointer), updating the firmware almost always
 		// invalidates the program, causing this line to cause a core dump, because the virtual method calls fail.
 		// We should somehow validate that the program matches the current firmware.
@@ -168,7 +169,7 @@ void FirmataIlExecutor::Init()
 
 	void* classes, *methods, *constants, *stringHeap, *clauses;
 	int* specialTokens;
-	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, clauses, _startupToken, _startupFlags);
+	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, clauses, _startupToken, _startupFlags, _staticVectorMemorySize);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
@@ -190,7 +191,7 @@ void FirmataIlExecutor::handleCapability(byte pin)
 		// In simulation, re-read the flash after a reset, to emulate a board reset.
 		void* classes, * methods, * constants, * stringHeap, * clauses;
 		int* specialTokenList;
-		_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokenList, clauses, _startupToken, _startupFlags);
+		_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokenList, clauses, _startupToken, _startupFlags, _staticVectorMemorySize);
 		_classes.ReadListFromFlash(classes);
 		_methods.ReadListFromFlash(methods);
 		_constants.ReadListFromFlash(constants);
@@ -416,6 +417,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				SendAckOrNack(subCommand, sequenceNo, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
 					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
+			case ExecutorCommand::GlobalMetadata:
+				SendAckOrNack(subCommand, sequenceNo, LoadGlobalMetadata(DecodePackedUint32(argv + 2 + 5)));
+				break;
 			case ExecutorCommand::EraseFlash:
 				KillCurrentTask();
 				_startupToken = 0;
@@ -481,7 +485,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_classes.ValidateListOrder();
 				_methods.ValidateListOrder();
 				_constants.ValidateListOrder();
-				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr, specialTokenListPtr, clausesPtr, _startupToken, _startupFlags);
+				_flashMemoryManager->WriteHeader(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5), classesPtr, methodsPtr, constantPtr, stringPtr,
+					specialTokenListPtr, clausesPtr, _startupToken, _startupFlags, _staticVectorMemorySize);
 
 				// Reset this flag after programming, or we'll immediately start executing code if there was _any_ valid program in flash when the CPU started.
 				_startedFromFlash = false;
@@ -542,6 +547,12 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		return true;
 	}
 	return false;
+}
+
+ExecutionError FirmataIlExecutor::LoadGlobalMetadata(uint32_t staticVectorMemorySize)
+{
+	_staticVectorMemorySize = staticVectorMemorySize;
+	return ExecutionError::None;
 }
 
 ExecutionError FirmataIlExecutor::LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken)
@@ -870,6 +881,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
+	SetMemoryExecutionMode(false);
 }
 
 void FirmataIlExecutor::CleanStack(ExecutionState* state)
@@ -913,6 +925,7 @@ void FirmataIlExecutor::report(bool elapsed)
 		return;
 	}
 
+	SetMemoryExecutionMode(false);
 	int methodindex = _methodCurrentlyExecuting->TaskId();
 	SendExecutionResult(methodindex, _currentException, retVal, execResult);
 
@@ -1161,6 +1174,9 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	{
 		return ExecutionError::InvalidArguments;
 	}
+
+	SetMemoryExecutionMode(true);
+
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, methodToken, method->MaxExecutionStack()));
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
@@ -3108,6 +3124,11 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 
 void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
+	if (_staticVectorMemorySize == 0)
+	{
+		throw ClrException("Cannot initialize static field vector.", SystemException::ExecutionEngine, token);
+	}
+
 	if (_statics.contains(token))
 	{
 		_statics.at(token) = value;

@@ -244,7 +244,7 @@ class FirmataIlExecutor: public FirmataFeature
     void handleCapability(byte pin) override;
 
 	boolean handleSysex(byte command, byte argc, byte* argv) override;
-    void reset() override;
+	void reset() override;
 	void report(bool elapsed) override;
 
 	void Init();
@@ -284,6 +284,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
 	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd, uint32_t arg1, uint32_t arg2);
+	ExecutionError LoadGlobalMetadata(uint32_t staticVectorMemorySize);
 
 	int ReverseSearchSpecialTypeList(int32_t genericToken, bool tokenListContainsTypes, void* tokenList);
 	int ReverseSearchSpecialTypeList(int mainToken, void* tokenList, bool tokenListContainsTypes, const int* searchList);
@@ -375,6 +376,8 @@ class FirmataIlExecutor: public FirmataFeature
 	stdSimple::map<uint32_t, Variable> _statics;
 
 	VariableList _largeStatics;
+
+	uint32_t _staticVectorMemorySize;
 
 	// Constant data fields (such as array initializers). Does not include the string heap
 	SortedConstantList _constants;

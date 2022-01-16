@@ -22,7 +22,7 @@ enum class ExecutorCommand
     SetConstantMemorySize = 16,
     SpecialTokenList = 17,
     ExceptionClauses = 18,
-    ArrayOperations = 19,
+    GlobalMetadata = 19,
     QueryHardware = 20,
     ConditionalBreakpointHit = 30,
     BreakpointHit = 31,
