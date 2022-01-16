@@ -156,6 +156,7 @@ enum class NativeMethod
     StringCompareTo = 10,
     StringCtorCharArray = 9,
     StringCtorCharCount = 8,
+    StringCtorCharPtr = 19,
     StringCtorSpan = 7,
     StringEquals = 11,
     StringEqualsStatic = 18,
@@ -268,6 +269,7 @@ enum class NativeMethod
 16 (0x10) -> StringGetElem
 17 (0x11) -> StringGetPinnableReference
 18 (0x12) -> StringEqualsStatic
+19 (0x13) -> StringCtorCharPtr
 20 (0x14) -> StringUnEqualsStatic
 21 (0x15) -> StringFastAllocateString
 22 (0x16) -> StringInternalAllocateString

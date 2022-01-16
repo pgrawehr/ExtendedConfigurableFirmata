@@ -21,6 +21,7 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 	int collected = Collect(0, referenceContainer);
 	ASSERT(collected > 90);
 	ValidateBlocks();
+	Clear(false);
 }
 
 
@@ -215,9 +216,12 @@ void GarbageCollector::PrintStatistics()
 	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), 8, _currentMemoryUsage, _maxMemoryUsage);
 }
 
-void GarbageCollector::Clear()
+void GarbageCollector::Clear(bool printStatistics)
 {
-	PrintStatistics();
+	if (_totalAllocations > 0 && printStatistics)
+	{
+		PrintStatistics();
+	}
 
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
 	{

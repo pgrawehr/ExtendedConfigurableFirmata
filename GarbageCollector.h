@@ -8,8 +8,13 @@
 
 class FirmataIlExecutor;
 
-/* This must be smaller than 32k, because we use only 2 bytes for the next pointer */
+/* This must be smaller than 32k, because we use only 2 bytes for the next pointer and need one bit for free/in use */
+#ifdef ARDUINO_DUE
 const uint32_t DEFAULT_GC_BLOCK_SIZE = 8192;
+#else
+const uint32_t DEFAULT_GC_BLOCK_SIZE = 32 * 1024;
+#endif
+
 const byte BLOCK_MARKER = 0xf7;
 
 enum class BlockFlags : byte
@@ -96,7 +101,7 @@ public:
 	void MarkDependentHandles(FirmataIlExecutor* referenceContainer);
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
 
-	void Clear();
+	void Clear(bool printStatistics);
 
 	void PrintStatistics();
 

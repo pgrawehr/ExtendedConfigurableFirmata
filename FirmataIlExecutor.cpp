@@ -477,7 +477,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				int* specialTokenListPtr = CopySpecialTokenListToFlash();
 				_startupToken = DecodePackedUint32(argv + 2 + 10);
 				_startupFlags = DecodePackedUint32(argv + 2 + 15);
-					
+
 				_classes.ValidateListOrder();
 				_methods.ValidateListOrder();
 				_constants.ValidateListOrder();
@@ -2412,6 +2412,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		break;
 	}
 	case NativeMethod::StringCtorSpan:
+	case NativeMethod::StringCtorCharPtr:
 	case NativeMethod::StringCtorCharArray:
 		{
 			// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
@@ -3061,7 +3062,26 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 			ret.Type = handle->Type & ~VariableKind::StaticMember;
 			ret.setSize(handle->fieldSize());
 			ret.Int64 = 0;
+
+			auto entry = _constants.BinarySearchKey(token);
+			if (entry != nullptr)
+			{
+				// This static field has a non-zero default value.
+				if (ret.fieldSize() == 4)
+				{
+					ret.Int32 = entry->DataStart;
+				}
+				else if (ret.fieldSize() == 8)
+				{
+					memcpy(&ret.Int64, &entry->DataStart, 8);
+				}
+				else
+				{
+					throw ClrException(SystemException::FieldAccess, token);
+				}
+			}
 			void* addr;
+
 			if (ret.fieldSize() > 8)
 			{
 				addr = &_largeStatics.insert(token, ret).Int32;
@@ -5944,6 +5964,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
 							}
 						}
+						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharPtr)
+						{
+							// The ctor MiniString(char* value, int startIndex, int length) was called
+							int length = stack->top().Int32;
+							int startIndex = stack->nth(1).Int32;
+							uint16_t* value = (uint16_t*)stack->nth(2).Object;
+							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							*AddBytes((int*)newObjInstance, 4) = length;
+							for (int i = 0; i < length; i++)
+							{
+								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
+							}
+						}
 						else
 						{
 							throw ClrException("Unsupported string ctor called", SystemException::MissingMethod, newMethod->methodToken);
@@ -7624,7 +7657,7 @@ void FirmataIlExecutor::reset()
 	_specialTypeListRamLength = 0;
 	freeEx(_specialTypeListRam);
 
-	_gc.Clear();
+	_gc.Clear(true);
 	_weakDependencies.clear(true);
 	
 	Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), 4, freeMemory());

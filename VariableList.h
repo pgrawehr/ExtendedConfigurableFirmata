@@ -123,7 +123,7 @@ public:
 
 	Variable& insertOrUpdate(int token, Variable& entry)
 	{
-		VariableListEntry* current = _first;;
+		VariableListEntry* current = _first;
 		while (current != nullptr)
 		{
 			if (current->Token == token)
