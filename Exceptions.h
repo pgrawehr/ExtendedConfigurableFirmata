@@ -1,7 +1,7 @@
 // Exceptions.h
 #pragma once
 
-enum class SystemException;
+enum class SystemException : byte;
 
 namespace stdSimple
 {
