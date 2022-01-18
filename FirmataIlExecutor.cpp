@@ -2971,12 +2971,70 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 	throw ClrException(SystemException::FieldAccess, token);
 }
 
+void FirmataIlExecutor::InitStaticVector()
+{
+	if (_staticVectorMemorySize == 0 || _staticVector != nullptr)
+	{
+		return;
+	}
+
+	_staticVector = (byte*)mallocEx(_staticVectorMemorySize);
+	if (_staticVector == nullptr)
+	{
+		OutOfMemoryException::Throw("Not enough memory to allocate root vector for statics");
+	}
+
+	byte* currentPtr = _staticVector;
+	for (auto iterator = _classes.GetIterator(); iterator.Next();)
+	{
+		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
+		int idx = 0;
+		ClassDeclaration* current = iterator.Current();
+		if (current->IsEnum())
+		{
+			continue;
+		}
+		for (auto field = current->GetFieldByIndex(idx); field != nullptr; field = current->GetFieldByIndex(++idx))
+		{
+			if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
+			{
+				continue;
+			}
+			auto initValue = _constants.BinarySearchKey(field->Int32);
+			if (initValue != nullptr && initValue->Length > 8)
+			{
+				// This is a const field of a PrivateImplementationDetails class, and a large one. Don't duplicate these.
+				continue;
+			}
+			int* token = (int*)currentPtr;
+			*token = field->Int32;
+			Variable* var = AddBytes((Variable*)currentPtr, 4);
+			var->Type = field->Type & ~VariableKind::StaticMember;
+			size_t sizeToUse = MAX(field->fieldSize(), 4);
+			var->Marker = VARIABLE_DEFAULT_MARKER;
+			var->setSize(sizeToUse);
+			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), 8, field->Int32, sizeToUse, currentPtr - _staticVector);
+
+			memset(&var->Int32, 0, field->fieldSize());
+			// Reference types are not initialized directly in metadata, I think (but always use an explicit load call)
+			if (initValue != nullptr)
+			{
+				memcpy(&var->Int64, &initValue->DataStart, sizeToUse);
+			}
+			currentPtr = AddBytes(currentPtr, 4 + 4 + sizeToUse);
+			ASSERT(currentPtr <= _staticVector + _staticVectorMemorySize);
+		}
+	}
+}
+
 /// <summary>
 /// Load a value from a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
 Variable& FirmataIlExecutor::Ldsfld(int token)
 {
+	InitStaticVector();
+
 	if (_statics.contains(token))
 	{
 		return _statics.at(token);
@@ -3034,6 +3092,7 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 Variable FirmataIlExecutor::Ldsflda(int token)
 {
 	Variable ret;
+	InitStaticVector();
 	if (_statics.contains(token))
 	{
 		Variable& temp = _statics.at(token);
@@ -3124,11 +3183,8 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 
 void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
-	if (_staticVectorMemorySize == 0)
-	{
-		throw ClrException("Cannot initialize static field vector.", SystemException::ExecutionEngine, token);
-	}
-
+	InitStaticVector();
+	
 	if (_statics.contains(token))
 	{
 		_statics.at(token) = value;
@@ -7674,6 +7730,8 @@ void FirmataIlExecutor::reset()
 	_currentException.ExceptionObject.Type = VariableKind::Void;
 	_currentException.TokenOfException = 0;
 	_currentException.ExceptionType = SystemException::None;
+
+	freeEx(_staticVector);
 	
 	_specialTypeListRamLength = 0;
 	freeEx(_specialTypeListRam);

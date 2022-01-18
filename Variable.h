@@ -21,6 +21,7 @@ inline VariableKind operator ~(VariableKind a)
 	return (VariableKind)(~(int)a);
 }
 
+#pragma pack (push, 1)
 struct Variable
 {
 public:
@@ -108,7 +109,8 @@ private:
 public:
 	uint16_t fieldSize() const
 	{
-		if (Type == VariableKind::Object || Type == VariableKind::AddressOfVariable || Type == VariableKind::ReferenceArray || Type == VariableKind::ValueArray)
+		VariableKind t = Type & ~VariableKind::StaticMember;
+		if (t == VariableKind::Object || t == VariableKind::AddressOfVariable || t == VariableKind::ReferenceArray || t == VariableKind::ValueArray)
 		{
 			return sizeof(void*);
 		}
@@ -117,7 +119,7 @@ public:
 			return _size;
 		}
 		// 64 bit types have bit 4 set
-		if (((int)Type & 16) != 0)
+		if (((int)t & 16) != 0)
 		{
 			return 8;
 		}
@@ -196,6 +198,7 @@ public:
 	}
 };
 
+#pragma pack (pop)
 
 //==================================================================
 // Semantics: if val can be represented as the exact same value

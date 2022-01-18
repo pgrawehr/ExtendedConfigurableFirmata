@@ -359,6 +359,8 @@ class FirmataIlExecutor: public FirmataFeature
 	void* CopyStringsToFlash();
 	int* CopySpecialTokenListToFlash();
 
+	void InitStaticVector();
+
 	GarbageCollector _gc;
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
@@ -378,6 +380,7 @@ class FirmataIlExecutor: public FirmataFeature
 	VariableList _largeStatics;
 
 	uint32_t _staticVectorMemorySize;
+	byte* _staticVector;
 
 	// Constant data fields (such as array initializers). Does not include the string heap
 	SortedConstantList _constants;
