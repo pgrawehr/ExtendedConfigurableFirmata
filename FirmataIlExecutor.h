@@ -292,7 +292,8 @@ class FirmataIlExecutor: public FirmataFeature
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
 	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
 
-	Variable& Ldsfld(int token);
+	byte* Ldsfld(int token, VariableDescription& description);
+	Variable* FindStaticField(int32_t token) const;
 	Variable Ldsflda(int token);
     void Stsfld(int token, Variable& value);
     void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);

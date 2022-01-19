@@ -368,6 +368,18 @@ void GarbageCollector::MarkDependentHandles(FirmataIlExecutor* referenceContaine
 
 void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 {
+	size_t offset = 0;
+	byte* start = referenceContainer->_staticVector;
+	while (offset < referenceContainer->_staticVectorMemorySize)
+	{
+		int currentToken = *AddBytes((int*)start, offset);
+		Variable* ptr = (Variable*)AddBytes(start, offset + sizeof(int32_t));
+		
+		MarkVariable(*ptr, referenceContainer);
+
+		offset += sizeof(int32_t) + 4 + ptr->fieldSize();
+	}
+
 	auto& values = referenceContainer->_statics.values();
 
 	for (size_t i = 0; i < values.size(); i++)

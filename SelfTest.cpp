@@ -103,6 +103,13 @@ void SelfTest::ValidateMemoryManager()
 	Firmata.sendStringf(F("Total memory available after init: %dkb"), 4, totalAllocsSucceeded);
 	
 	ASSERT(totalAllocsSucceeded >= 82, "Not enough free memory after init");
+
+	// Validate this variable has the correct size
+	ASSERT(sizeof(Variable) == 12, "Size of Variable type is not correct. Ensure the compiler uses 1-byte struct packing");
+	Variable temp;
+	byte* startAddr = (byte*) &temp;
+	byte* dataAddr = (byte*)&temp.Int32;
+	ASSERT(dataAddr - startAddr == 4, "Size of Variable type is not correct. Ensure the compiler uses 1-byte struct packing");
 }
 
 void SelfTest::ValidateExecutionStack()

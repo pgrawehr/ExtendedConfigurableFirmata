@@ -3012,7 +3012,7 @@ void FirmataIlExecutor::InitStaticVector()
 			var->Type = field->Type & ~VariableKind::StaticMember;
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
-			var->setSize(sizeToUse);
+			var->setSize((uint16_t)sizeToUse);
 			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), 8, field->Int32, sizeToUse, currentPtr - _staticVector);
 
 			memset(&var->Int32, 0, field->fieldSize());
@@ -3031,10 +3031,20 @@ void FirmataIlExecutor::InitStaticVector()
 /// Load a value from a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
-Variable& FirmataIlExecutor::Ldsfld(int token)
+///	<param name="description">Filled with the field description when returning</param>
+///	<returns>A pointer to the data of the field</returns>
+byte* FirmataIlExecutor::Ldsfld(int token, VariableDescription& description)
 {
 	InitStaticVector();
 
+	Variable* ptr = FindStaticField(token);
+
+	description.Marker = VARIABLE_DEFAULT_MARKER;
+	description.Size = ptr->fieldSize();
+	description.Type = ptr->Type & ~VariableKind::StaticMember;
+	return (byte*)&ptr->Int32;
+
+	/*
 	if (_statics.contains(token))
 	{
 		return _statics.at(token);
@@ -3082,9 +3092,26 @@ Variable& FirmataIlExecutor::Ldsfld(int token)
 	}
 	
 	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
+	*/
 }
 
+Variable* FirmataIlExecutor::FindStaticField(int32_t token) const
+{
+	size_t offset = 0;
+	while (offset < _staticVectorMemorySize)
+	{
+		int currentToken = *AddBytes((int*)_staticVector, offset);
+		Variable* ptr = (Variable*)AddBytes(_staticVector, offset + sizeof(int32_t));
+		if (token == currentToken)
+		{
+			return ptr;
+		}
 
+		offset += sizeof(int32_t) + 4 + ptr->fieldSize();
+	}
+
+	throw ClrException(SystemException::FieldAccess, token);
+}
 /// <summary>
 /// Load a value address of a static field
 /// </summary>
@@ -3093,12 +3120,30 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 {
 	Variable ret;
 	InitStaticVector();
+
+	ret.Type = VariableKind::AddressOfVariable;
+	ret.Marker = VARIABLE_DEFAULT_MARKER;
+	ret.setSize(4);
+
+	auto entry1 = _constants.BinarySearchKey(token);
+
+	if (entry1 != nullptr)
+	{
+		// This static field has a non-zero default value.
+		// Just return the address within the constant vector. The compiler
+		// should never try to write to these fields.
+		ret.Object = &entry1->DataStart;
+		return ret;
+	}
+
+	Variable* staticVar = FindStaticField(token);
+	ret.Object = &staticVar->Int32;
+	return ret;
+
+	/*
 	if (_statics.contains(token))
 	{
 		Variable& temp = _statics.at(token);
-		ret.Type = VariableKind::AddressOfVariable;
-		ret.Marker = VARIABLE_DEFAULT_MARKER;
-		ret.setSize(4);
 		ret.Object = &temp.Int32;
 		return ret;
 	}
@@ -3106,9 +3151,6 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	if (_largeStatics.contains(token))
 	{
 		Variable& temp = _largeStatics.at(token);
-		ret.Type = VariableKind::AddressOfVariable;
-		ret.Marker = VARIABLE_DEFAULT_MARKER;
-		ret.setSize(4);
 		ret.Object = &temp.Int32;
 		return ret;
 	}
@@ -3139,25 +3181,16 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 			ret.Int64 = 0;
 
 			auto entry = _constants.BinarySearchKey(token);
+			void* addr;
+
 			if (entry != nullptr)
 			{
 				// This static field has a non-zero default value.
-				if (ret.fieldSize() == 4)
-				{
-					ret.Int32 = entry->DataStart;
-				}
-				else if (ret.fieldSize() == 8)
-				{
-					memcpy(&ret.Int64, &entry->DataStart, 8);
-				}
-				else
-				{
-					throw ClrException(SystemException::FieldAccess, token);
-				}
+				// Just return the address within the constant vector. The compiler
+				// should never try to write to these fields.
+				addr = &entry->DataStart;
 			}
-			void* addr;
-
-			if (ret.fieldSize() > 8)
+			else if (handle->fieldSize() > 8)
 			{
 				addr = &_largeStatics.insert(token, ret).Int32;
 			}
@@ -3178,13 +3211,19 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	}
 
 	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
+	*/
 }
 
 
 void FirmataIlExecutor::Stsfld(int token, Variable& value)
 {
 	InitStaticVector();
-	
+
+	Variable* ptr = FindStaticField(token);
+	ASSERT(value.fieldSize() <= ptr->fieldSize());
+	memcpy_s(&ptr->Int32, ptr->fieldSize(), &value.Int32, ptr->fieldSize());
+
+	/*
 	if (_statics.contains(token))
 	{
 		_statics.at(token) = value;
@@ -3198,6 +3237,7 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 	}
 
 	_statics.insert(token, value);
+	*/
 }
 
 /// <summary>
@@ -5778,9 +5818,21 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						Stsfld(token, stack->top());
 						stack->pop();
 						break;
-					case CEE_LDSFLD:
-						stack->push(Ldsfld(token));
-						break;
+		            case CEE_LDSFLD:
+					{
+						VariableDescription desc;
+						byte* dataPtr = Ldsfld(token, desc);
+
+						// Combine the variable again with its metadata, so we can put it back to the stack
+						EnsureStackVarSize(desc.fieldSize());
+						tempVariable->setSize(desc.Size);
+						tempVariable->Marker = 0x37;
+						tempVariable->Type = desc.Type;
+						memcpy(&(tempVariable->Int32), dataPtr, desc.Size);
+						SignExtend(*tempVariable, desc.Size);
+						stack->push(*tempVariable);
+					}
+					break;
 					case CEE_LDFLDA:
 					// This one is tricky, because it can load both instance and static fields
 					{
