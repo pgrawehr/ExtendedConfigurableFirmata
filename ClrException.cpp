@@ -35,6 +35,7 @@ void* ClrException::ExceptionObject(FirmataIlExecutor* executor)
 	else
 	{
 		char buf[256];
+		Firmata.sendString(STRING_DATA, msg);
 		snprintf(buf, 256, "Unspecified error near token 0x%x", _tokenCausingException);
 		Variable ex = executor->GetExceptionObjectFromToken(_exceptionType, buf);
 		return ex.Object;

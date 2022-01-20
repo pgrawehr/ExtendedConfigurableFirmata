@@ -379,22 +379,6 @@ void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 
 		offset += sizeof(int32_t) + 4 + ptr->fieldSize();
 	}
-
-	auto& values = referenceContainer->_statics.values();
-
-	for (size_t i = 0; i < values.size(); i++)
-	{
-		Variable& var = values.at(i);
-		MarkVariable(var, referenceContainer);
-	}
-
-	VariableListEntry* e = referenceContainer->_largeStatics.first();
-	while (e != nullptr)
-	{
-		Variable& ref = e->Data;
-		MarkVariable(ref, referenceContainer);
-		e = referenceContainer->_largeStatics.next(e);
-	}
 }
 
 void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)

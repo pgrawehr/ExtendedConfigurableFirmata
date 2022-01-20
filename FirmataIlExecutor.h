@@ -375,11 +375,6 @@ class FirmataIlExecutor: public FirmataFeature
 	SortedMethodList _methods;
 	SortedClauseList _clauses;
 
-	// The list of static variables (global)
-	stdSimple::map<uint32_t, Variable> _statics;
-
-	VariableList _largeStatics;
-
 	uint32_t _staticVectorMemorySize;
 	byte* _staticVector;
 

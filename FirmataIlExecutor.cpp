@@ -3043,56 +3043,6 @@ byte* FirmataIlExecutor::Ldsfld(int token, VariableDescription& description)
 	description.Size = ptr->fieldSize();
 	description.Type = ptr->Type & ~VariableKind::StaticMember;
 	return (byte*)&ptr->Int32;
-
-	/*
-	if (_statics.contains(token))
-	{
-		return _statics.at(token);
-	}
-
-	if (_largeStatics.contains(token))
-	{
-		return _largeStatics.at(token);
-	}
-	// We get here if reading an uninitialized static field
-
-	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
-	// Create an instance of the value type with the default zero value but the correct type
-	ClassDeclaration* cls = ResolveClassFromFieldToken(token);
-
-	vector<Variable*> allfields;
-	CollectFields(cls, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
-	{
-		Variable* handle = (*handle1);
-		// Only static members checked
-		if ((handle->Type & VariableKind::StaticMember) == VariableKind::Void)
-		{
-			continue;
-		}
-		if (handle->Int32 == token)
-		{
-			// Found the member, create an empty variable
-			Variable ret;
-			ret.Marker = VARIABLE_DEFAULT_MARKER;
-			ret.Type = handle->Type & ~VariableKind::StaticMember;
-			ret.setSize(handle->fieldSize());
-			if (ret.fieldSize() > 8)
-			{
-				Variable& data = _largeStatics.insert(token, ret);
-				return data;
-			}
-			ret.Int64 = 0;
-			
-			_statics.insert(token, ret);
-			// Need to re-get the reference(!) as the above insert does a copy
-			// TODO: the above insert could directly return the reference
-			return _statics.at(token);
-		}
-	}
-	
-	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
-	*/
 }
 
 Variable* FirmataIlExecutor::FindStaticField(int32_t token) const
@@ -3112,6 +3062,7 @@ Variable* FirmataIlExecutor::FindStaticField(int32_t token) const
 
 	throw ClrException(SystemException::FieldAccess, token);
 }
+
 /// <summary>
 /// Load a value address of a static field
 /// </summary>
@@ -3139,79 +3090,6 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	Variable* staticVar = FindStaticField(token);
 	ret.Object = &staticVar->Int32;
 	return ret;
-
-	/*
-	if (_statics.contains(token))
-	{
-		Variable& temp = _statics.at(token);
-		ret.Object = &temp.Int32;
-		return ret;
-	}
-
-	if (_largeStatics.contains(token))
-	{
-		Variable& temp = _largeStatics.at(token);
-		ret.Object = &temp.Int32;
-		return ret;
-	}
-
-	// We get here if reading an uninitialized static field
-
-	// Loads from uninitialized static fields sometimes happen if the initialization sequence is bugprone.
-	// Create an instance of the value type with the default zero value but the correct type
-
-	ClassDeclaration* cls = ResolveClassFromFieldToken(token);
-
-	vector<Variable*> allfields;
-	CollectFields(cls, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
-	{
-		Variable* handle = (*handle1);
-		// Only static members checked
-		if ((handle->Type & VariableKind::StaticMember) == VariableKind::Void)
-		{
-			continue;
-		}
-		if (handle->Int32 == token)
-		{
-			// Found the member
-			ret.Marker = VARIABLE_DEFAULT_MARKER;
-			ret.Type = handle->Type & ~VariableKind::StaticMember;
-			ret.setSize(handle->fieldSize());
-			ret.Int64 = 0;
-
-			auto entry = _constants.BinarySearchKey(token);
-			void* addr;
-
-			if (entry != nullptr)
-			{
-				// This static field has a non-zero default value.
-				// Just return the address within the constant vector. The compiler
-				// should never try to write to these fields.
-				addr = &entry->DataStart;
-			}
-			else if (handle->fieldSize() > 8)
-			{
-				addr = &_largeStatics.insert(token, ret).Int32;
-			}
-			else
-			{
-				_statics.insert(token, ret);
-
-				// Get the final address on the static heap (ret above is copied on insert)
-				addr = &_statics.at(token).Int32;
-			}
-			
-			ret.Marker = VARIABLE_DEFAULT_MARKER;
-			ret.setSize(4);
-			ret.Type = VariableKind::AddressOfVariable;
-			ret.Object = addr;
-			return ret;
-		}
-	}
-
-	throw ClrException("Could not resolve field token ", SystemException::FieldAccess, token);
-	*/
 }
 
 
@@ -3222,22 +3100,6 @@ void FirmataIlExecutor::Stsfld(int token, Variable& value)
 	Variable* ptr = FindStaticField(token);
 	ASSERT(value.fieldSize() <= ptr->fieldSize());
 	memcpy_s(&ptr->Int32, ptr->fieldSize(), &value.Int32, ptr->fieldSize());
-
-	/*
-	if (_statics.contains(token))
-	{
-		_statics.at(token) = value;
-		return;
-	}
-
-	if (value.Type == VariableKind::LargeValueType)
-	{
-		_largeStatics.insertOrUpdate(token, value);
-		return;
-	}
-
-	_statics.insert(token, value);
-	*/
 }
 
 /// <summary>
@@ -7776,9 +7638,7 @@ void FirmataIlExecutor::reset()
 	_classes.clear(false);
 	_constants.clear(false);
 	_clauses.clear(false);
-	_statics.clear(true);
 
-	_largeStatics.clear();
 	_currentException.ExceptionObject.Type = VariableKind::Void;
 	_currentException.TokenOfException = 0;
 	_currentException.ExceptionType = SystemException::None;
