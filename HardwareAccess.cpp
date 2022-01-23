@@ -107,7 +107,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	}
 	case NativeMethod::HardwareLevelAccessWritePin: // Write(int pin, int value)
-			// Firmata.sendStringf(F("Write pin %ld value %ld"), 8, args->Get(1), args->Get(2));
+			// Firmata.sendStringf(F("Write pin %ld value %ld"), args->Get(1), args->Get(2));
 		digitalWrite(args[1].Int32, args[2].Int32 != 0);
 		break;
 	case NativeMethod::HardwareLevelAccessReadPin:

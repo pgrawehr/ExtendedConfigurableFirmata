@@ -44,7 +44,7 @@ void Esp32CliFlashStorage::PrintPartitions()
 	while (iter != nullptr)
 	{
 		const esp_partition_t* partition = esp_partition_get(iter);
-		Firmata.sendStringf(F("%s, app, %d, 0x%x, 0x%x (%d)"), 20, partition->label, partition->subtype, partition->address, partition->size, partition->size);
+		Firmata.sendStringf(F("%s, app, %d, 0x%x, 0x%x (%d)"), partition->label, partition->subtype, partition->address, partition->size, partition->size);
 		iter = esp_partition_next(iter);
 	}
 
@@ -53,13 +53,13 @@ void Esp32CliFlashStorage::PrintPartitions()
 	while (iter != nullptr)
 	{
 		const esp_partition_t* partition = esp_partition_get(iter);
-		Firmata.sendStringf(F("%s, data, %d, 0x%x, 0x%x (%d)"), 20, partition->label, partition->subtype, partition->address, partition->size, partition->size);
+		Firmata.sendStringf(F("%s, data, %d, 0x%x, 0x%x (%d)"), partition->label, partition->subtype, partition->address, partition->size, partition->size);
 		iter = esp_partition_next(iter);
 	}
 
 	esp_partition_iterator_release(iter);
 
-	Firmata.sendStringf(F("Data partition of size %d mapped to memory address 0x%x"), 8, partition->size, mappedBaseAddress);
+	Firmata.sendStringf(F("Data partition of size %d mapped to memory address 0x%x"), partition->size, mappedBaseAddress);
 }
 
 byte* Esp32CliFlashStorage::readAddress(uint32_t address)
@@ -83,7 +83,7 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 	esp_err_t errNo = esp_partition_write(partition, address, data, dataLength);
 	if (errNo != 0)
 	{
-		Firmata.sendStringf(F("Error: Could not write flash: %d"), 4, errNo);
+		Firmata.sendStringf(F("Error: Could not write flash: %d"), errNo);
 		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
 	}
 
@@ -91,7 +91,7 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 	int result = memcmp(data, physicalAddress, dataLength);
 	if (result != 0)
 	{
-		Firmata.sendStringf(F("Error: Data at address 0x%x not written correctly"), 4, physicalAddress);
+		Firmata.sendStringf(F("Error: Data at address 0x%x not written correctly"), physicalAddress);
 		return false;
 	}
 	
@@ -103,7 +103,7 @@ void Esp32CliFlashStorage::eraseBlock(uint32_t address, uint32_t length)
 	esp_err_t errNo = esp_partition_erase_range(partition, address, length);
 	if (errNo != 0)
 	{
-		Firmata.sendStringf(F("Error: Could not erase flash: %d"), 4, errNo);
+		Firmata.sendStringf(F("Error: Could not erase flash: %d"), errNo);
 		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error erasing flash");
 	}
 }

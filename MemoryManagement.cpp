@@ -61,7 +61,7 @@ void CheckIsLastAndPop(void* ptr)
 {
 	if (_allocs.empty())
 	{
-		Firmata.sendStringf(F("Freeing memory when there's nothing allocated that needs freeing"), 0);
+		Firmata.sendStringf(F("Freeing memory when there's nothing allocated that needs freeing"));
 		return;
 	}
 
@@ -69,7 +69,7 @@ void CheckIsLastAndPop(void* ptr)
 	_allocs.pop();
 	if (ptr != expected)
 	{
-		Firmata.sendStringf(F("The last element allocated was 0x%x but we tried to free 0x%x"), 8, expected, ptr);
+		Firmata.sendStringf(F("The last element allocated was 0x%x but we tried to free 0x%x"), expected, ptr);
 		return;
 	}
 }

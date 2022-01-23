@@ -28,7 +28,7 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 byte* GarbageCollector::Allocate(uint32_t size)
 {
 	byte* ret = nullptr;
-	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), 4, size));
+	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
 	for (size_t i = 0; i < _gcBlocks.size(); i++)
 	{
 		ret = TryAllocateFromBlock(_gcBlocks[i], size);
@@ -59,7 +59,7 @@ byte* GarbageCollector::Allocate(uint32_t size)
 			OutOfMemoryException::Throw("Out of memory increasing GC controlled memory");
 		}
 
-		Firmata.sendStringf(F("Allocated new GC memory block at 0x%lx, size %ld"), 8, newBlockPtr, sizeToAllocate);
+		Firmata.sendStringf(F("Allocated new GC memory block at 0x%lx, size %ld"), newBlockPtr, sizeToAllocate);
 		
 		GcBlock block;
 		block.BlockSize = sizeToAllocate;
@@ -212,8 +212,8 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 
 void GarbageCollector::PrintStatistics()
 {
-	Firmata.sendStringf(F("Total GC memory allocated: %d bytes in %d instances"), 8, _totalAllocSize, _totalAllocations);
-	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), 8, _currentMemoryUsage, _maxMemoryUsage);
+	Firmata.sendStringf(F("Total GC memory allocated: %d bytes in %d instances"), _totalAllocSize, _totalAllocations);
+	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), _currentMemoryUsage, _maxMemoryUsage);
 }
 
 void GarbageCollector::Clear(bool printStatistics)

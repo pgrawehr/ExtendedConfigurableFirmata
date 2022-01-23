@@ -139,7 +139,7 @@ namespace stdSimple
 					T* temp = (T*)reallocEx(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
-						Firmata.sendStringf(F("Bad: No more memory for %d elements"), 4, _size);
+						Firmata.sendStringf(F("Bad: No more memory for %d elements"), _size);
 						OutOfMemoryException::Throw("Out of memory resizing vector");
 						return -1;
 					}
@@ -175,7 +175,7 @@ namespace stdSimple
 					T* temp = (T*)reallocEx(_data, _size * sizeof(T));
 					if (temp == nullptr)
 					{
-						Firmata.sendStringf(F("Extra Bad: No more memory for %d elements"), 4, _size);
+						Firmata.sendStringf(F("Extra Bad: No more memory for %d elements"), _size);
 						OutOfMemoryException::Throw("Out of memory increasing vector size");
 						return;
 					}

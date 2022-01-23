@@ -315,7 +315,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 		// TRACE(Firmata.sendString(F("Handling client command "), (int)subCommand));
 		if (IsExecutingCode() && subCommand != ExecutorCommand::ResetExecutor && subCommand != ExecutorCommand::KillTask && subCommand != ExecutorCommand::DebuggerCommand)
 		{
-			Firmata.sendStringf(F("Execution engine busy. Ignoring command %d."), 4, subCommand);
+			Firmata.sendStringf(F("Execution engine busy. Ignoring command %d."), subCommand);
 			SendAckOrNack(subCommand, sequenceNo, ExecutionError::EngineBusy);
 			return true;
 		}
@@ -937,7 +937,7 @@ void FirmataIlExecutor::report(bool elapsed)
 ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, byte maxStack, byte argCount,
 	NativeMethod nativeMethod)
 {
-	TRACE(Firmata.sendStringf(F("Loading declaration for token %x, Flags 0x%x"), 6, (int)methodToken, (int)flags));
+	TRACE(Firmata.sendStringf(F("Loading declaration for token %x, Flags 0x%x"), (int)methodToken, (int)flags));
 	MethodBody* method = GetMethodByToken(methodToken);
 	if (method != nullptr)
 	{
@@ -957,7 +957,7 @@ ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, 
 	
 	// And attach to the list
 	_methods.Insert(method);
-	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), 6, methodToken, (int)flags));
+	TRACE(Firmata.sendStringf(F("Loaded metadata for token 0x%lx, Flags 0x%x"), methodToken, (int)flags));
 	return ExecutionError::None;
 }
 
@@ -1017,7 +1017,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 
 ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, uint16_t codeLength, uint16_t offset, byte argc, byte* argv)
 {
-	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), 6, codeReference, codeLength, offset));
+	// TRACE(Firmata.sendStringf(F("Going to load IL Data for method %d, total length %d offset %x"), codeReference, codeLength, offset));
 	MethodBody* method = GetMethodByToken(methodToken);
 	if (method == nullptr)
 	{
@@ -1052,7 +1052,7 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, uint16_t cod
 		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
 	}
 
-	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), 4, methodToken, offset));
+	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), methodToken, offset));
 	return ExecutionError::None;
 }
 
@@ -1089,7 +1089,7 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 	// byte 2: Status. See below
 	// byte 3: Number of integer values returned
 	// bytes 4+: Return values
-	// Firmata.sendStringf(F("Task %d is ending."), 4, codeReference);
+	// Firmata.sendStringf(F("Task %d is ending."), codeReference);
 	Firmata.startSysex();
 	Firmata.write(SCHEDULER_DATA);
 	Firmata.write((byte)ExecutorCommand::Reply);
@@ -1151,7 +1151,7 @@ void FirmataIlExecutor::SendExecutionResult(int32_t codeReference, RuntimeExcept
 	if (delta > 2000)
 	{
 		int32_t troughput = _instructionsExecuted / (delta / 1000);
-		Firmata.sendStringf(F("Executed %d instructions in %dms (%d instructions/second)"), 12, _instructionsExecuted, delta, troughput);
+		Firmata.sendStringf(F("Executed %d instructions in %dms (%d instructions/second)"), _instructionsExecuted, delta, troughput);
 	}
 }
 
@@ -1177,7 +1177,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 
 	SetMemoryExecutionMode(true);
 
-	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), 4, methodToken, method->MaxExecutionStack()));
+	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), methodToken, method->MaxExecutionStack()));
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
 	{
@@ -1239,7 +1239,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 
 void FirmataIlExecutor::InvalidOpCode(uint16_t pc, OPCODE opCode)
 {
-	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), 4, opCode, pc);
+	Firmata.sendStringf(F("Invalid/Unsupported opcode 0x%x at method offset 0x%x"), opCode, pc);
 	
 	throw ClrException("Invalid opcode", SystemException::InvalidOpCode, opCode);
 }
@@ -1414,7 +1414,7 @@ char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
 // Executes the given OS function. Note that args[0] is the this pointer for instance methods
 void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
 {
-	TRACE(Firmata.sendStringf(F("Executing special method 0x%x"), 4, (int32_t)method));
+	TRACE(Firmata.sendStringf(F("Executing special method 0x%x"), (int32_t)method));
 	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
 		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
@@ -2888,7 +2888,7 @@ byte* FirmataIlExecutor::Ldfld(Variable& obj, int32_t token, VariableDescription
 		offset += handle->fieldSize();
 	}
 
-	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
+	Firmata.sendStringf(F("Class %lx has no member %lx"), vtable->ClassToken, token);
 	throw ClrException("Token not found in class", SystemException::FieldAccess, token);
 }
 
@@ -2967,7 +2967,7 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 		offset += handle->fieldSize();
 	}
 
-	Firmata.sendStringf(F("Class %lx has no member %lx"), 8, vtable->ClassToken, token);
+	Firmata.sendStringf(F("Class %lx has no member %lx"), vtable->ClassToken, token);
 	throw ClrException(SystemException::FieldAccess, token);
 }
 
@@ -3013,7 +3013,7 @@ void FirmataIlExecutor::InitStaticVector()
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
 			var->setSize((uint16_t)sizeToUse);
-			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), 8, field->Int32, sizeToUse, currentPtr - _staticVector);
+			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), field->Int32, sizeToUse, currentPtr - _staticVector);
 
 			memset(&var->Int32, 0, field->fieldSize());
 			// Reference types are not initialized directly in metadata, I think (but always use an explicit load call)
@@ -3223,7 +3223,7 @@ case VariableKind::Double:\
 	intermediate.Type = VariableKind::Double;\
 	break;\
 default:\
-	Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);\
+	Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);\
 	throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);\
 }
 
@@ -3369,7 +3369,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		Variable messageField = GetField(exceptionType, value1, 0); // Message pointer
 		char* cstr = GetAsUtf8String(messageField);
 		currentFrame->UpdatePc(PC);
-		Firmata.sendStringf(F("Exception thrown at 0x%x in 0x%x: %s"), 12, PC, currentFrame->_executingMethod->methodToken, cstr);
+		Firmata.sendStringf(F("Exception thrown at 0x%x in 0x%x: %s"), PC, currentFrame->_executingMethod->methodToken, cstr);
 		free(cstr);
 		throw CustomClrException(value1, exceptionType->ClassToken);
 	}
@@ -3445,7 +3445,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		if (fail)
@@ -3475,7 +3475,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32); 
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32); 
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken); 
 		}
 		if (fail)
@@ -3510,7 +3510,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		if (fail)
@@ -3540,7 +3540,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		if (fail)
@@ -3574,7 +3574,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		if (fail)
@@ -3604,7 +3604,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			break;
 
 		default:
-			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), 8, value1.Type, value1.Int32);
+			Firmata.sendStringf(F("Comparing value of type %d, Value %d"), value1.Type, value1.Int32);
 			throw ClrException("Unsupported case in binary operation", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
 		if (fail)
@@ -5055,7 +5055,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		uint16_t len;
         OPCODE  instr;
 		
-		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method 0x%lx"), 6, PC, currentMethod->methodToken));
+		TRACE(Firmata.sendStringf(F("PC: 0x%x in Method 0x%lx"), PC, currentMethod->methodToken));
 
     	if (PC == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::SpecialMethod))
 		{
@@ -5266,7 +5266,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 					currentMethod = currentFrame->_executingMethod;
 					pCode = currentMethod->_methodIl;
-					TRACE(Firmata.sendStringf(F("Popped stack back to method 0x%x"), 2, currentMethod->methodToken));
+					TRACE(Firmata.sendStringf(F("Popped stack back to method 0x%x"), currentMethod->methodToken));
 					break;
 				}
 				else if (instr == CEE_READONLY_)
@@ -5842,7 +5842,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 						cls = ((ClassDeclaration*)(*(int*)o));
 					}
 
-					TRACE(Firmata.sendStringf(F("Callvirt on instance of class %lx"), 4, cls->ClassToken));
+					TRACE(Firmata.sendStringf(F("Callvirt on instance of class %lx"), cls->ClassToken));
 
 					if (instance.Type != VariableKind::Object && instance.Type != VariableKind::ValueArray &&
 						instance.Type != VariableKind::ReferenceArray && instance.Type != VariableKind::AddressOfVariable)
@@ -6103,7 +6103,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 
 				target = nullptr;
 				constrainedTypeToken = 0;
-				TRACE(Firmata.sendStringf(F("Pushed stack to method 0x%x"), 2, currentMethod->methodToken));
+				TRACE(Firmata.sendStringf(F("Pushed stack to method 0x%x"), currentMethod->methodToken));
 				break;
             }
 			case InlineType:
@@ -6790,7 +6790,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 	
 	TRACE(startTime = (micros() - startTime) / NUM_INSTRUCTIONS_AT_ONCE);
 	TRACE(Firmata.sendString(F("Interrupting method at 0x"), PC));
-	TRACE(Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), 4, startTime));
+	TRACE(Firmata.sendStringf(F("Average time per IL instruction: %ld microseconds"), startTime));
 
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
@@ -6871,11 +6871,11 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 		{
 			if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Clause)
 			{
-				Firmata.sendStringf(F("Found a catch clause at 0x%x in 0x%x"), 8, bestClause->HandlerOffset, bestClause->GetKey());
+				Firmata.sendStringf(F("Found a catch clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey());
 			}
 			else if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Finally)
 			{
-				Firmata.sendStringf(F("Found a finally clause at 0x%x in 0x%x"), 8, bestClause->HandlerOffset, bestClause->GetKey());
+				Firmata.sendStringf(F("Found a finally clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey());
 			}
 			else
 			{
@@ -7319,7 +7319,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv)
 {
-	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), 10, classToken, parent, dynamicSize));
+	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize));
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
 	ClassDeclarationDynamic* decl;
@@ -7651,5 +7651,5 @@ void FirmataIlExecutor::reset()
 	_gc.Clear(true);
 	_weakDependencies.clear(true);
 	
-	Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), 4, freeMemory());
+	Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), freeMemory());
 }

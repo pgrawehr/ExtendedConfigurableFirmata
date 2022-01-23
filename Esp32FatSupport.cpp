@@ -40,8 +40,8 @@ void Esp32FatSupport::Init()
 	// Make sure the temp directory exists
 	FFat.mkdir("/tmp");
 	
-	Firmata.sendStringf(F("Total space on data partition: %10u\n"), 8, FFat.totalBytes());
-	Firmata.sendStringf(F("Free space on data partition: %10u\n"), 8, FFat.freeBytes());
+	Firmata.sendStringf(F("Total space on data partition: %10u\n"), FFat.totalBytes());
+	Firmata.sendStringf(F("Free space on data partition: %10u\n"), FFat.freeBytes());
 }
 
 bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
@@ -116,7 +116,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 			// This would be a bug in the CLR
 			throw ClrException("Unknown file mode", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
 		}
-		Firmata.sendStringf(F("Opening file %s in mode %s"), 8, path, mode);
+		Firmata.sendStringf(F("Opening file %s in mode %s"), path, mode);
 		File f = FFat.open(path, mode);
 		if (!f)
 		{
@@ -150,7 +150,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 				}
 			}
 		}
-		Firmata.sendStringf(F("Opened file %s at handle %d."), 8, path, result.Int32);
+		Firmata.sendStringf(F("Opened file %s at handle %d."), path, result.Int32);
 		break;
 	}
 	case NativeMethod::Interop_Kernel32WriteFile:
@@ -189,7 +189,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 			}
 		int index = handle - 1;
 		
-		Firmata.sendStringf(F("Writing %d bytes to handle %d"), 8, len, args[0].Int32);
+		Firmata.sendStringf(F("Writing %d bytes to handle %d"), len, args[0].Int32);
 		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
@@ -206,7 +206,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		int index = args[0].Int32 - 1;
 		char* buffer = (char*)args[1].Object;
 		int len = args[2].Int32;
-		Firmata.sendStringf(F("Reading %d bytes from handle %d"), 8, len, args[0].Int32);
+		Firmata.sendStringf(F("Reading %d bytes from handle %d"), len, args[0].Int32);
 		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
@@ -216,14 +216,14 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 
 		executor->SetLastError(0);
 		result.Int32 = fileHandles[index].readBytes(buffer, len);
-		Firmata.sendStringf(F("Successfuly read %d bytes"), 4, result.Int32);
+		Firmata.sendStringf(F("Successfuly read %d bytes"), result.Int32);
 		break;
 	}
 	case NativeMethod::Interop_Kernel32CloseHandle:
 	{
 		result.Type = VariableKind::Boolean;
 		int index = args[0].Int32 - 1;
-		Firmata.sendStringf(F("Closing handle %d"), 4, args[0].Int32);
+		Firmata.sendStringf(F("Closing handle %d"), args[0].Int32);
 		if (index < 0 || index >= (int)fileHandles.size())
 		{
 			executor->SetLastError(6); // Invalid handle
