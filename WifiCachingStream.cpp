@@ -4,86 +4,152 @@
 
 #include <ConfigurableFirmata.h>
 #include "WifiCachingStream.h"
+
+#include <sys/poll.h>
 #ifdef ESP32
+#include "ftp.h"
+
 void WifiCachingStream::Init()
 {
 	// Also initializes other background processes
 	// ESP_ERROR_CHECK(esp_event_loop_create_default());
-	_server.begin();
+	if (!ftp_create_listening_socket(&_sd, _port, 1))
+	{
+		Firmata.sendStringf(F("Error opening listening socket."));
+	}
 }
 
 bool WifiCachingStream::Connect()
 {
-	if (_activeClient.connected())
+	if (_connection_sd >= 0)
 	{
 		return true;
 	}
 
-	_activeClient.stop();
-	_activeClient = _server.accept();
+	if (_sd < 0)
+	{
+		return false;
+	}
 
-	if (_activeClient)
+	auto result = ftp_wait_for_connection(_sd, &_connection_sd, nullptr, true);
+	if (result != E_FTP_RESULT_OK)
+	{
+		_connection_sd = -1;
+		return false;
+	}
+
+	if (_connection_sd >= 0)
 	{
 		Serial.println("New client connected");
 		WiFi.setSleep(false);
-		_hasActiveClient = true;
 		return true;
 	}
-
-	if (_hasActiveClient)
+	else
 	{
-		_hasActiveClient = false;
 		Serial.println("Client disconnected - entering WiFi low-power mode");
 		// Low-power mode significantly increases round-trip time, but when nobody
 		// is connected, that's ok.
-		WiFi.setSleep(true);
+		// WiFi.setSleep(true);
 		Firmata.resetParser(); // clear any partial message from the parser when the connection is dropped.
+
+		return false;
 	}
-	
-	return false;
 }
 
 int WifiCachingStream::read()
 {
-	if (!Connect() || _activeClient.available() <= 0)
+	if (_connection_sd < 0)
 	{
 		return -1;
 	}
-	return _activeClient.read();
+
+	char data;
+	int received = 0;
+	auto result = ftp_recv_non_blocking(_connection_sd, &data, 1, &received);
+	if (received == 1)
+	{
+		return data;
+	}
+	if (result == E_FTP_RESULT_FAILED)
+	{
+		ftp_close_socket(&_connection_sd);
+		Firmata.sendStringf(F("Connection dropped"));
+	}
+
+	return -1;
 }
+
+int WifiCachingStream::available()
+{
+	if (_connection_sd < 0)
+	{
+		return -1;
+	}
+
+	return ftp_poll(&_connection_sd);
+}
+
+int WifiCachingStream::peek()
+{
+	return -1;
+}
+
+void WifiCachingStream::flush()
+{
+	// probably nothing to do
+}
+
+
 
 size_t WifiCachingStream::readBytes(char* buffer, size_t length)
 {
-	if (!Connect() || _activeClient.available() <= 0)
+	int received = 0;
+	auto result = ftp_recv_non_blocking(_connection_sd, buffer, 1, &received);
+	if (received == 1)
 	{
-		return -1;
+		return received;
 	}
-	return _activeClient.readBytes(buffer, length);
+	if (result == E_FTP_RESULT_FAILED)
+	{
+		ftp_close_socket(&_connection_sd);
+		Firmata.sendStringf(F("Connection dropped"));
+	}
+
+	return -1;
 }
 
 size_t WifiCachingStream::write(byte b)
 {
-	if (!Connect())
+	if (b == START_SYSEX)
 	{
-		return 0;
+		_inSysex = true;
+	}
+	else if (b == END_SYSEX)
+	{
+		_inSysex = false;
 	}
 
-	return _activeClient.write(b);
+	_sendBuffer[_sendBufferIndex] = b;
+	_sendBufferIndex++;
+	// Send when the buffer is full or we're not in a sysex message or at the end of it.
+	if (_sendBufferIndex >= SendBufferSize || _inSysex == false)
+	{
+		int ret = ftp_send(_connection_sd, _sendBuffer, _sendBufferIndex);
+		_sendBufferIndex = 0;
+		return ret >= 1;
+	}
+	return 1;
 }
+
+size_t WifiCachingStream::write(const uint8_t* buffer, size_t size)
+{
+	return ftp_send(_connection_sd, buffer, size);
+}
+
 
 void WifiCachingStream::maintain()
 {
 	Connect();
-	auto newClient = _server.accept();
-	if (newClient.connected() && newClient.fd() != _activeClient.fd())
-	{
-		// We have a new client. For now, we drop the old an accept the new, because the old one might be a dead connection.
-		// Allowing multiple connections would also be an option, but that would need to be considered separately
-		Serial.println("New incoming connection - dropping existing");
-		_activeClient.stop();
-		_activeClient = newClient;
-	}
-	yield();
 }
 
 #endif

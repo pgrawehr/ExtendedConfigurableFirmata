@@ -8,19 +8,27 @@
 #include <WiFi.h>
 /// <summary>
 /// A stream to read data from a TCP connection (server side).
-/// The "caching" part is not implemented yet.
 /// </summary>
 class WifiCachingStream : public Stream
 {
 private:
-	WiFiServer _server;
-	WiFiClient _activeClient;
-	bool _hasActiveClient;
+	static constexpr int SendBufferSize = 500;
+	int _sd;
+	int _port;
+
+	int _connection_sd;
+
+	byte _sendBuffer[SendBufferSize];
+	int _sendBufferIndex;
+	bool _inSysex;
 public:
-	WifiCachingStream(int port) :
-	_server(port), _activeClient()
+	WifiCachingStream(int port)
 	{
-		_hasActiveClient = false;
+		_sd = -1;
+		_port = port;
+		_connection_sd = -1;
+		_sendBufferIndex = 0;
+		_inSysex = false;
 	}
 
 	void Init();
@@ -33,27 +41,19 @@ public:
 
 	size_t write(byte b) override;
 
+	size_t write(const uint8_t* buffer, size_t size) override;
+
 	void maintain();
 
-	int available() override
-	{
-		return _activeClient.available();
-	}
+	int available() override;
 
-	int peek() override
-	{
-		return _activeClient.peek();
-	}
+	int peek() override;
 
-	void flush() override
-	{
-		// Do nothing. The implementation of WifiClient clears the _INPUT_ queue instead of the output queue!
-		// _activeClient.flush();
-	}
+	void flush() override;
 
 	bool isConnected() const
 	{
-		return _hasActiveClient;
+		return _connection_sd > 0;
 	}
 };
 #endif
