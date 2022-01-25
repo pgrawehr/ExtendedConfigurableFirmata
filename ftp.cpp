@@ -471,8 +471,8 @@ ftp_result_t ftp_wait_for_connection(int32_t listeningSocket, int32_t* connectio
 	fcntl(_sd, F_SETFL, option);
 	// This sends all data immediately, which sligly reduces round trip time, but is not the general solution,
 	// because to many packets with 1 byte get transmitted (the way we do our sending)
-	int flag = 1;
-	setsockopt(_sd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+	// int flag = 1;
+	// setsockopt(_sd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 
 	// client connected, so go on
 	return E_FTP_RESULT_OK;
@@ -490,7 +490,14 @@ ftp_result_t ftp_send(int32_t socket, byte b, bool isLast)
 
 ftp_result_t ftp_send(int32_t socket, const byte* data, size_t length)
 {
-	return (ftp_result_t)send(socket, data, length, 0);
+	int start = millis();
+	ftp_result_t ret = (ftp_result_t)send(socket, data, length, 0);
+	int duration = millis() - start;
+	if (duration > 2)
+	{
+		Serial.printf("Sending data took %dms", duration);
+	}
+	return ret;
 }
 
 /// <summary>
@@ -640,7 +647,6 @@ static void ftp_send_file_data(uint32_t datasize)
 ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t maxlen, int32_t *rxLen)
 {
 	if (sd < 0) return E_FTP_RESULT_FAILED;
-
 	*rxLen = recv(sd, buff, maxlen, 0);
 	if (*rxLen > 0)
 	{
@@ -654,6 +660,7 @@ ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t maxlen, int3
 		}
 	}
 
+	*rxLen = 0;
 	return E_FTP_RESULT_CONTINUE;
 }
 

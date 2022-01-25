@@ -63,12 +63,27 @@ int WifiCachingStream::read()
 		return -1;
 	}
 
-	char data;
-	int received = 0;
-	auto result = ftp_recv_non_blocking(_connection_sd, &data, 1, &received);
-	if (received == 1)
+	if (!recvBufferEmpty())
 	{
-		return data;
+		// Serial.printf("Buffer not empty, next is %x at index %d\r\n", _recvBuffer[_recvBufferReadIndex], _recvBufferReadIndex);
+		return _recvBuffer[_recvBufferReadIndex++];
+	}
+
+	// Buffer is empty, so make sure we start again at the front
+	_recvBufferReadIndex = _recvBufferEnd = 0;
+	int start = millis();
+	int received = 0;
+	auto result = ftp_recv_non_blocking(_connection_sd, (char*)_recvBuffer, RecvBufferSize, &received);
+	int duration = millis() - start;
+	if (duration > 2)
+	{
+		Serial.printf("Waiting for input for %dms", duration);
+	}
+	if (received >= 1)
+	{
+		Serial.printf("Received %d bytes, first %x\r\n", received, _recvBuffer[0]);
+		_recvBufferEnd = received;
+		return _recvBuffer[_recvBufferReadIndex++];
 	}
 	if (result == E_FTP_RESULT_FAILED)
 	{
@@ -84,6 +99,11 @@ int WifiCachingStream::available()
 	if (_connection_sd < 0)
 	{
 		return -1;
+	}
+
+	if (!recvBufferEmpty())
+	{
+		return 1;
 	}
 
 	return ftp_poll(&_connection_sd);
@@ -150,6 +170,7 @@ size_t WifiCachingStream::write(const uint8_t* buffer, size_t size)
 void WifiCachingStream::maintain()
 {
 	Connect();
+	yield();
 }
 
 #endif
