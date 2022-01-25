@@ -355,7 +355,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					return true;
 				}
 				SendAckOrNack(subCommand, sequenceNo, LoadIlDeclaration(DecodePackedUint32(argv + 2), argv[7], argv[8], argv[9],
-					(NativeMethod)DecodePackedUint32(argv + 10)));
+				                                                        (NativeMethod)DecodePackedUint32(argv + 10)));
 				break;
 			case ExecutorCommand::MethodSignature:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
@@ -376,7 +376,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					return true;
 				}
 				SendAckOrNack(subCommand, sequenceNo, LoadExceptionClause(DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 7),
-					DecodePackedUint32(argv + 12), DecodePackedUint32(argv + 17), DecodePackedUint32(argv + 22), DecodePackedUint32(argv + 27), DecodePackedUint32(argv + 32)));
+				                                                          DecodePackedUint32(argv + 12), DecodePackedUint32(argv + 17), DecodePackedUint32(argv + 22), DecodePackedUint32(argv + 27), DecodePackedUint32(argv + 32)));
 				break;
 			case ExecutorCommand::ClassDeclarationEnd:
 			case ExecutorCommand::ClassDeclaration:
@@ -390,9 +390,9 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 
 				bool isLastPart = subCommand == ExecutorCommand::ClassDeclarationEnd;
 				SendAckOrNack(subCommand, sequenceNo, LoadClassSignature(isLastPart,
-					DecodePackedUint32(argv + 2),
-					DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
-					DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
+				                                                         DecodePackedUint32(argv + 2),
+				                                                         DecodePackedUint32(argv + 2 + 5), DecodePackedUint14(argv + 2 + 5 + 5), DecodePackedUint14(argv + 2 + 5 + 5 + 2) << 2,
+				                                                         DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2), DecodePackedUint14(argv + 2 + 5 + 5 + 2 + 2 + 2), argc - 20, argv + 20));
 			}
 				break;
 			case ExecutorCommand::Interfaces:
@@ -415,7 +415,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 			case ExecutorCommand::ConstantData:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
 				SendAckOrNack(subCommand, sequenceNo, LoadConstant(subCommand, DecodePackedUint32(argv + 2), DecodePackedUint32(argv + 2 + 5),
-					DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
+				                                                   DecodePackedUint32(argv + 2 + 5 + 5), argc - 17, argv + 17));
 				break;
 			case ExecutorCommand::GlobalMetadata:
 				SendAckOrNack(subCommand, sequenceNo, LoadGlobalMetadata(DecodePackedUint32(argv + 2 + 5)));
@@ -3013,7 +3013,7 @@ void FirmataIlExecutor::InitStaticVector()
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
 			var->setSize((uint16_t)sizeToUse);
-			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), field->Int32, sizeToUse, currentPtr - _staticVector);
+			// Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), field->Int32, sizeToUse, currentPtr - _staticVector);
 
 			memset(&var->Int32, 0, field->fieldSize());
 			// Reference types are not initialized directly in metadata, I think (but always use an explicit load call)
@@ -7651,5 +7651,5 @@ void FirmataIlExecutor::reset()
 	_gc.Clear(true);
 	_weakDependencies.clear(true);
 	
-	Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), freeMemory());
+	TRACE(Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), freeMemory()));
 }

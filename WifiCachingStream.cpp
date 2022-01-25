@@ -63,17 +63,26 @@ int WifiCachingStream::read()
 		return -1;
 	}
 
-	char data;
-	int received = 0;
-	auto result = ftp_recv_non_blocking(_connection_sd, &data, 1, &received);
-	if (received == 1)
+	if (!recvBufferEmpty())
 	{
-		return data;
+		// Serial.printf("Buffer not empty, next is %x at index %d\r\n", _recvBuffer[_recvBufferReadIndex], _recvBufferReadIndex);
+		return _recvBuffer[_recvBufferReadIndex++];
+	}
+
+	// Buffer is empty, so make sure we start again at the front
+	_recvBufferReadIndex = _recvBufferEnd = 0;
+	int received = 0;
+	auto result = ftp_recv_non_blocking(_connection_sd, (char*)_recvBuffer, RecvBufferSize, &received);
+	if (received >= 1)
+	{
+		_recvBufferEnd = received;
+		return _recvBuffer[_recvBufferReadIndex++];
 	}
 	if (result == E_FTP_RESULT_FAILED)
 	{
 		ftp_close_socket(&_connection_sd);
 		Firmata.sendStringf(F("Connection dropped"));
+		Firmata.resetParser();
 	}
 
 	return -1;
@@ -81,16 +90,35 @@ int WifiCachingStream::read()
 
 int WifiCachingStream::available()
 {
+	// available returns 0 in case of an error or nothing to do.
 	if (_connection_sd < 0)
 	{
-		return -1;
+		return 0;
 	}
 
-	return ftp_poll(&_connection_sd);
+	if (!recvBufferEmpty())
+	{
+		return 1;
+	}
+
+	int p = ftp_poll(&_connection_sd);
+	if (p < 0)
+	{
+		return 0;
+	}
+
+	return p;
 }
 
 int WifiCachingStream::peek()
 {
+	// We currently do not use this function, so this simple implementation is ok.
+	// If this was used instead of available(), we would need to fill the buffer as well.
+	if (!recvBufferEmpty())
+	{
+		return _recvBuffer[_recvBufferReadIndex];
+	}
+
 	return -1;
 }
 
@@ -150,6 +178,7 @@ size_t WifiCachingStream::write(const uint8_t* buffer, size_t size)
 void WifiCachingStream::maintain()
 {
 	Connect();
+	yield();
 }
 
 #endif
