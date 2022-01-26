@@ -3013,7 +3013,7 @@ void FirmataIlExecutor::InitStaticVector()
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
 			var->setSize((uint16_t)sizeToUse);
-			Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), field->Int32, sizeToUse, currentPtr - _staticVector);
+			// Firmata.sendStringf(F("Adding field 0x%x with size %d at offset %d"), field->Int32, sizeToUse, currentPtr - _staticVector);
 
 			memset(&var->Int32, 0, field->fieldSize());
 			// Reference types are not initialized directly in metadata, I think (but always use an explicit load call)

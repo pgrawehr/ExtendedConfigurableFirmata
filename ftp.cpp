@@ -490,14 +490,7 @@ ftp_result_t ftp_send(int32_t socket, byte b, bool isLast)
 
 ftp_result_t ftp_send(int32_t socket, const byte* data, size_t length)
 {
-	int start = millis();
-	ftp_result_t ret = (ftp_result_t)send(socket, data, length, 0);
-	int duration = millis() - start;
-	if (duration > 2)
-	{
-		Serial.printf("Sending data took %dms", duration);
-	}
-	return ret;
+	return (ftp_result_t)send(socket, data, length, 0);
 }
 
 /// <summary>
