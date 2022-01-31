@@ -276,21 +276,21 @@ void setup()
 
 void loop()
 {
-  while(Firmata.available()) {
+	while (Firmata.available()) {
 #ifdef ENABLE_IL_EXECUTOR
-	if (statusLed.getStatus() == STATUS_IDLE)
-	{
-		statusLed.setStatus(STATUS_COMMANDED, 1000);
-	}
+		if (statusLed.getStatus() == STATUS_IDLE)
+		{
+			statusLed.setStatus(STATUS_COMMANDED, 1000);
+		}
 #endif
-    Firmata.processInput();
-    if (!Firmata.isParsingMessage()) {
-      break;
-    }
-  }
+		Firmata.processInput();
+		if (!Firmata.isParsingMessage()) {
+			break;
+		}
+	}
 
-  firmataExt.report(reporting.elapsed());
+	firmataExt.report(reporting.elapsed());
 #ifdef ENABLE_WIFI
-  serverStream.maintain();
+	serverStream.maintain();
 #endif
 }
