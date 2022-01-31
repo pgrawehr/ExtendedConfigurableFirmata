@@ -372,7 +372,7 @@ void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 	byte* start = referenceContainer->_staticVector;
 	while (offset < referenceContainer->_staticVectorMemorySize)
 	{
-		int currentToken = *AddBytes((int*)start, offset);
+		// int currentToken = *AddBytes((int*)start, offset);
 		Variable* ptr = (Variable*)AddBytes(start, offset + sizeof(int32_t));
 		
 		MarkVariable(*ptr, referenceContainer);

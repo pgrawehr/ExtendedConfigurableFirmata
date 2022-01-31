@@ -23,17 +23,19 @@ int freeMemory()
 // Check current SRAM occupation 
 int freeMemory() 
 {
-  char top;
 #if defined(__arm__)
-  return &top - reinterpret_cast<char*>(sbrk(0));
+	char top;
+    return &top - reinterpret_cast<char*>(sbrk(0));
 #elif defined(ESP32)
   // has sbrk, but calling it seems to cause a crash
-  return ESP.getFreeHeap();
+    return ESP.getFreeHeap();
 #elif defined(CORE_TEENSY) || (ARDUINO > 103 && ARDUINO != 151)
-  return &top - __brkval;
+	char top;
+    return &top - __brkval;
 
 #else  // __arm__
-  return __brkval ? &top - __brkval : &top - __malloc_heap_start;
+	char top;
+    return __brkval ? &top - __brkval : &top - __malloc_heap_start;
 #endif  // __arm__
 }
 #endif
