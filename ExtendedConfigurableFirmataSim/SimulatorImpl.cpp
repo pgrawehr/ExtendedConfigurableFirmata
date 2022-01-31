@@ -15,8 +15,11 @@ class Serial Serial2;
 class Serial Serial3;
 class NetworkConnection NetworkSerial;
 
-// The status of each pin
-static byte pinModes[TOTAL_PINS];
+// The mode of each pin
+static byte pinModes[TOTAL_PINS] = {0};
+
+// The value of each pin
+static byte pinValues[TOTAL_PINS] = {0};
 // Used for temporary return values
 static byte temp;
 
@@ -25,16 +28,48 @@ int digitalRead(int pin)
 	return 0;
 }
 
+void UpdateDisplay()
+{
+	printf("\r");
+	for (int i = 0; i < TOTAL_PINS; i++)
+	{
+		if (pinModes[i] == PIN_MODE_INPUT)
+		{
+			printf("I");
+		}
+		else if (pinModes[i] == PIN_MODE_OUTPUT)
+		{
+			if (pinValues[i])
+			{
+				printf("H");
+			}
+			else
+			{
+				printf("L");
+			}
+		}
+		else if (pinModes[i] == PIN_MODE_I2C)
+		{
+			if (pinValues[i])
+			{
+				printf("B");
+			}
+			else
+			{
+				printf("B");
+			}
+		}
+		else
+		{
+			printf("_");
+		}
+	}
+}
+
 void digitalWrite(int pin, int value)
 {
-	if (value)
-	{
-		wprintf(L"LED %d on\r\n", pin);
-	}
-	else
-	{
-		wprintf(L"LED %d off\r\n", pin);
-	}
+	pinValues[pin] = value;
+	UpdateDisplay();
 }
 
 int analogRead(int pin)
@@ -51,7 +86,7 @@ void pinMode(int pin, int mode)
 	if (pin < TOTAL_PINS)
 	{
 		pinModes[pin] = (byte)mode;
-		wprintf(L"Port %d set to mode %d\r\n", pin, mode);
+		UpdateDisplay();
 	}
 }
 
