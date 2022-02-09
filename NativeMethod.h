@@ -115,6 +115,7 @@ enum class NativeMethod
     Kernel32_WideCharToMultiByte = 325930210,
     Kernel32_WriteConsole = 1738455401,
     MarshalCopy4 = -115372708,
+    MarshalCopyReverse4 = -678254344,
     MarshalGetDelegateForFunctionPointer = 616053085,
     MarshalUnsafeAddrOfPinnedArrayElement = -1120930306,
     MathAbs = 111,
@@ -156,7 +157,8 @@ enum class NativeMethod
     StringCompareTo = 10,
     StringCtorCharArray = 9,
     StringCtorCharCount = 8,
-    StringCtorCharPtr = 19,
+    StringCtorCharPtr = 23,
+    StringCtorCharPtr3 = 19,
     StringCtorSpan = 7,
     StringEquals = 11,
     StringEqualsStatic = 18,
@@ -232,6 +234,7 @@ enum class NativeMethod
 -893084679 (0xCAC49BF9) -> BitConverterDoubleToUInt64Bits
 -839695033 (0xCDF34547) -> RuntimeTypeHandleValue
 -828523620 (0xCE9DBB9C) -> EnvironmentTickCount64
+-678254344 (0xD792A8F8) -> MarshalCopyReverse4
 -635048510 (0xDA25EDC2) -> BitConverterInt16BitsToHalf
 -587970409 (0xDCF44897) -> InterlockedCompareExchange_Int32
 -576391646 (0xDDA4F622) -> RuntimeHelpersRunClassConstructor
@@ -269,10 +272,11 @@ enum class NativeMethod
 16 (0x10) -> StringGetElem
 17 (0x11) -> StringGetPinnableReference
 18 (0x12) -> StringEqualsStatic
-19 (0x13) -> StringCtorCharPtr
+19 (0x13) -> StringCtorCharPtr3
 20 (0x14) -> StringUnEqualsStatic
 21 (0x15) -> StringFastAllocateString
 22 (0x16) -> StringInternalAllocateString
+23 (0x17) -> StringCtorCharPtr
 24 (0x18) -> UnsafeIsAddressGreaterThan
 32 (0x20) -> UnsafeAs2
 33 (0x21) -> UnsafeAsPointer

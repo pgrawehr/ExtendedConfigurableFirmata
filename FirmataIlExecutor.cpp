@@ -2098,12 +2098,12 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	}
 	break;
 	case NativeMethod::StringGetHashCode:
-		ASSERT(args.size() == 0);
+		ASSERT(args.size() == 1);
 		result.Type = VariableKind::Int32;
 		result.Int32 = (int32_t)args[0].Object; // Use memory address as hash code
 		break;
 	case NativeMethod::StringToString:
-		ASSERT(args.size() == 0);
+		ASSERT(args.size() == 1);
 		result.Type = VariableKind::Object;
 		result.Object = args[0].Object; // Return "this"
 		break;
@@ -2165,6 +2165,17 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Object = AddBytes(array.Object, ARRAY_DATA_START);
 		result.Type = VariableKind::AddressOfVariable;
 		result.setSize(sizeof(void*));
+	}
+	break;
+	case NativeMethod::MarshalCopyReverse4: // Marshal.Copy(byte[] source, int startIndex, IntPtr destination, int length)
+	{
+		ASSERT(args.size() == 4);
+		Variable& array = args[0];
+		byte* src = AddBytes((byte*)array.Object, ARRAY_DATA_START);
+		src += args[1].Int32;
+		byte* dest = (byte*)args[2].Object; // an intptr's value is actually the address
+		int length = args[3].Int32;
+		memcpy(dest, src, length);
 	}
 	break;
 	case NativeMethod::BufferZeroMemory:
@@ -2429,6 +2440,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	}
 	case NativeMethod::StringCtorSpan:
 	case NativeMethod::StringCtorCharPtr:
+	case NativeMethod::StringCtorCharPtr3:
 	case NativeMethod::StringCtorCharArray:
 		{
 			// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
@@ -5955,7 +5967,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
 							}
 						}
-						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharPtr)
+						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharPtr3)
 						{
 							// The ctor MiniString(char* value, int startIndex, int length) was called
 							int length = stack->top().Int32;
@@ -5966,6 +5978,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							for (int i = 0; i < length; i++)
 							{
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[startIndex + i];
+							}
+						}
+						else if (newMethod->MethodFlags() & (int)MethodFlags::SpecialMethod && newMethod->NativeMethodNumber() == NativeMethod::StringCtorCharPtr)
+						{
+							// The ctor MiniString(char* value) was called
+							uint16_t* value = (uint16_t*)stack->top().Object;
+							size_t length = wcslen((wchar_t*)value);
+							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
+							*AddBytes((int*)newObjInstance, 4) = length;
+							for (int i = 0; i < length; i++)
+							{
+								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[i];
 							}
 						}
 						else
