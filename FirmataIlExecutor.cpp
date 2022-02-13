@@ -7046,6 +7046,16 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 		}
 	}
 
+	for (int i = 0; i < _breakpoints.size(); i++)
+	{
+		auto bp = _breakpoints.at(i);
+		if (bp.MethodToken == state->_executingMethod->methodToken && pc == bp.Pc)
+		{
+			_nextStepBehavior.Kind = BreakpointType::None; // If we single-stepped here, stop that
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -7581,6 +7591,15 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, ui
 		_debuggerEnabled = false;
 		_nextStepBehavior.Kind = BreakpointType::None;
 		_breakpoints.clear();
+		break;
+	case DebuggerCommand::BreakPoint:
+	{
+		Breakpoint bp;
+		bp.Kind = BreakpointType::CodeLine;
+		bp.MethodToken = arg1;
+		bp.Pc = arg2;
+		_breakpoints.push_back(bp);
+	}
 		break;
 	case DebuggerCommand::BreakOnExceptions:
 		_breakOnException = !_breakOnException;

@@ -17,4 +17,5 @@ enum class DebuggerCommand : byte
     SendArguments = 10,
     SendEvaluationStack = 11,
     BreakOnExceptions = 12,
+    BreakPoint = 13,
 };
