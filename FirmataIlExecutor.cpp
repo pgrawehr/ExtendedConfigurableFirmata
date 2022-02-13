@@ -7140,6 +7140,11 @@ void FirmataIlExecutor::SendVariable(const Variable& variable, int& idx)
 
 void FirmataIlExecutor::SignExtend(Variable& variable, int inputSize)
 {
+	// If we are already at long, don't do anything
+	if (inputSize > 4)
+	{
+		return;
+	}
 	// For int64, both paths may be taken, so that extension from i1 to i8 is possible
 	if (variable.Type == VariableKind::Int32 || variable.Type == VariableKind::Int64)
 	{
