@@ -4686,13 +4686,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Double = value1.Int32;
 			break;
 		case VariableKind::Uint32:
-			intermediate.Double = value1.Uint32;
+			intermediate.Double = value1.Int32; // The source type is always expected to be signed
 			break;
 		case VariableKind::Int64:
 			intermediate.Double = (double)value1.Int64;
 			break;
 		case VariableKind::Uint64:
-			intermediate.Double = (double)value1.Uint64;
+			intermediate.Double = (double)value1.Int64;
 			break;
 		case VariableKind::Float:
 			intermediate.Double = (double)value1.Float;
@@ -4714,13 +4714,13 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Float = (float)value1.Int32;
 			break;
 		case VariableKind::Uint32:
-			intermediate.Float = (float)value1.Uint32;
+			intermediate.Float = (float)value1.Int32; // Source type is always assumed to be signed.
 			break;
 		case VariableKind::Int64:
 			intermediate.Float = (float)value1.Int64;
 			break;
 		case VariableKind::Uint64:
-			intermediate.Float = (float)value1.Uint64;
+			intermediate.Float = (float)value1.Int64;
 			break;
 		case VariableKind::Float:
 			intermediate.Float = value1.Float;
