@@ -5987,7 +5987,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 							size_t length = wcslen((wchar_t*)value);
 							newObjInstance = CreateInstanceOfClass(cls->ClassToken, length + 1);
 							*AddBytes((int*)newObjInstance, 4) = length;
-							for (int i = 0; i < length; i++)
+							for (size_t i = 0; i < length; i++)
 							{
 								*AddBytes((uint16_t*)newObjInstance, STRING_DATA_START + i * SIZEOF_CHAR) = value[i];
 							}
@@ -6895,11 +6895,11 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 		{
 			if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Clause)
 			{
-				Firmata.sendStringf(F("Found a catch clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey());
+				TRACE(Firmata.sendStringf(F("Found a catch clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey()));
 			}
 			else if (bestClause->ClauseType == ExceptionHandlingClauseOptions::Finally)
 			{
-				Firmata.sendStringf(F("Found a finally clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey());
+				TRACE(Firmata.sendStringf(F("Found a finally clause at 0x%x in 0x%x"), bestClause->HandlerOffset, bestClause->GetKey()));
 			}
 			else
 			{
@@ -7046,7 +7046,7 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 		}
 	}
 
-	for (int i = 0; i < _breakpoints.size(); i++)
+	for (size_t i = 0; i < _breakpoints.size(); i++)
 	{
 		auto bp = _breakpoints.at(i);
 		if (bp.MethodToken == state->_executingMethod->methodToken && pc == bp.Pc)

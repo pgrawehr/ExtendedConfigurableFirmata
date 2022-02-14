@@ -4,33 +4,9 @@
 
 bool _executionMode = false;
 
-#ifndef SIM
-
-void* mallocEx(size_t length)
-{
-	void* ret = malloc(length);
-	
-	return ret;
-}
-
-void* reallocEx(void* existingPtr, size_t newLength)
-{
-	return realloc(existingPtr, newLength);
-}
-
-
-void freeInternal(void* ptr)
-{
-	free(ptr);
-}
-
-void SetMemoryExecutionMode(bool executionModeEnabled)
-{
-	_executionMode = executionModeEnabled;
-}
-
-
-#else
+// Enable to perform some allocation tracing
+// This is intended to maybe improve some memory allocation methods (e.g. use a stack for allocating the execution stack)
+#if 0 // defined SIM
 
 #include <stack>
 
@@ -111,5 +87,33 @@ void SetMemoryExecutionMode(bool executionModeEnabled)
 	}
 	_executionMode = executionModeEnabled;
 }
+
+
+#else
+
+void* mallocEx(size_t length)
+{
+	void* ret = malloc(length);
+
+	return ret;
+}
+
+void* reallocEx(void* existingPtr, size_t newLength)
+{
+	return realloc(existingPtr, newLength);
+}
+
+
+void freeInternal(void* ptr)
+{
+	free(ptr);
+}
+
+void SetMemoryExecutionMode(bool executionModeEnabled)
+{
+	_executionMode = executionModeEnabled;
+}
+
+
 
 #endif
