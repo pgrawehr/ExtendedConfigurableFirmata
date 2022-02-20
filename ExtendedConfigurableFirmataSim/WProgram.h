@@ -64,6 +64,9 @@ void* xSemaphoreCreateBinary();
 #define ONLOW_WE  0x0C
 #define ONHIGH_WE 0x0D
 
+#define MSBFIRST 1
+#define LSBFIRST 0
+
 // The program memory directive (just uses plain char* for us)
 #define F(x) x
 #define PROGMEM
@@ -86,7 +89,11 @@ public:
 	virtual int peek();
 	virtual void flush();
 	virtual int read();
+	virtual int readBytes(uint8_t* buf, size_t length);
 	virtual int available();
+	virtual void setTimeout(int32_t timeout)
+	{
+	}
 
 	virtual void println(const char* output)
 	{

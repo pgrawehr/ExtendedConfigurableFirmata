@@ -180,6 +180,23 @@ int Stream::read()
 	return -1;
 }
 
+int Stream::readBytes(uint8_t* buf, size_t length)
+{
+	if (length == 0)
+	{
+		return 0;
+	}
+	int data = read();
+	if (data != -1)
+	{
+		buf[0] = (byte)data;
+		return 1;
+	}
+
+	return 0;
+}
+
+
 int Stream::available()
 {
 	return 0;
