@@ -5,6 +5,7 @@
 #ifdef ESP32
 #include "esp_partition.h"
 
+const char* FLASH_TAG = "[FLASH]";
 // This flash storage driver uses the partition named "ilcode" on the ESP32 embedded SPI flash
 
 Esp32CliFlashStorage::Esp32CliFlashStorage()
@@ -12,7 +13,8 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
 	partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "ilcode");
 	if (partition == nullptr)
 	{
-		throw stdSimple::ExecutionEngineException("FATAL: Could not locate data partition.");
+		ESP_LOGE(FLASH_TAG, "FATAL: Could not locate data partition.");
+		return;
 	}
 
 	const void *map_ptr;
@@ -21,7 +23,8 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
     // Map the partition to data memory
     if (esp_partition_mmap(partition, 0, partition->size, SPI_FLASH_MMAP_DATA, &map_ptr, &map_handle) != 0)
     {
-		throw stdSimple::ExecutionEngineException("FATAL: Could not map data partition to RAM");
+		ESP_LOGE(FLASH_TAG, "FATAL: Could not map data partition to RAM");
+		return;
     }
 
 	mappedBaseAddress = (byte*)map_ptr;
@@ -40,11 +43,11 @@ Esp32CliFlashStorage::~Esp32CliFlashStorage()
 void Esp32CliFlashStorage::PrintPartitions()
 {
 	esp_partition_iterator_t iter = esp_partition_find(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, NULL);
-	Firmata.sendString(F("Name, type, subtype, offset, length"));
+	ESP_LOGI(FLASH_TAG, "Name, type, subtype, offset, length");
 	while (iter != nullptr)
 	{
 		const esp_partition_t* partition = esp_partition_get(iter);
-		Firmata.sendStringf(F("%s, app, %d, 0x%x, 0x%x (%d)"), partition->label, partition->subtype, partition->address, partition->size, partition->size);
+		ESP_LOGI(FLASH_TAG, "%s, app, %d, 0x%x, 0x%x (%d)", partition->label, partition->subtype, partition->address, partition->size, partition->size);
 		iter = esp_partition_next(iter);
 	}
 
@@ -53,13 +56,13 @@ void Esp32CliFlashStorage::PrintPartitions()
 	while (iter != nullptr)
 	{
 		const esp_partition_t* partition = esp_partition_get(iter);
-		Firmata.sendStringf(F("%s, data, %d, 0x%x, 0x%x (%d)"), partition->label, partition->subtype, partition->address, partition->size, partition->size);
+		ESP_LOGI(FLASH_TAG, "%s, data, %d, 0x%x, 0x%x (%d)", partition->label, partition->subtype, partition->address, partition->size, partition->size);
 		iter = esp_partition_next(iter);
 	}
 
 	esp_partition_iterator_release(iter);
 
-	Firmata.sendStringf(F("Data partition of size %d mapped to memory address 0x%x"), partition->size, mappedBaseAddress);
+	ESP_LOGI(FLASH_TAG, "Data partition of size %d mapped to memory address 0x%x", partition->size, mappedBaseAddress);
 }
 
 byte* Esp32CliFlashStorage::readAddress(uint32_t address)
