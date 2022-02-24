@@ -27,3 +27,11 @@ void SPIClass::begin()
 void SPIClass::end()
 {
 }
+
+void SPIClass::beginTransaction(uint8_t pin, SPISettings settings)
+{
+}
+
+void SPIClass::endTransaction()
+{
+}
