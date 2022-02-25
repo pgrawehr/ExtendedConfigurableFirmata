@@ -76,6 +76,8 @@ void* xSemaphoreCreateBinary();
 #define A0 54
 #define A1 55
 
+#define ESP_LOGE(tag, ...) printf(__VA_ARGS__)
+
 /// <summary>
 /// This simulated stream base class is actually a null device
 /// </summary>

@@ -3,11 +3,16 @@
 #include "Variable.h"
 #include "VariableVector.h"
 #include "VariableDynamicStack.h"
-
+#ifdef ESP32
+#include <esp_log.h>
+#endif
+const char* SELFTTEST_TAG = "SELFTEST";
 void ASSERT(bool x)
 {
 	if (!x)
 	{
+		ESP_LOGE(SELFTTEST_TAG, "Assertion failed");
+		delay(1000);
 		throw stdSimple::ExecutionEngineException("Assertion failed");
 	}
 }
@@ -16,6 +21,8 @@ void ASSERT(bool condition, const char* message)
 {
 	if (!condition)
 	{
+		ESP_LOGE(SELFTTEST_TAG, "%s", message);
+		delay(1000);
 		throw stdSimple::ExecutionEngineException(message);
 	}
 }
@@ -49,6 +56,7 @@ void SelfTest::PerformMemoryAnalysis()
 		if (mem[i] != i)
 		{
 			// You better get a new board if this happens
+			ESP_LOGE(SELFTTEST_TAG, "Memory broken");
 			Firmata.sendString(F("HARDWARE ERROR: Memory broken"));
 			_statusFlag = false;
 			free(mem);
@@ -61,18 +69,15 @@ void SelfTest::PerformMemoryAnalysis()
 
 void SelfTest::ValidateMemoryManager()
 {
-#if !defined(SIM)
-	void* data = malloc(1024 * 1024);
 	// Need to patch the C++ library to fix a runtime bug that exists in the C runtime of the Arduino Due:
 	// There's no limit to the amount of memory that can be allocated, the CPU just crashes if you try to use it.
+#if defined __SAM3X8E__
+	void* data = malloc(1024 * 1024);
+	const int maxMemToTest = 96;
 	ASSERT(data == nullptr, "Memory allocation error: Can allocate more memory than available. Please consult the documentation");
-#endif
+
 	const int oneK = 1024;
-#if ESP32
-	const int maxMemToTest = 1024; // The esp32 has some 300k of RAM
-#else
-	const int maxMemToTest = 100; // the arduino due has 96k of memory
-#endif
+
 	void* ptrs[maxMemToTest];
 	int idx = 0;
 	int totalAllocsSucceeded = 0;
@@ -103,6 +108,7 @@ void SelfTest::ValidateMemoryManager()
 	Firmata.sendStringf(F("Total memory available after init: %dkb"), totalAllocsSucceeded);
 	
 	ASSERT(totalAllocsSucceeded >= 82, "Not enough free memory after init");
+#endif
 
 	// Validate this variable has the correct size
 	ASSERT(sizeof(Variable) == 12, "Size of Variable type is not correct. Ensure the compiler uses 1-byte struct packing");

@@ -6,10 +6,13 @@
 #include <ConfigurableFirmata.h>
 
 #include "FreeMemory.h"
-
 // Use this to enable WIFI instead of serial communication. Tested on ESP32.
 #ifdef ESP32
 #define ENABLE_WIFI
+#endif
+
+#ifdef ARDUINO_M5STACK_Core2
+#include <M5Tough.h>
 #endif
 
 #if __has_include("wifiConfig.h")
@@ -17,12 +20,13 @@
 #else
 const char* ssid     = "your-ssid";
 const char* password = "your-password";
-const char* host = "ESP32";
+const char* host = "M5Tough";
 const int NETWORK_PORT = 27016;
 const char* CONFIG_FTP_USER = "root";
 const char* CONFIG_FTP_PASS = "root"; // extremely secure default password!
+const int WIFI_STATUS_LED = -1;
 #endif
-const int WIFI_STATUS_LED = 16;
+
 
 // Use these defines to easily enable or disable certain modules
 
@@ -42,7 +46,7 @@ const int WIFI_STATUS_LED = 16;
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
 #ifndef SIM
-#define ENABLE_DHT
+// #define ENABLE_DHT
 #endif
 #define ENABLE_I2C
 #define ENABLE_IL_EXECUTOR
@@ -92,7 +96,7 @@ I2CFirmata i2c;
 #ifdef ENABLE_SPI
 #include <Wire.h>
 #include <SpiFirmata.h>
-SpiFirmata spi;
+SpiFirmata spi0;
 #endif
 
 #ifdef ENABLE_ONE_WIRE
@@ -149,6 +153,7 @@ FirmataStatusLed statusLed;
 
 void systemResetCallback()
 {
+#ifndef ESP32 // Does more harm than good on ESP32 (because touches reserved pins)
   for (byte i = 0; i < TOTAL_PINS; i++) {
     if (IS_PIN_ANALOG(i)) {
       Firmata.setPinMode(i, PIN_MODE_ANALOG);
@@ -156,6 +161,7 @@ void systemResetCallback()
       Firmata.setPinMode(i, PIN_MODE_INPUT);
     }
   }
+#endif
   firmataExt.reset();
 }
 
@@ -171,23 +177,35 @@ void initTransport()
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 	WiFi.begin(ssid, password);
-	pinMode(WIFI_STATUS_LED, OUTPUT);
+  if (WIFI_STATUS_LED >= 0)
+  {
+    pinMode(WIFI_STATUS_LED, OUTPUT);
+  }
 	bool pinIsOn = false;
 	int timeout = 20000;
 	while (WiFi.status() != WL_CONNECTED && timeout > 0)
 	{
 	    delay(100);
-		timeout -= 100;
+		  timeout -= 100;
 	    pinIsOn = !pinIsOn;
-	    digitalWrite(WIFI_STATUS_LED, pinIsOn);
+      if (WIFI_STATUS_LED >= 0)
+      {
+        digitalWrite(WIFI_STATUS_LED, pinIsOn);
+      }
 	}
 	MDNS.begin(host);
-	digitalWrite(WIFI_STATUS_LED, 0);
+ if (WIFI_STATUS_LED >= 0)
+ {	
+  digitalWrite(WIFI_STATUS_LED, 0);
+ }
 	serverStream.Init();
 	Firmata.begin(serverStream, false);
 	Firmata.sendString(F("WIFI network connection established"));
 	ntpClient.StartTimeSync(WIFI_STATUS_LED);
 	FtpServer.Init();
+#ifdef ARDUINO_M5STACK_Core2
+	M5.begin(true, false, false, true);
+#endif
 #else
     Firmata.begin(115200);
 #endif
@@ -227,7 +245,7 @@ void initFirmata()
 	
   firmataExt.addFeature(reporting);
 #ifdef ENABLE_SPI
-  firmataExt.addFeature(spi);
+  firmataExt.addFeature(spi0);
 #endif
 #ifdef ENABLE_ACCELSTEPPER
   firmataExt.addFeature(accelStepper);

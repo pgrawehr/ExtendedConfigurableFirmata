@@ -743,7 +743,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		*tokenPtr = constantToken;
 		int numToDecode = num7BitOutbytes(argc);
 		data = (char*)AddBytes(tokenPtr, 4 + offset);
-		Encoder7Bit.readBinary(numToDecode, argv, (byte*)data);
+		Encoder7BitClass::readBinary(numToDecode, argv, (byte*)data);
 
 		// Verification
 		int resultLen = 0;
@@ -760,7 +760,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 	{
 		int numToDecode = num7BitOutbytes(argc);
 		ConstantEntry* data2 = (ConstantEntry*)mallocEx(currentEntryLength + 2 * sizeof(int));
-		Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, 2 * sizeof(int)));
+		Encoder7BitClass::readBinary(numToDecode, argv, (byte*)AddBytes(data2, 2 * sizeof(int)));
 		data2->Token = constantToken;
 		data2->Length = currentEntryLength;
 		_constants.Insert(data2);
@@ -774,7 +774,7 @@ ExecutionError FirmataIlExecutor::LoadConstant(ExecutorCommand executorCommand, 
 		return ExecutionError::InvalidArguments;
 	}
 	
-	Encoder7Bit.readBinary(numToDecode, argv, (byte*)AddBytes(data2, offset));
+	Encoder7BitClass::readBinary(numToDecode, argv, (byte*)AddBytes(data2, offset));
 
 	return ExecutionError::None;
 }
@@ -1041,7 +1041,7 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, uint16_t cod
 		}
 
 		int numToDecode = num7BitOutbytes(argc);
-		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
+		Encoder7BitClass::readBinary(numToDecode, argv, decodedIl);
 		method->_methodLength = codeLength;
 		method->_methodIl = decodedIl;
 	}
@@ -1049,7 +1049,7 @@ ExecutionError FirmataIlExecutor::LoadIlDataStream(int methodToken, uint16_t cod
 	{
 		byte* decodedIl = method->_methodIl + offset;
 		int numToDecode = num7BitOutbytes(argc);
-		Encoder7Bit.readBinary(numToDecode, argv, decodedIl);
+		Encoder7BitClass::readBinary(numToDecode, argv, decodedIl);
 	}
 
 	TRACE(Firmata.sendStringf(F("Loaded IL Data for method %d, offset %x"), methodToken, offset));
