@@ -41,6 +41,7 @@ bool WifiCachingStream::Connect()
 	if (_connection_sd >= 0)
 	{
 		Serial.println("New client connected");
+		Firmata.resetParser();
 		WiFi.setSleep(false);
 		return true;
 	}
@@ -104,6 +105,8 @@ int WifiCachingStream::available()
 	int p = ftp_poll(&_connection_sd);
 	if (p < 0)
 	{
+		ftp_close_socket(&_connection_sd);
+		Firmata.resetParser();
 		return 0;
 	}
 
@@ -132,8 +135,8 @@ void WifiCachingStream::flush()
 size_t WifiCachingStream::readBytes(char* buffer, size_t length)
 {
 	int received = 0;
-	auto result = ftp_recv_non_blocking(_connection_sd, buffer, 1, &received);
-	if (received == 1)
+	auto result = ftp_recv_non_blocking(_connection_sd, buffer, length, &received);
+	if (received >= 1)
 	{
 		return received;
 	}

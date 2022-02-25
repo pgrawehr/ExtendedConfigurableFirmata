@@ -510,7 +510,7 @@ int ftp_poll(int32_t* socket)
 	pd.events = POLLIN;
 	pd.revents = 0;
 	int ret = poll(&pd, 1, 0);
-	if (ret > 0)
+	if (pd.revents & POLLIN)
 	{
 		return 1;
 	}
