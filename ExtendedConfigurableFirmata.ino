@@ -20,7 +20,7 @@
 #else
 const char* ssid     = "your-ssid";
 const char* password = "your-password";
-const char* host = "M5Tough";
+const char* host = "ESP32";
 const int NETWORK_PORT = 27016;
 const char* CONFIG_FTP_USER = "root";
 const char* CONFIG_FTP_PASS = "root"; // extremely secure default password!
@@ -46,7 +46,7 @@ const int WIFI_STATUS_LED = -1;
 
 /* Native reading of DHTXX sensors. Reading a DHT11 directly using GPIO methods from a remote PC will not work, because of the very tight timing requirements of these sensors*/
 #ifndef SIM
-// #define ENABLE_DHT
+#define ENABLE_DHT
 #endif
 #define ENABLE_I2C
 #define ENABLE_IL_EXECUTOR
@@ -154,21 +154,22 @@ FirmataStatusLed statusLed;
 void systemResetCallback()
 {
 #ifndef ESP32 // Does more harm than good on ESP32 (because touches reserved pins)
-  for (byte i = 0; i < TOTAL_PINS; i++) {
-    if (IS_PIN_ANALOG(i)) {
-      Firmata.setPinMode(i, PIN_MODE_ANALOG);
-    } else if (IS_PIN_DIGITAL(i)) {
-      Firmata.setPinMode(i, PIN_MODE_INPUT);
-    }
-  }
+	for (byte i = 0; i < TOTAL_PINS; i++) {
+		if (IS_PIN_ANALOG(i)) {
+			Firmata.setPinMode(i, PIN_MODE_ANALOG);
+		}
+		else if (IS_PIN_DIGITAL(i)) {
+			Firmata.setPinMode(i, PIN_MODE_INPUT);
+		}
+	}
 #endif
-  firmataExt.reset();
+	firmataExt.reset();
 }
 
 void initTransport()
 {
-  // Uncomment to save a couple of seconds by disabling the startup blink sequence.
-  // Firmata.disableBlinkVersion();
+	// Uncomment to save a couple of seconds by disabling the startup blink sequence.
+	// Firmata.disableBlinkVersion();
 #ifdef SIM
 	NetworkSerial.begin();
 	Firmata.begin(NetworkSerial);
@@ -177,27 +178,27 @@ void initTransport()
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 	WiFi.begin(ssid, password);
-  if (WIFI_STATUS_LED >= 0)
-  {
-    pinMode(WIFI_STATUS_LED, OUTPUT);
-  }
+	if (WIFI_STATUS_LED >= 0)
+	{
+		pinMode(WIFI_STATUS_LED, OUTPUT);
+	}
 	bool pinIsOn = false;
 	int timeout = 20000;
 	while (WiFi.status() != WL_CONNECTED && timeout > 0)
 	{
-	    delay(100);
-		  timeout -= 100;
-	    pinIsOn = !pinIsOn;
-      if (WIFI_STATUS_LED >= 0)
-      {
-        digitalWrite(WIFI_STATUS_LED, pinIsOn);
-      }
+		delay(100);
+		timeout -= 100;
+		pinIsOn = !pinIsOn;
+		if (WIFI_STATUS_LED >= 0)
+		{
+			digitalWrite(WIFI_STATUS_LED, pinIsOn);
+		}
 	}
 	MDNS.begin(host);
- if (WIFI_STATUS_LED >= 0)
- {	
-  digitalWrite(WIFI_STATUS_LED, 0);
- }
+	if (WIFI_STATUS_LED >= 0)
+	{
+		digitalWrite(WIFI_STATUS_LED, 0);
+	}
 	serverStream.Init();
 	Firmata.begin(serverStream, false);
 	Firmata.sendString(F("WIFI network connection established"));
@@ -207,64 +208,64 @@ void initTransport()
 	M5.begin(true, false, false, true);
 #endif
 #else
-    Firmata.begin(115200);
+	Firmata.begin(115200);
 #endif
 }
 
 void initFirmata()
 {
 #ifdef ENABLE_DIGITAL
-  firmataExt.addFeature(digitalInput);
-  firmataExt.addFeature(digitalOutput);
+	firmataExt.addFeature(digitalInput);
+	firmataExt.addFeature(digitalOutput);
 #endif
-	
+
 #ifdef ENABLE_ANALOG
-  firmataExt.addFeature(analogInput);
-  firmataExt.addFeature(analogOutput);
+	firmataExt.addFeature(analogInput);
+	firmataExt.addFeature(analogOutput);
 #endif
-	
+
 #ifdef ENABLE_SERVO
-  firmataExt.addFeature(servo);
+	firmataExt.addFeature(servo);
 #endif
-	
+
 #ifdef ENABLE_I2C
-  firmataExt.addFeature(i2c);
+	firmataExt.addFeature(i2c);
 #endif
-	
+
 #ifdef ENABLE_ONE_WIRE
-  firmataExt.addFeature(oneWire);
+	firmataExt.addFeature(oneWire);
 #endif
-	
+
 #ifdef ENABLE_SERIAL
-  firmataExt.addFeature(serial);
+	firmataExt.addFeature(serial);
 #endif
-	
+
 #ifdef ENABLE_BASIC_SCHEDULER
-  firmataExt.addFeature(scheduler);
+	firmataExt.addFeature(scheduler);
 #endif
-	
-  firmataExt.addFeature(reporting);
+
+	firmataExt.addFeature(reporting);
 #ifdef ENABLE_SPI
-  firmataExt.addFeature(spi0);
+	firmataExt.addFeature(spi0);
 #endif
 #ifdef ENABLE_ACCELSTEPPER
-  firmataExt.addFeature(accelStepper);
+	firmataExt.addFeature(accelStepper);
 #endif
-	
+
 #ifdef ENABLE_DHT
-  firmataExt.addFeature(dhtFirmata);
+	firmataExt.addFeature(dhtFirmata);
 #endif
 
 #ifdef ENABLE_FREQUENCY
-  firmataExt.addFeature(frequency);
+	firmataExt.addFeature(frequency);
 #endif
 
 #ifdef ENABLE_IL_EXECUTOR
-  firmataExt.addFeature(ilExecutor);
-  firmataExt.addFeature(statusLed);
+	firmataExt.addFeature(ilExecutor);
+	firmataExt.addFeature(statusLed);
 #endif
 
-  Firmata.attach(SYSTEM_RESET, systemResetCallback);
+	Firmata.attach(SYSTEM_RESET, systemResetCallback);
 }
 
 void setup()
