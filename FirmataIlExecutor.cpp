@@ -2147,6 +2147,28 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Boolean = cls1->ClassToken == cls2->ClassToken;
 	}
 		break;
+	case NativeMethod::DelegateCompareUnmanagedFunctionPtrs:
+	case NativeMethod::DelegateInternalEqualMethodHandle:
+	{
+		ASSERT(args.size() == 2);
+		ClassDeclaration* cls1 = GetClassDeclaration(args[0]);
+		ClassDeclaration* cls2 = GetClassDeclaration(args[1]);
+		Variable methodPtr1 = GetField(cls1, args[0], 2);
+		Variable methodPtr2 = GetField(cls2, args[1], 2);
+
+		result.Type = VariableKind::Boolean;
+		result.setSize(4);
+			if (cls1->ClassToken != cls2->ClassToken)
+			{
+				result.Boolean = false;
+				break;
+			}
+
+			ASSERT(methodPtr1.Type == VariableKind::FunctionPointer);
+			ASSERT(methodPtr2.Type == VariableKind::FunctionPointer);
+			result.Boolean = methodPtr1.Object == methodPtr2.Object;
+	}
+	break;
 	case NativeMethod::RuntimeHelpersGetHashCode:
 	case NativeMethod::ObjectGetHashCode:
 		{

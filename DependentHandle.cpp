@@ -20,6 +20,7 @@ bool DependentHandle::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 	case NativeMethod::DependentHandle_InternalInitialize:
 		{
 		ASSERT(args.size() == 2);
+			// We're currently not reusing existing entries. But these handles are rarely used, so this should not normally cause a memory leak
 		pair<void*, void*> newElem(args[0].Object, args[1].Object);
 		int offset = executor->_weakDependencies.push_back(newElem);
 		result.Type = VariableKind::Int32;
@@ -27,6 +28,19 @@ bool DependentHandle::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		result.Int32 = offset + 1; // because 0 is an invalid handle
 		}
 		break;
+	case NativeMethod::DependentHandle_InternalFree:
+	{
+		ASSERT(args.size() == 1);
+		size_t handle = args[0].Uint32;
+		if (handle >= executor->_weakDependencies.size())
+		{
+			break;
+		}
+		auto& elem = executor->_weakDependencies.at(handle);
+		elem.first = nullptr;
+		elem.second = nullptr;
+		break;
+	}
 	default:
 		return false;
 	}

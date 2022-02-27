@@ -71,7 +71,7 @@ void SelfTest::ValidateMemoryManager()
 {
 	// Need to patch the C++ library to fix a runtime bug that exists in the C runtime of the Arduino Due:
 	// There's no limit to the amount of memory that can be allocated, the CPU just crashes if you try to use it.
-#if defined __SAM3X8E__
+#if defined __SAM3X8E__ && !defined SIM
 	void* data = malloc(1024 * 1024);
 	const int maxMemToTest = 96;
 	ASSERT(data == nullptr, "Memory allocation error: Can allocate more memory than available. Please consult the documentation");
@@ -90,12 +90,6 @@ void SelfTest::ValidateMemoryManager()
 			break;
 		}
 		idx++;
-	}
-
-	// Happens in simulation
-	if (idx == maxMemToTest)
-	{
-		idx--;
 	}
 	
 	totalAllocsSucceeded = idx;

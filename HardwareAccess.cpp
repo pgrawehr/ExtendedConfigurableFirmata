@@ -463,6 +463,21 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			result.Object = orig; // Return the original destination object
 	}
 		break;
+	case NativeMethod::InterlockedExchangeObject:
+		{
+		ASSERT(args.size() == 2);
+		result.Type = VariableKind::Object;
+		result.setSize(4);
+		Variable& location = args[0]; // Arg0 is a reference to an object
+		Variable& value = args[1];
+		noInterrupts();
+		void** refPtr = (void**)location.Object;
+		void* orig = *(refPtr);
+		*(refPtr) = value.Object; // Replace the object ref points to with the value
+		interrupts();
+		result.Object = orig; // Return the original destination object
+		}
+		break;
 	case NativeMethod::InterlockedExchangeAdd:
 		{
 			// Behavior is a bit confusing: Adds the two input values (first one given by-ref), updates the first one with the sum and returns the old value
@@ -503,6 +518,34 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Int32 = orig; // Return the original destination value
 	}
 		break;
+	case NativeMethod::InterlockedExchangeInt64:
+	{
+		result.Type = VariableKind::Int64;
+		noInterrupts();
+		int64_t firstValue = *AddBytes((int64_t*)args[0].Object, 0);
+		int64_t newValue = args[1].Int64;
+		*AddBytes((int64_t*)args[0].Object, 0) = newValue;
+		interrupts();
+		result.Int64 = firstValue;
+	}
+	break;
+	case NativeMethod::InterlockedCompareExchange_Int64:
+	{
+		result.Type = VariableKind::Int64;
+		Variable& ref = args[0]; // Arg0 is a reference to an int
+		Variable& value = args[1];
+		Variable& comparand = args[2];
+		noInterrupts();
+		int64_t* refPtr = (int64_t*)ref.Object;
+		int64_t orig = *(refPtr);
+		if (orig == comparand.Int64)
+		{
+			*(refPtr) = value.Int64; // Replace the object ref points to with the value if ref==comparand.
+		}
+		interrupts();
+		result.Int64 = orig; // Return the original destination value
+	}
+	break;
 	case NativeMethod::DateTimeUtcNow:
 		result.Type = VariableKind::Int64;
 		result.setSize(8);
