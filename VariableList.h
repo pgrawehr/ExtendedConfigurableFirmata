@@ -6,7 +6,7 @@
 #include "ObjectVector.h"
 #include "Exceptions.h"
 #include "ClrException.h"
-#include "SystemException.h"
+#include "interface/SystemException.h"
 
 struct VariableListEntry
 {

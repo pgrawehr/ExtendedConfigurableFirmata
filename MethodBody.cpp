@@ -4,8 +4,8 @@
 #include "MethodBody.h"
 #include "Exceptions.h"
 #include "FlashMemoryManager.h"
-#include "SystemException.h"
 #include "ClrException.h"
+#include "interface/SystemException.h"
 
 MethodBody::MethodBody(byte flags, byte numArgs, byte maxStack)
 {

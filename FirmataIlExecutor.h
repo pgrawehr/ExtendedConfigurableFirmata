@@ -23,17 +23,18 @@
 #include "VariableVector.h"
 #include "VariableDynamicStack.h"
 #include "VariableList.h"
-#include "NativeMethod.h"
-#include "SystemException.h"
-#include "MethodFlags.h"
-#include "KnownTypeTokens.h"
-#include "ExecutorCommand.h"
 #include "ClassDeclaration.h"
-#include "VariableKind.h"
 #include "MethodBody.h"
 #include "GarbageCollector.h"
-#include "DebuggerCommand.h"
-#include "BreakpointType.h"
+
+#include "interface/NativeMethod.h"
+#include "interface/SystemException.h"
+#include "interface/MethodFlags.h"
+#include "interface/KnownTypeTokens.h"
+#include "interface/ExecutorCommand.h"
+#include "interface/VariableKind.h"
+#include "interface/DebuggerCommand.h"
+#include "interface/BreakpointType.h"
 
 class LowlevelInterface;
 using namespace stdSimple;

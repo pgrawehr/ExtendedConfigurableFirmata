@@ -3,7 +3,7 @@
 #include <ConfigurableFirmata.h>
 #include <FirmataFeature.h>
 #include "Exceptions.h"
-#include "VariableKind.h"
+#include "interface/VariableKind.h"
 #include "openum.h"
 #include "Utils.h"
 

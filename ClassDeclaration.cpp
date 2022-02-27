@@ -2,10 +2,10 @@
 #include "ClassDeclaration.h"
 
 #include "MemoryManagement.h"
-#include "SystemException.h"
 #include "Exceptions.h"
 #include "FlashMemoryManager.h"
 #include "ClrException.h"
+#include "interface/SystemException.h"
 
 using namespace stdSimple;
 

@@ -5,6 +5,9 @@
 
 #include <ConfigurableFirmata.h>
 
+#if !__has_include("interface/NativeMethod.h")
+#error "Interface header files not found. Run Arduino Compiler 'prepare' command before building this project"
+#endif
 #include "FreeMemory.h"
 // Use this to enable WIFI instead of serial communication. Tested on ESP32.
 

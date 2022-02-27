@@ -8,9 +8,9 @@
 #else
 	#include "WProgram.h"
 #endif
-#include "SystemException.h"
 #include "Exceptions.h"
 #include "ClrException.h"
+#include "interface/SystemException.h"
 
 using namespace stdSimple;
 

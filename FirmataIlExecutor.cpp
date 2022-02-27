@@ -33,10 +33,10 @@
 #include "FreeMemory.h"
 #include "OverflowMath.h"
 #include "FirmataStatusLed.h"
-#include "RuntimeState.h"
-#include "DebuggerCommand.h"
 #include "StandardErrorCodes.h"
 #include "ArduinoDueSupport.h"
+#include "interface/RuntimeState.h"
+#include "interface/DebuggerCommand.h"
 
 typedef byte BYTE;
 

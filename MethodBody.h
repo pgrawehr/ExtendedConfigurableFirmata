@@ -3,8 +3,8 @@
 
 #include <ConfigurableFirmata.h>
 #include "ClassDeclaration.h"
-#include "NativeMethod.h"
-#include "ExceptionHandlingClauseOptions.h"
+#include "interface/NativeMethod.h"
+#include "interface/ExceptionHandlingClauseOptions.h"
 
 class MethodBody
 {

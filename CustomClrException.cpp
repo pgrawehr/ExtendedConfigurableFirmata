@@ -4,8 +4,8 @@
 
 #include <ConfigurableFirmata.h>
 #include "Exceptions.h"
-#include "SystemException.h"
 #include "CustomClrException.h"
+#include "interface/SystemException.h"
 
 
 CustomClrException::CustomClrException(Variable& msg, int exceptionToken)

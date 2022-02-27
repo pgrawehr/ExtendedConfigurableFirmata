@@ -3,10 +3,10 @@
 #include <ConfigurableFirmata.h>
 #include "ObjectVector.h"
 #include "Variable.h"
-#include "KnownTypeTokens.h"
 #include "Exceptions.h"
 #include "MemoryManagement.h"
 #include "FlashMemoryManager.h"
+#include "interface/KnownTypeTokens.h"
 
 enum class ClassProperties
 {
