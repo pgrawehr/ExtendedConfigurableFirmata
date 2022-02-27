@@ -7,9 +7,6 @@
 
 #include "FreeMemory.h"
 // Use this to enable WIFI instead of serial communication. Tested on ESP32.
-#ifdef ESP32
-#define ENABLE_WIFI
-#endif
 
 #ifdef ARDUINO_M5STACK_Core2
 #include <M5Tough.h>
@@ -18,6 +15,9 @@
 #if __has_include("wifiConfig.h")
 #include "wifiConfig.h"
 #else
+#ifdef ESP32
+#define ENABLE_WIFI
+#endif
 const char* ssid     = "your-ssid";
 const char* password = "your-password";
 const char* host = "ESP32";
