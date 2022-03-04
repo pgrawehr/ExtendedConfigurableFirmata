@@ -233,11 +233,8 @@
     <ClInclude Include="..\FreeMemory.h" />
     <ClInclude Include="..\GarbageCollector.h" />
     <ClInclude Include="..\HardwareAccess.h" />
-    <ClInclude Include="..\KnownTypeTokens.h" />
     <ClInclude Include="..\MemoryManagement.h" />
     <ClInclude Include="..\MethodBody.h" />
-    <ClInclude Include="..\MethodFlags.h" />
-    <ClInclude Include="..\NativeMethod.h" />
     <ClInclude Include="..\ObjectIterator.h" />
     <ClInclude Include="..\ObjectMap.h" />
     <ClInclude Include="..\ObjectStack.h" />

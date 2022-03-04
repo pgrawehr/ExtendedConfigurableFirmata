@@ -35,6 +35,7 @@
 #include "FirmataStatusLed.h"
 #include "StandardErrorCodes.h"
 #include "ArduinoDueSupport.h"
+#include "interface/NativeMethod.h"
 #include "interface/RuntimeState.h"
 #include "interface/DebuggerCommand.h"
 
@@ -2282,6 +2283,33 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		result.Type = VariableKind::Int32;
 		break;
 		}
+	case NativeMethod::ArrayClear:
+		{
+		ASSERT(args.size() == 3); // Array, startindex, length
+		Variable& value1 = args[0];
+		uint32_t* data = (uint32_t*)value1.Object;
+		int32_t token = *(data + 2); // Array type token
+		int32_t arraySize = *(data + 1);
+		int32_t startIndex = args[1].Int32;
+		int32_t length = args[2].Int32;
+			if (length == 0)
+			{
+				break;
+			}
+			if (startIndex + length > arraySize)
+			{
+				throw ClrException(SystemException::IndexOutOfRange, token);
+			}
+		ClassDeclaration* elemTy = GetClassWithToken(token);
+		int32_t elementSize = sizeof(void*);
+			if (elemTy->IsValueType())
+			{
+				elementSize = elemTy->ClassDynamicSize;
+			}
+			void* start = AddBytes(data, ARRAY_DATA_START + elementSize * startIndex);
+			memset(start, 0, elementSize* length);
+		}
+		break;
 	case NativeMethod::ArrayGetValue1:
 		{
 		ASSERT(args.size() == 2);
@@ -6631,13 +6659,19 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					}
 					if (dest.Type != VariableKind::AddressOfVariable)
 					{
-						throw ClrException("LDOBJ with invalid argument", SystemException::InvalidOperation, token);
-						return MethodState::Aborted;
+						throw ClrException("STOBJ with invalid argument", SystemException::InvalidOperation, token);
 					}
 
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
-					size = ty->ClassDynamicSize;
-					memcpy(dest.Object, &src.Int32, size);
+					if (ty->IsValueType())
+					{
+						size = ty->ClassDynamicSize;
+						memcpy(dest.Object, &src.Int32, size);
+					}
+					else
+					{
+						*AddBytes((int*)dest.Object, 0) = src.Int32; // Just copy the pointer
+					}
 				}
 				break;
 				case CEE_SIZEOF:

@@ -57,15 +57,6 @@
     <ClInclude Include="HardwareAccess.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="KnownTypeTokens.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MethodFlags.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="NativeMethod.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="ObjectMap.h">
       <Filter>Header Files</Filter>
     </ClInclude>
