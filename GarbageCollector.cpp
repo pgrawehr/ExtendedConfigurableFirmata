@@ -340,7 +340,7 @@ int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContai
 	TRACE(Firmata.sendString(F("Beginning GC")));
 	MarkAllFree();
 	MarkStatics(referenceContainer);
-	MarkStack(referenceContainer);
+	MarkStacks(referenceContainer);
 
 	MarkDependentHandles(referenceContainer);
 	int result = ComputeFreeBlockSizes();
@@ -381,52 +381,60 @@ void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 	}
 }
 
-void GarbageCollector::MarkStack(FirmataIlExecutor* referenceContainer)
+void GarbageCollector::MarkStacks(FirmataIlExecutor* referenceContainer)
 {
-	ExecutionState* state = referenceContainer->_methodCurrentlyExecuting;
-	
-	while (state != nullptr)
+	for (int i = 0; i < MAX_THREADS; i++)
 	{
-		uint16_t pc;
-		VariableDynamicStack* stack;
-		VariableVector* locals;
-		VariableVector* arguments;
-		state->ActivateState(&pc, &stack, &locals, &arguments);
-		VariableDynamicStack::Iterator stackIterator = stack->GetIterator();
-		Variable* var;
-		while ((var = stackIterator.next()) != nullptr)
+		if (referenceContainer->_threads[i] == nullptr)
 		{
-			MarkVariable(*var, referenceContainer);
+			continue;
 		}
 
-		for (int i = 0; i < locals->size(); i++)
-		{
-			Variable& v = locals->at(i);
-			MarkVariable(v, referenceContainer);
-		}
+		ExecutionState* state = referenceContainer->_threads[i]->rootOfExecutionStack;
 
-		for (int i = 0; i < arguments->size(); i++)
+		while (state != nullptr)
 		{
-			Variable& v = arguments->at(i);
-			MarkVariable(v, referenceContainer);
-		}
+			uint16_t pc;
+			VariableDynamicStack* stack;
+			VariableVector* locals;
+			VariableVector* arguments;
+			state->ActivateState(&pc, &stack, &locals, &arguments);
+			VariableDynamicStack::Iterator stackIterator = stack->GetIterator();
+			Variable* var;
+			while ((var = stackIterator.next()) != nullptr)
+			{
+				MarkVariable(*var, referenceContainer);
+			}
 
-		VariableListEntry* e = state->_localStorage.first();
-		while (e != nullptr)
-		{
-			Variable& ref = e->Data;
-			MarkVariable(ref, referenceContainer);
-			e = state->_localStorage.next(e);
-		}
+			for (int i = 0; i < locals->size(); i++)
+			{
+				Variable& v = locals->at(i);
+				MarkVariable(v, referenceContainer);
+			}
 
-		ExceptionFrame* ex = state->_exceptionFrame;
-		while (ex != nullptr)
-		{
-			MarkVariable(ex->Exception, referenceContainer);
-			ex = ex->Next;
-		}
+			for (int i = 0; i < arguments->size(); i++)
+			{
+				Variable& v = arguments->at(i);
+				MarkVariable(v, referenceContainer);
+			}
 
-		state = state->_next;
+			VariableListEntry* e = state->_localStorage.first();
+			while (e != nullptr)
+			{
+				Variable& ref = e->Data;
+				MarkVariable(ref, referenceContainer);
+				e = state->_localStorage.next(e);
+			}
+
+			ExceptionFrame* ex = state->_exceptionFrame;
+			while (ex != nullptr)
+			{
+				MarkVariable(ex->Exception, referenceContainer);
+				ex = ex->Next;
+			}
+
+			state = state->_next;
+		}
 	}
 }
 

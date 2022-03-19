@@ -122,7 +122,7 @@ private:
 	void MarkAllFree(GcBlock& block);
 	int ComputeFreeBlockSizes();
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
-	void MarkStack(FirmataIlExecutor* referenceContainer);
+	void MarkStacks(FirmataIlExecutor* referenceContainer);
 	bool IsValidMemoryPointer(void* ptr);
 	void MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer);
 

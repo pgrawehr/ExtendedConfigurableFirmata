@@ -72,6 +72,8 @@ enum class ExecutionError : byte
 #define STANDARD_OUTPUT_HANDLE 0xCEEE
 #define STANDARD_ERROR_HANDLE 0xCEEF
 
+#define MAX_THREADS 10
+
 // The function prototype for critical finalizer functions (closing file handles, releasing mutexes etc.)
 typedef void (*FinalizerFunction)(void*);
 
@@ -218,6 +220,20 @@ class ExecutionState
 	}
 };
 
+class ThreadState
+{
+public:
+	ThreadState()
+		: threadStatics(10)
+	{
+		rootOfExecutionStack = nullptr;
+	}
+
+	ExecutionState* rootOfExecutionStack;
+	RuntimeException currentException;
+	VariableDynamicStack threadStatics;
+};
+
 class Breakpoint
 {
 public:
@@ -284,7 +300,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionError LoadConstant(ExecutorCommand executorCommand, uint32_t constantToken, uint32_t currentEntryLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadSpecialTokens(uint32_t totalListLength, uint32_t offset, byte argc, byte* argv);
 	ExecutionError LoadExceptionClause(int methodToken, int clauseType, int tryOffset, int tryLength, int handlerOffset, int handlerLength, int exceptionFilterToken);
-	ExecutionError ExecuteDebuggerCommand(DebuggerCommand cmd, uint32_t arg1, uint32_t arg2);
+	ExecutionError ExecuteDebuggerCommand(ExecutionState* state, DebuggerCommand cmd, uint32_t arg1, uint32_t arg2);
 	ExecutionError LoadGlobalMetadata(uint32_t staticVectorMemorySize);
 
 	int ReverseSearchSpecialTypeList(int32_t genericToken, bool tokenListContainsTypes, void* tokenList);
@@ -315,6 +331,7 @@ class FirmataIlExecutor: public FirmataFeature
 	byte* AllocGcInstance(size_t bytes);
 	bool IsExecutingCode();
 	void KillCurrentTask();
+	void TerminateAllThreads();
 	void CleanStack(ExecutionState* state);
 	void SendAckOrNack(ExecutorCommand subCommand, byte sequenceNo, ExecutionError errorCode);
 	void InvalidOpCode(uint16_t pc, OPCODE opCode);
@@ -324,18 +341,18 @@ class FirmataIlExecutor: public FirmataFeature
     void SetField4(ClassDeclaration* type, const Variable& data, Variable& instance, int fieldNo);
     Variable& GetVariableDescription(ClassDeclaration* vtable, int32_t token);
     int MethodMatchesArgumentTypes(MethodBody* declaration, Variable& argumentArray);
-	bool LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle,
-	                        ExceptionClause** clauseThatMatches);
+	bool LocateCatchHandler(ThreadState* threadState, ExecutionState*& state, int tryBlockOffset,
+	                        Variable& exceptionToHandle, ExceptionClause** clauseThatMatches);
 	bool CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code);
 	void SendDebugState(ExecutionState* executionState);
 	void SendVariables(ExecutionState* stackFrame, uint32_t frameNo, int variableType);
 	void SendVariable(const Variable& variable, int& idx);
-	MethodState ExecuteIlCode(ExecutionState *state, Variable* returnValue);
+	MethodState ExecuteIlCode(ThreadState* threadState, Variable* returnValue);
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args, int stringComparison);
 	bool StringEquals(const VariableVector& args);
-	void CreateFatalException(SystemException exception, Variable& managedException, int hintToken);
+	void CreateFatalException(ThreadState* threadWithException, SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
 	void* CreateInstanceOfClass(int32_t typeToken, uint32_t length);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
@@ -346,7 +363,7 @@ class FirmataIlExecutor: public FirmataFeature
 	uint16_t DecodePackedUint14(byte* argv);
     void SendExecutionResult(int32_t codeReference, RuntimeException& lastState, Variable returnValue, MethodState execResult);
 	MethodBody* GetMethodByToken(int32_t token);
-	ExecutionState* GetNthMethodOnStack(uint32_t& n);
+	ExecutionState* GetNthMethodOnStack(ExecutionState* state, uint32_t& n);
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
@@ -366,11 +383,7 @@ class FirmataIlExecutor: public FirmataFeature
 	GarbageCollector _gc;
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
-
-	// Note: To prevent heap fragmentation, only one method can be running at a time. This will be non-null while running
-	// and everything will be disposed afterwards.
-	ExecutionState* _methodCurrentlyExecuting;
-	RuntimeException _currentException;
+	ThreadState* _threads[10];
 
 	SortedClassList _classes;
 	SortedMethodList _methods;

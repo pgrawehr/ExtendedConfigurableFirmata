@@ -78,7 +78,10 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 	: _nextStepBehavior()
 {
-	_methodCurrentlyExecuting = nullptr;
+	for (int i = 0; i < MAX_THREADS; i++)
+	{
+		_threads[i] = nullptr;
+	}
 	_stringHeapRam = nullptr;
 	_stringHeapRamSize = 0;
 	_stringHeapFlash = nullptr;
@@ -134,7 +137,18 @@ bool FirmataIlExecutor::AutoStartProgram()
 		_instructionsExecuted = 0;
 		_taskStartTime = millis();
 
-		_methodCurrentlyExecuting = rootState;
+		ThreadState* thread = new ThreadState();
+		if (thread == nullptr)
+		{
+			Firmata.sendString(F("Out of memory allocating thread"));
+			delete rootState;
+			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
+			return false;
+		}
+
+		thread->rootOfExecutionStack = rootState;
+		// AutoStart should only be called when no threads are running
+		_threads[0] = thread;
 	}
 	
 	return true;
@@ -516,7 +530,8 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 					{
 						debuggerArg2 = DecodePackedUint32(argv + 2 + 10);
 					}
-				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand((DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
+					// TODO: Should be able to tell which thread(s) to break on
+				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand(_threads[0]->rootOfExecutionStack, (DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
 				}
 				break;
 			default:
@@ -832,7 +847,7 @@ uint16_t FirmataIlExecutor::DecodePackedUint14(byte *argv)
 
 bool FirmataIlExecutor::IsExecutingCode()
 {
-	return _methodCurrentlyExecuting != nullptr;
+	return _threads[0] != nullptr;
 }
 
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
@@ -859,19 +874,18 @@ void FreeGcInstance(Variable& obj)
 
 void FirmataIlExecutor::KillCurrentTask()
 {
-	if (_methodCurrentlyExecuting == nullptr)
+	if (_threads[0] == nullptr)
 	{
 		return;
 	}
 
-	int topLevelMethod = _methodCurrentlyExecuting->TaskId();
+	int topLevelMethod = _threads[0]->rootOfExecutionStack->TaskId();
 
 	// Send a status report, to end any process waiting for this method to return.
-	SendExecutionResult(topLevelMethod, _currentException, Variable(), MethodState::Killed);
-	Firmata.sendString(F("Code execution aborted"));
-	
-	CleanStack(_methodCurrentlyExecuting);
-	_methodCurrentlyExecuting = nullptr;
+	SendExecutionResult(topLevelMethod, _threads[0]->currentException, Variable(), MethodState::Killed);
+	Firmata.sendString(F("Killing process"));
+	TerminateAllThreads();
+
 	// Make sure we stay stopped (hard-reset to restart from flash is possible, but typically the flash is going to be reprogrammed now)
 	_startupFlags = 0;
 	_startupToken = 0;
@@ -883,6 +897,21 @@ void FirmataIlExecutor::KillCurrentTask()
 	_lastError = 0;
 	_breakOnException = false;
 	SetMemoryExecutionMode(false);
+}
+
+void FirmataIlExecutor::TerminateAllThreads()
+{
+	for (int i = 0; i < MAX_THREADS; i++)
+	{
+		// Kill all threads
+		if (_threads[i] == nullptr)
+		{
+			continue;
+		}
+		CleanStack(_threads[i]->rootOfExecutionStack);
+		delete _threads[i];
+		_threads[i] = nullptr;
+	}
 }
 
 void FirmataIlExecutor::CleanStack(ExecutionState* state)
@@ -918,7 +947,7 @@ void FirmataIlExecutor::report(bool elapsed)
 
 	FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_EXECUTING_PROGRAM, 100);
 	Variable retVal;
-	MethodState execResult = ExecuteIlCode(_methodCurrentlyExecuting, &retVal);
+	MethodState execResult = ExecuteIlCode(_threads[0], &retVal);
 
 	if (execResult == MethodState::Running)
 	{
@@ -927,12 +956,11 @@ void FirmataIlExecutor::report(bool elapsed)
 	}
 
 	SetMemoryExecutionMode(false);
-	int methodindex = _methodCurrentlyExecuting->TaskId();
-	SendExecutionResult(methodindex, _currentException, retVal, execResult);
+	int methodindex = _threads[0]->rootOfExecutionStack->TaskId();
+	SendExecutionResult(methodindex, _threads[0]->currentException, retVal, execResult);
 
 	// The method ended
-	CleanStack(_methodCurrentlyExecuting);
-	_methodCurrentlyExecuting = nullptr;
+	TerminateAllThreads();
 }
 
 ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, byte maxStack, byte argCount,
@@ -1178,6 +1206,12 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 
 	SetMemoryExecutionMode(true);
 
+	if (_threads[0] != nullptr)
+	{
+		// TODO: It should be possible to create a task on another thread.
+		Firmata.sendStringf(F("Main thread already running"));
+	}
+
 	TRACE(Firmata.sendStringf(F("Code execution for %d starts. Stack Size is %d."), methodToken, method->MaxExecutionStack()));
 	ExecutionState* rootState = new ExecutionState(taskId, method->MaxExecutionStack(), method);
 	if (rootState == nullptr)
@@ -1186,8 +1220,16 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	}
 	_instructionsExecuted = 0;
 	_taskStartTime = millis();
-	
-	_methodCurrentlyExecuting = rootState;
+
+	ThreadState* thread = new ThreadState();
+	if (thread == nullptr)
+	{
+		OutOfMemoryException::Throw("Out of memory allocating thread");
+	}
+
+	thread->rootOfExecutionStack = rootState;
+	_threads[0] = thread;
+
 	int idx = 0;
 	for (int i = 0; i < method->NumberOfArguments(); i++)
 	{
@@ -5059,7 +5101,7 @@ Variable FirmataIlExecutor::CreateStringInstance(size_t length, const char* stri
 // - codeLength is correct
 // - argc matches argList
 // - It was validated that the method has exactly argc arguments
-MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable* returnValue)
+MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable* returnValue)
 {
 	const int NUM_INSTRUCTIONS_AT_ONCE = 50;
 
@@ -5069,7 +5111,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		return MethodState::Running;
 	}
 	
-	ExecutionState* currentFrame = rootState;
+	ExecutionState* currentFrame = threadState->rootOfExecutionStack;
 	while (currentFrame->_next != NULL)
 	{
 		currentFrame = currentFrame->_next;
@@ -5105,7 +5147,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		if (CheckForBreakCondition(currentFrame, PC, pCode))
 		{
 			currentFrame->UpdatePc(PC);
-			SendDebugState(rootState);
+			SendDebugState(threadState->rootOfExecutionStack);
 			_debugBreakActive = true;
 			break; // exit while loop
 		}
@@ -5189,7 +5231,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					throw ClrException(SystemException::ClassNotFound, typeToken);
 				}
 
-				ExecutionState* frame = rootState; // start at root
+				ExecutionState* frame = threadState->rootOfExecutionStack; // start at root
 				while (frame->_next != currentFrame)
 				{
 					frame = frame->_next;
@@ -5215,7 +5257,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
 				// We're called into a "special" (built-in) method. 
 				// Perform a method return
-				ExecutionState* frame = rootState; // start at root
+				ExecutionState* frame = threadState->rootOfExecutionStack; // start at root
 				while (frame->_next != currentFrame)
 				{
 					frame = frame->_next;
@@ -5273,7 +5315,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 				if (instr == CEE_RET)
 				{
 					// Remove current method from execution stack
-					ExecutionState* frame = rootState;
+					ExecutionState* frame = threadState->rootOfExecutionStack;
 					if (frame == currentFrame)
 					{
 						// We're at the outermost frame, for now only basic types can be returned here
@@ -5689,7 +5731,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 					currentFrame->UpdatePc(PC);
 					ExceptionClause* c = nullptr;
 					Variable noException;
-					if (LocateCatchHandler(currentFrame, leaveSource, noException, &c))
+					if (LocateCatchHandler(threadState, currentFrame, leaveSource, noException, &c))
 					{
 						PC = CreateExceptionFrame(currentFrame, PC, c, noException);
 					}
@@ -6782,7 +6824,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		Firmata.sendString(STRING_DATA, ox.Message());
 		_gc.PrintStatistics();
 		Variable v(VariableKind::Object);
-		CreateFatalException(SystemException::OutOfMemory, v, 0);
+		CreateFatalException(threadState, SystemException::OutOfMemory, v, 0);
 		return MethodState::Aborted;
 	}
 	catch(ClrException& cx)
@@ -6797,7 +6839,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		if (_debuggerEnabled)
 		{
 			Firmata.sendString(F("Exception caught. First follows the state before stack unwinding, then after: "));
-			SendDebugState(rootState);
+			SendDebugState(threadState->rootOfExecutionStack);
 		}
 
 		_instructionsExecuted += instructionsExecutedThisLoop;
@@ -6807,7 +6849,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		ExceptionClause* c = nullptr;
 
 		// v.Object is only null if we were unable to convert a system exception into a managed exception.
-		if (v.Object != nullptr && LocateCatchHandler(currentFrame, PC, v, &c))
+		if (v.Object != nullptr && LocateCatchHandler(threadState, currentFrame, PC, v, &c))
 		{
 			currentFrame->UpdatePc(CreateExceptionFrame(currentFrame, 0, c, v));
 			currentFrame->ActivateState(&PC, &stack, &locals, &arguments);
@@ -6847,7 +6889,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		else
 		{
 			// No suitable handler found
-			CreateFatalException(cx.ExceptionType(), v, cx.ExceptionToken());
+			CreateFatalException(threadState, cx.ExceptionType(), v, cx.ExceptionToken());
 			return MethodState::Aborted;
 		}
 	}
@@ -6857,7 +6899,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
 		Variable v(VariableKind::Object);
-		CreateFatalException(SystemException::ExecutionEngine, v, 0);
+		CreateFatalException(threadState, SystemException::ExecutionEngine, v, 0);
 		return MethodState::Aborted;
 	}
 	
@@ -6879,12 +6921,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ExecutionState *rootState, Variable
 /// <summary>
 /// Locates an exception handler for a given exception
 /// </summary>
+///	<param name="threadState">The currently executing thread</param>
 /// <param name="state">The execution state of the calling method. Note that upon return, this may have changed to another method!</param>
 /// <param name="tryBlockOffset">The PC at which a handler is needed (this shall be within the handlers "try" block)</param>
 /// <param name="exceptionToHandle">The Exception that needs handling</param>
 /// <param name="clauseThatMatches">The clause that best fits</param>
 /// <returns>True if a handler was found, false otherwise</returns>
-bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle, ExceptionClause** clauseThatMatches)
+bool FirmataIlExecutor::LocateCatchHandler(ThreadState *threadState, ExecutionState*& state, int tryBlockOffset, Variable& exceptionToHandle, ExceptionClause** clauseThatMatches)
 {
 	ExecutionState* newState = state;
 	while (newState != nullptr)
@@ -6980,7 +7023,7 @@ bool FirmataIlExecutor::LocateCatchHandler(ExecutionState*& state, int tryBlockO
 
 		ExecutionState* tempState = newState;
 		// Go up one stack frame
-		newState = _methodCurrentlyExecuting;
+		newState = threadState->rootOfExecutionStack;
 		tryBlockOffset = newState->CurrentPc(); // search from previous call location
 		while (newState != nullptr && newState->_next != tempState)
 		{
@@ -7219,32 +7262,38 @@ void FirmataIlExecutor::SignExtend(Variable& variable, int inputSize)
 	}
 }
 
-void FirmataIlExecutor::CreateFatalException(SystemException exception, Variable& managedException, int hintToken)
+void FirmataIlExecutor::CreateFatalException(ThreadState* threadWithException, SystemException exception, Variable& managedException, int hintToken)
 {
 	if (managedException.Type != VariableKind::Object && managedException.Type != VariableKind::Void)
 	{
 		throw ExecutionEngineException("Double fault: Illegal exception type");
 	}
-	_currentException.ExceptionType = exception;
-	_currentException.TokenOfException = hintToken;
-	_currentException.ExceptionObject = managedException; // Must be of type object
 
-	ExecutionState* currentFrame = _methodCurrentlyExecuting;
+	if (threadWithException == nullptr)
+	{
+		throw ExecutionEngineException("Double fault: Illegal thread state when exception occurred");
+	}
+
+	threadWithException->currentException.ExceptionType = exception;
+	threadWithException->currentException.TokenOfException = hintToken;
+	threadWithException->currentException.ExceptionObject = managedException; // Must be of type object
+
+	ExecutionState* currentFrame = threadWithException->rootOfExecutionStack;
 	int idx = 0;
-	memset(_currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
-	memset(_currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(uint16_t));
+	memset(threadWithException->currentException.StackTokens, 0, RuntimeException::MaxStackTokens * sizeof(int));
+	memset(threadWithException->currentException.PerStackPc, 0, RuntimeException::MaxStackTokens * sizeof(uint16_t));
 	while (currentFrame != NULL)
 	{
 		if (idx >= RuntimeException::MaxStackTokens)
 		{
 			// If we have more than MaxStackTokens elements, shift the list and drop the first (lowest) elements
-			memmove(_currentException.StackTokens, &_currentException.StackTokens[1], sizeof(int) * (RuntimeException::MaxStackTokens - 1));
-			memmove(_currentException.PerStackPc, &_currentException.PerStackPc[1], sizeof(uint16_t) * (RuntimeException::MaxStackTokens - 1));
+			memmove(threadWithException->currentException.StackTokens, &threadWithException->currentException.StackTokens[1], sizeof(int) * (RuntimeException::MaxStackTokens - 1));
+			memmove(threadWithException->currentException.PerStackPc, &threadWithException->currentException.PerStackPc[1], sizeof(uint16_t) * (RuntimeException::MaxStackTokens - 1));
 			idx--;
 		}
 		
-		_currentException.StackTokens[idx] = currentFrame->_executingMethod->methodToken;
-		_currentException.PerStackPc[idx++] = currentFrame->CurrentPc();
+		threadWithException->currentException.StackTokens[idx] = currentFrame->_executingMethod->methodToken;
+		threadWithException->currentException.PerStackPc[idx++] = currentFrame->CurrentPc();
 		currentFrame = currentFrame->_next;
 	}
 }
@@ -7587,11 +7636,12 @@ MethodBody* FirmataIlExecutor::GetMethodByToken(int32_t token)
 /// <summary>
 /// Returns the n'th method on the stack (where 0 is the oldest and n is the currently executing method)
 /// </summary>
+///	<param name="state">The current thread state</param>
 /// <param name="n">Number of method to return, 0-based (will return the actual stack number used)</param>
 /// <returns>The stack frame for the given number. If there are not as many stack frames as specified, the last one is returned</returns>
-ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(uint32_t& n)
+ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(ExecutionState* state, uint32_t& n)
 {
-	auto currentMethod = _methodCurrentlyExecuting;
+	auto currentMethod = state;
 	int realn = 0;
 	while (currentMethod->_next != nullptr && realn != n) // iterate zero times if n is zero
 	{
@@ -7603,12 +7653,12 @@ ExecutionState* FirmataIlExecutor::GetNthMethodOnStack(uint32_t& n)
 	return currentMethod;
 }
 
-ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, uint32_t arg1, uint32_t arg2)
+ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(ExecutionState* state, DebuggerCommand cmd, uint32_t arg1, uint32_t arg2)
 {
-	if (_methodCurrentlyExecuting != nullptr)
+	if (state != nullptr)
 	{
 		uint32_t idx = INT32_MAX;
-		auto currentMethod = GetNthMethodOnStack(idx);
+		auto currentMethod = GetNthMethodOnStack(state, idx);
 		_nextStepBehavior.MethodToken = currentMethod->_executingMethod->GetKey();
 		_nextStepBehavior.Pc = currentMethod->CurrentPc();
 	}
@@ -7675,19 +7725,19 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(DebuggerCommand cmd, ui
 		break;
 	case DebuggerCommand::SendLocals:
 	{
-		auto stackFrame = GetNthMethodOnStack(arg1);
+		auto stackFrame = GetNthMethodOnStack(state, arg1);
 		SendVariables(stackFrame, arg1, 0);
 		break;
 	}
 	case DebuggerCommand::SendEvaluationStack:
 	{
-		auto stackFrame = GetNthMethodOnStack(arg1);
+		auto stackFrame = GetNthMethodOnStack(state, arg1);
 		SendVariables(stackFrame, arg1, 2);
 		break;
 	}
 	case DebuggerCommand::SendArguments:
 		{
-		auto stackFrame = GetNthMethodOnStack(arg1);
+		auto stackFrame = GetNthMethodOnStack(state, arg1);
 		SendVariables(stackFrame, arg1, 1);
 		break;
 		}
@@ -7742,10 +7792,6 @@ void FirmataIlExecutor::reset()
 	_classes.clear(false);
 	_constants.clear(false);
 	_clauses.clear(false);
-
-	_currentException.ExceptionObject.Type = VariableKind::Void;
-	_currentException.TokenOfException = 0;
-	_currentException.ExceptionType = SystemException::None;
 
 	freeEx(_staticVector);
 	
