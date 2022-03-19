@@ -109,7 +109,7 @@ private:
 public:
 	uint16_t fieldSize() const
 	{
-		VariableKind t = Type & ~VariableKind::StaticMember;
+		VariableKind t = Type & VariableKind::TypeFilter;
 		if (t == VariableKind::Object || t == VariableKind::AddressOfVariable || t == VariableKind::ReferenceArray || t == VariableKind::ValueArray)
 		{
 			return sizeof(void*);

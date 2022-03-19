@@ -3071,7 +3071,7 @@ void FirmataIlExecutor::InitStaticVector()
 			int* token = (int*)currentPtr;
 			*token = field->Int32;
 			Variable* var = AddBytes((Variable*)currentPtr, 4);
-			var->Type = field->Type & ~VariableKind::StaticMember;
+			var->Type = field->Type & VariableKind::TypeFilter;
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
 			var->setSize((uint16_t)sizeToUse);
@@ -3103,7 +3103,7 @@ byte* FirmataIlExecutor::Ldsfld(int token, VariableDescription& description)
 
 	description.Marker = VARIABLE_DEFAULT_MARKER;
 	description.Size = ptr->fieldSize();
-	description.Type = ptr->Type & ~VariableKind::StaticMember;
+	description.Type = ptr->Type & VariableKind::TypeFilter;
 	return (byte*)&ptr->Int32;
 }
 
