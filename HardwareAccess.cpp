@@ -551,14 +551,6 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.setSize(8);
 		result.Int64 = TheClock.ReadTime();
 		break;
-
-		// As long as we're running only one task, this is a no-op
-	case NativeMethod::MonitorEnter:
-		result.Type = VariableKind::Void;
-		break;
-	case NativeMethod::MonitorExit:
-		result.Type = VariableKind::Void;
-		break;
 	
 	default:
 		return false;

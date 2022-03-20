@@ -74,6 +74,8 @@ enum class ExecutionError : byte
 
 #define MAX_THREADS 10
 
+const int NUM_INSTRUCTIONS_AT_ONCE = 50;
+
 // The function prototype for critical finalizer functions (closing file handles, releasing mutexes etc.)
 typedef void (*FinalizerFunction)(void*);
 
@@ -223,15 +225,18 @@ class ExecutionState
 class ThreadState
 {
 public:
-	ThreadState()
-		: threadStatics(10)
+	ThreadState(int id)
+		: threadStatics(10), managedThreadInstance(VariableKind::Object)
 	{
 		rootOfExecutionStack = nullptr;
+		threadId = id;
 	}
 
+	int threadId;
 	ExecutionState* rootOfExecutionStack;
 	RuntimeException currentException;
 	VariableDynamicStack threadStatics;
+	Variable managedThreadInstance;
 };
 
 class Breakpoint
@@ -262,6 +267,7 @@ class FirmataIlExecutor: public FirmataFeature
 
 	boolean handleSysex(byte command, byte argc, byte* argv) override;
 	void reset() override;
+	int ThreadToSchedule();
 	void report(bool elapsed) override;
 
 	void Init();
@@ -307,7 +313,9 @@ class FirmataIlExecutor: public FirmataFeature
 	int ReverseSearchSpecialTypeList(int mainToken, void* tokenList, bool tokenListContainsTypes, const int* searchList);
     int* GetSpecialTokenListEntryCore(int* tokenList, int token, bool searchWithMainToken);
     int* GetSpecialTokenListEntry(int token, bool searchWithMainToken);
-	void ExecuteSpecialMethod(ExecutionState* state, NativeMethod method, const VariableVector &args, Variable& result);
+	bool ExecuteSpecialMethod(ThreadState* currentThread, ExecutionState* currentFrame, NativeMethod method,
+	                          const VariableVector& args, Variable&
+	                          result);
 
 	byte* Ldsfld(int token, VariableDescription& description);
 	Variable* FindStaticField(int32_t token) const;
@@ -384,6 +392,8 @@ class FirmataIlExecutor: public FirmataFeature
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
 	ThreadState* _threads[10];
+	int _exclusiveThreadId; // For now, whenever a thread takes a monitor lock, we mark it as exclusive
+	int _lastThreadRun;
 
 	SortedClassList _classes;
 	SortedMethodList _methods;

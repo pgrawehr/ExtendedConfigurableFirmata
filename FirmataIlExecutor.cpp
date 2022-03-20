@@ -99,6 +99,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
+	_exclusiveThreadId = -1;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -137,7 +138,7 @@ bool FirmataIlExecutor::AutoStartProgram()
 		_instructionsExecuted = 0;
 		_taskStartTime = millis();
 
-		ThreadState* thread = new ThreadState();
+		ThreadState* thread = new ThreadState(0);
 		if (thread == nullptr)
 		{
 			Firmata.sendString(F("Out of memory allocating thread"));
@@ -896,6 +897,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
+	_lastThreadRun = 0;
 	SetMemoryExecutionMode(false);
 }
 
@@ -946,12 +948,25 @@ void FirmataIlExecutor::report(bool elapsed)
 	}
 
 	FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_EXECUTING_PROGRAM, 100);
+
+	int threadToSchedule = ThreadToSchedule();
+
 	Variable retVal;
-	MethodState execResult = ExecuteIlCode(_threads[0], &retVal);
+	MethodState execResult = ExecuteIlCode(_threads[threadToSchedule], &retVal);
 
 	if (execResult == MethodState::Running)
 	{
 		// The method is still running
+		return;
+	}
+
+	// A thread other than the main thread has ended (either by itself or due to an unhandled exception)
+	if (threadToSchedule != 0)
+	{
+		Firmata.sendStringf(F("Thread %d has exited with code %d"), threadToSchedule, execResult);
+		CleanStack(_threads[threadToSchedule]->rootOfExecutionStack);
+		delete _threads[threadToSchedule];
+		_threads[threadToSchedule] = nullptr;
 		return;
 	}
 
@@ -962,6 +977,35 @@ void FirmataIlExecutor::report(bool elapsed)
 	// The method ended
 	TerminateAllThreads();
 }
+
+int FirmataIlExecutor::ThreadToSchedule()
+{
+	int result = _lastThreadRun;
+	if (_exclusiveThreadId >= 0)
+	{
+		_lastThreadRun = _exclusiveThreadId;
+		if (_threads[_exclusiveThreadId] == nullptr || _threads[_exclusiveThreadId]->rootOfExecutionStack == nullptr)
+		{
+			// cannot throw here, since outside of main try/catch. Would cause a core dump.
+			Firmata.sendStringf(F("Abandoned lock found: Monitor.Enter() called without Monitor.Exit()"));
+			return 0;
+		}
+		return _exclusiveThreadId;
+	}
+	do
+	{
+		result = (result + 1) % MAX_THREADS;
+		// Is there a started thread in that slot?
+		if (_threads[result] != nullptr && _threads[result]->rootOfExecutionStack != nullptr)
+		{
+			return result;
+		}
+		
+	} while (result != _lastThreadRun); // Abort when we're back at the same thread
+
+	return _lastThreadRun;
+}
+
 
 ExecutionError FirmataIlExecutor::LoadIlDeclaration(int methodToken, int flags, byte maxStack, byte argCount,
 	NativeMethod nativeMethod)
@@ -1221,7 +1265,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	_instructionsExecuted = 0;
 	_taskStartTime = millis();
 
-	ThreadState* thread = new ThreadState();
+	ThreadState* thread = new ThreadState(0);
 	if (thread == nullptr)
 	{
 		OutOfMemoryException::Throw("Out of memory allocating thread");
@@ -1454,15 +1498,24 @@ char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
 	return outStart;
 }
 
-// Executes the given OS function. Note that args[0] is the this pointer for instance methods
-void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, NativeMethod method, const VariableVector& args, Variable& result)
+/// <summary>
+/// Executes the given low-level function. Note that args[0] is the this pointer for instance methods
+/// </summary>
+/// <param name="currentThread">The current thread</param>
+/// <param name="currentFrame">The current stack frame</param>
+/// <param name="method">The method number</param>
+/// <param name="args">The argument list</param>
+/// <param name="result">Variable for return parameter</param>
+/// <returns>True on success, false to indicate that the method should be retried (Wait methods and the like)</returns>
+bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, ExecutionState* currentFrame,
+                                             NativeMethod method, const VariableVector& args, Variable& result)
 {
 	TRACE(Firmata.sendStringf(F("Executing special method 0x%x"), (int32_t)method));
 	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
 		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
 		{
-			return;
+			return true;
 		}
 	}
 
@@ -1470,6 +1523,120 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 	// This lets us more quickly detect inconsistent builds (unsychronized enum values)
 	switch (method)
 	{
+	case NativeMethod::MonitorEnter:
+		_exclusiveThreadId = currentThread->threadId;
+		result.Type = VariableKind::Void;
+		break;
+	case NativeMethod::MonitorExit:
+		_exclusiveThreadId = -1;
+		result.Type = VariableKind::Void;
+		break;
+	case NativeMethod::ThreadInitialize:
+	{
+		ASSERT(args.size() == 1); // This is a member method
+			// What do we have to do here?
+			// We already need to make sure the internal thread variable is not 0, so we allocate the thread block here.
+		ClassDeclaration* ty = GetClassDeclaration(args[0]);
+		int idx = 0;
+		while (_threads[idx] != nullptr && idx < MAX_THREADS)
+		{
+			idx++;
+		}
+
+		if (idx >= MAX_THREADS)
+		{
+			throw ClrException("Maximum number of threads reached", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+		}
+
+		Variable value;
+		value.Type = VariableKind::Int32;
+		value.Int32 = idx + MAX_THREADS; // Can use any arbitrary non-zero offset, but value must not be 0
+		SetField4(ty, value, args[0], 0);
+		ThreadState* thread = new ThreadState(idx);
+		if (thread == nullptr)
+		{
+			Firmata.sendString(F("Out of memory allocating thread"));
+			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
+		}
+		thread->managedThreadInstance.Object = args[0].Object;
+		_threads[idx] = thread;
+	}
+		break;
+
+	case NativeMethod::ThreadStartInternal:
+		{
+			ASSERT(args.size() == 4); // public static unsafe void StartInternal(IntPtr t, int stackSize, int priority, char* pThreadName)
+			int threadHandle = args[0].Int32 - MAX_THREADS;
+			if (threadHandle < 0 || threadHandle >= MAX_THREADS)
+			{
+				throw ClrException(SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+			}
+
+			Variable& instance = _threads[threadHandle]->managedThreadInstance;
+
+			MethodBody* m = GetMethodByToken((int)KnownTypeTokens::ThreadStartCallback);
+
+			if (m == nullptr)
+			{
+				throw ClrException(SystemException::MissingMethod, (int)KnownTypeTokens::ThreadStartCallback);
+			}
+
+			// Create the initial call stack
+			ExecutionState* rootState = new ExecutionState(threadHandle, m->MaxExecutionStack(), m);
+			if (rootState == nullptr)
+			{
+				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
+				OutOfMemoryException::Throw("Out of memory starting thread");
+			}
+
+			// Push the "this" argument (the thread object)
+			rootState->SetArgumentValue(0, instance);
+			// And remember this
+			_threads[threadHandle]->rootOfExecutionStack = rootState;
+		}
+		break;
+	case NativeMethod::ThreadJoin:
+		{
+			ASSERT(args.size() == 2); // public extern bool Join(int millisecondsTimeout);
+			Variable& targetThread = args[0];
+			result.Type = VariableKind::Boolean;
+			if (currentThread->managedThreadInstance.Object == targetThread.Object)
+			{
+				throw ClrException("Cannot Join on own thread", SystemException::InvalidOperation, currentFrame->_executingMethod->methodToken);
+			}
+
+			for (int i = 0; i < MAX_THREADS; i++)
+			{
+				ThreadState* t = _threads[i];
+				if (t != nullptr && t->managedThreadInstance.Object == targetThread.Object)
+				{
+					// Found the thread.
+					if (args[1].Int32 == 0)
+					{
+						// timeout elapsed -> Return false and continue
+						result.Boolean = false;
+						return true;
+					}
+					else if (args[i].Int32 == -1) // Infinite timeout
+					{
+						return false;
+					}
+					else
+					{
+						// Thread found, timeout not elapsed -> Wait and retry
+						if (args[i].Int32 > 0)
+						{
+							args[i].Int32 -= 1; // TODO: Use adequate timing
+						}
+						return false;
+					}
+				}
+			}
+
+			// The thread object was not found -> Return true and continue
+			result.Boolean = true;
+		}
+		break;
 	case NativeMethod::TypeEquals:
 		ASSERT(args.size() == 2);
 		{
@@ -2041,12 +2208,12 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 					if (c1 < c2)
 					{
 						result.Int32 = -1;
-						return;
+						return true;
 					}
 					else if (c1 > c2)
 					{
 						result.Int32 = 1;
-						return;
+						return true;
 					}
 				}
 
@@ -2054,11 +2221,11 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 				if (len1 == len2)
 				{
 					result.Int32 = 0;
-					return;
+					return true;
 				}
 				
 				result.Int32 = len1 < len2 ? -1 : 1;
-				return;
+				return true;
 			}
 		}
 		break;
@@ -2697,6 +2864,7 @@ void FirmataIlExecutor::ExecuteSpecialMethod(ExecutionState* currentFrame, Nativ
 		throw ClrException("Unknown internal method", SystemException::MissingMethod, currentFrame->_executingMethod->methodToken);
 	}
 
+	return true;
 }
 
 /// <summary>
@@ -5103,8 +5271,6 @@ Variable FirmataIlExecutor::CreateStringInstance(size_t length, const char* stri
 // - It was validated that the method has exactly argc arguments
 MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable* returnValue)
 {
-	const int NUM_INSTRUCTIONS_AT_ONCE = 50;
-
 	if (_debugBreakActive)
 	{
 		// This won't change while we're sitting on a breakpoint.
@@ -5254,7 +5420,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
     		}
 			else
 			{
-				ExecuteSpecialMethod(currentFrame, specialMethod, *arguments, retVal);
+				if (!ExecuteSpecialMethod(threadState, currentFrame, specialMethod, *arguments, retVal))
+				{
+					// If this returns false, we exit the execution loop for this thread and execute the method again next time
+					// That's how we (busy-)wait inside native methods
+					instructionsExecutedThisLoop = NUM_INSTRUCTIONS_AT_ONCE + 1;
+					break;
+				}
+
 				// We're called into a "special" (built-in) method. 
 				// Perform a method return
 				ExecutionState* frame = threadState->rootOfExecutionStack; // start at root
