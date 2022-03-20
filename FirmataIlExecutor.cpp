@@ -82,6 +82,12 @@ FirmataIlExecutor::FirmataIlExecutor()
 	{
 		_threads[i] = nullptr;
 	}
+
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		_activeLocks[i] = MonitorLock();
+	}
+
 	_stringHeapRam = nullptr;
 	_stringHeapRamSize = 0;
 	_stringHeapFlash = nullptr;
@@ -99,7 +105,6 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
-	_exclusiveThreadId = -1;
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -981,23 +986,13 @@ void FirmataIlExecutor::report(bool elapsed)
 int FirmataIlExecutor::ThreadToSchedule()
 {
 	int result = _lastThreadRun;
-	if (_exclusiveThreadId >= 0)
-	{
-		_lastThreadRun = _exclusiveThreadId;
-		if (_threads[_exclusiveThreadId] == nullptr || _threads[_exclusiveThreadId]->rootOfExecutionStack == nullptr)
-		{
-			// cannot throw here, since outside of main try/catch. Would cause a core dump.
-			Firmata.sendStringf(F("Abandoned lock found: Monitor.Enter() called without Monitor.Exit()"));
-			return 0;
-		}
-		return _exclusiveThreadId;
-	}
 	do
 	{
 		result = (result + 1) % MAX_THREADS;
 		// Is there a started thread in that slot?
 		if (_threads[result] != nullptr && _threads[result]->rootOfExecutionStack != nullptr)
 		{
+			_lastThreadRun = result;
 			return result;
 		}
 		
@@ -1513,6 +1508,8 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	TRACE(Firmata.sendStringf(F("Executing special method 0x%x"), (int32_t)method));
 	for (uint32_t i = 0; i < _lowLevelLibraries.size(); i++)
 	{
+		// The return value of this method means "method found", which is not the same as the return value of this method.
+		// Therefore, all wait functions must be implemented directly below
 		if (_lowLevelLibraries[i]->ExecuteHardwareAccess(this, currentFrame, method, args, result))
 		{
 			return true;
@@ -1523,12 +1520,98 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	// This lets us more quickly detect inconsistent builds (unsychronized enum values)
 	switch (method)
 	{
-	case NativeMethod::MonitorEnter:
-		_exclusiveThreadId = currentThread->threadId;
-		result.Type = VariableKind::Void;
+	case NativeMethod::MonitorTryEnter:
+		{
+			result.Type = VariableKind::Boolean;
+			result.Boolean = false;
+			// TODO: Once we really run on multiple cores, replace noInterrupts/interrupts with a function that takes a global mutex
+			ASSERT(args.size() == 2);
+			ScopeLock lk;
+			bool found = false;
+			for (int i = 0; i < MAX_LOCKS; i++)
+			{
+				auto& lock = _activeLocks[i];
+				if (lock.object == args[0].Object)
+				{
+					found = true;
+					if (lock.owningThread == currentThread)
+					{
+						lock.lockCount++;
+					}
+					else
+					{
+						// There exists already a lock for this object, but from another thread -> Wait
+						if (args[1].Int32 == -1)
+						{
+							return false;
+						}
+						else if (args[1].Int32 == 0)
+						{
+							// Timeout
+							result.Boolean = false;
+							return true;
+						}
+						else
+						{
+							args[1].Int32 -= 1;
+							return false;
+						}
+					}
+				}
+			}
+
+			if (!found)
+			{
+				found = false;
+				for (int i = 0; i < MAX_LOCKS; i++)
+				{
+					if (_activeLocks[i].object == nullptr)
+					{
+						_activeLocks[i].object = args[0].Object;
+						_activeLocks[i].lockCount = 1;
+						_activeLocks[i].owningThread = currentThread;
+						found = true;
+						break;
+					}
+				}
+
+				if (!found)
+				{
+					interrupts();
+					throw ClrException("No more locks", SystemException::ExecutionEngine, 0);
+				}
+			}
+			result.Boolean = true;
+		}
 		break;
 	case NativeMethod::MonitorExit:
-		_exclusiveThreadId = -1;
+	{
+		ScopeLock lk;
+		bool found = false;
+		for (int i = 0; i < MAX_LOCKS; i++)
+		{
+			auto& lock = _activeLocks[i];
+			if (lock.object == args[0].Object)
+			{
+				if (lock.owningThread == currentThread)
+				{
+					lock.lockCount--;
+					if (lock.lockCount == 0)
+					{
+						lock.owningThread = nullptr;
+						lock.object = nullptr;
+					}
+					found = true;
+					break;
+				}
+			}
+		}
+		
+		if (!found)
+		{
+			throw ClrException("Releasing a lock that is not owned", SystemException::InvalidOperation, 0);
+		}
+	}
 		result.Type = VariableKind::Void;
 		break;
 	case NativeMethod::ThreadInitialize:

@@ -73,6 +73,7 @@ enum class ExecutionError : byte
 #define STANDARD_ERROR_HANDLE 0xCEEF
 
 #define MAX_THREADS 10
+#define MAX_LOCKS 10
 
 const int NUM_INSTRUCTIONS_AT_ONCE = 50;
 
@@ -239,6 +240,21 @@ public:
 	Variable managedThreadInstance;
 };
 
+class MonitorLock
+{
+public:
+	MonitorLock()
+	{
+		object = nullptr;
+		owningThread = nullptr;
+		lockCount = 0;
+	}
+
+	void* object;
+	ThreadState* owningThread;
+	int lockCount;
+};
+
 class Breakpoint
 {
 public:
@@ -252,6 +268,21 @@ public:
 	BreakpointType Kind;
 	int MethodToken;
 	int Pc;
+};
+
+class ScopeLock
+{
+public:
+	ScopeLock()
+	{
+		// TODO: Take a global mutex, so that really only one CPU core can be in a scope lock
+		noInterrupts();
+	}
+
+	~ScopeLock()
+	{
+		interrupts();
+	}
 };
 
 
@@ -391,8 +422,8 @@ class FirmataIlExecutor: public FirmataFeature
 	GarbageCollector _gc;
 	uint32_t _instructionsExecuted;
 	uint32_t _taskStartTime;
-	ThreadState* _threads[10];
-	int _exclusiveThreadId; // For now, whenever a thread takes a monitor lock, we mark it as exclusive
+	ThreadState* _threads[MAX_THREADS];
+	MonitorLock _activeLocks[MAX_LOCKS]; // Monitor locks - assume a constant maximum number of simultaneous locks
 	int _lastThreadRun;
 
 	SortedClassList _classes;
