@@ -372,6 +372,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void KillCurrentTask();
 	void TerminateAllThreads();
 	void CleanStack(ExecutionState* state);
+	void CleanStack(int activeThreadId);
 	void SendAckOrNack(ExecutorCommand subCommand, byte sequenceNo, ExecutionError errorCode);
 	void InvalidOpCode(uint16_t pc, OPCODE opCode);
 	void GetTypeFromHandle(ExecutionState* currentFrame, Variable& result, Variable type);

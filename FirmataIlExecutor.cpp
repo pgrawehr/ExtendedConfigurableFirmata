@@ -537,7 +537,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 						debuggerArg2 = DecodePackedUint32(argv + 2 + 10);
 					}
 					// TODO: Should be able to tell which thread(s) to break on
-				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand(_threads[0]->rootOfExecutionStack, (DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
+				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand(_threads[0] ? _threads[0]->rootOfExecutionStack : nullptr, (DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
 				}
 				break;
 			default:
@@ -911,13 +911,7 @@ void FirmataIlExecutor::TerminateAllThreads()
 	for (int i = 0; i < MAX_THREADS; i++)
 	{
 		// Kill all threads
-		if (_threads[i] == nullptr)
-		{
-			continue;
-		}
-		CleanStack(_threads[i]->rootOfExecutionStack);
-		delete _threads[i];
-		_threads[i] = nullptr;
+		CleanStack(i);
 	}
 }
 
@@ -929,6 +923,25 @@ void FirmataIlExecutor::CleanStack(ExecutionState* state)
 		state = state->_next;
 		delete previous;
 	}
+}
+
+void FirmataIlExecutor::CleanStack(int activeThreadId)
+{
+	if (_threads[activeThreadId] == nullptr)
+	{
+		return;
+	}
+
+	ExecutionState* state = _threads[activeThreadId]->rootOfExecutionStack;
+	while (state != nullptr)
+	{
+		auto previous = state;
+		state = state->_next;
+		delete previous;
+	}
+
+	delete _threads[activeThreadId];
+	_threads[activeThreadId] = nullptr;
 }
 
 void FirmataIlExecutor::report(bool elapsed)
@@ -969,9 +982,7 @@ void FirmataIlExecutor::report(bool elapsed)
 	if (threadToSchedule != 0)
 	{
 		Firmata.sendStringf(F("Thread %d has exited with code %d"), threadToSchedule, execResult);
-		CleanStack(_threads[threadToSchedule]->rootOfExecutionStack);
-		delete _threads[threadToSchedule];
-		_threads[threadToSchedule] = nullptr;
+		CleanStack(threadToSchedule);
 		return;
 	}
 
@@ -2476,7 +2487,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	{
 		ASSERT(args.size() == 1);
 		Variable& array = args[0];
-		ASSERT(array.Type == VariableKind::ReferenceArray || array.Type == VariableKind::ValueArray);
+		ASSERT(array.Type == VariableKind::ReferenceArray || array.Type == VariableKind::ValueArray || array.Type == VariableKind::Object);
 		result.Object = AddBytes(array.Object, ARRAY_DATA_START);
 		result.Type = VariableKind::AddressOfVariable;
 		result.setSize(sizeof(void*));
@@ -7152,6 +7163,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 	catch(ExecutionEngineException& ee)
 	{
 		_instructionsExecuted += instructionsExecutedThisLoop;
+		SendDebugState(threadState->rootOfExecutionStack);
 		currentFrame->UpdatePc(PC);
 		Firmata.sendString(STRING_DATA, ee.Message());
 		Variable v(VariableKind::Object);
@@ -7403,7 +7415,7 @@ bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t p
 
 	for (size_t i = 0; i < _breakpoints.size(); i++)
 	{
-		auto bp = _breakpoints.at(i);
+		auto& bp = _breakpoints.at(i);
 		if (bp.MethodToken == state->_executingMethod->methodToken && pc == bp.Pc)
 		{
 			_nextStepBehavior.Kind = BreakpointType::None; // If we single-stepped here, stop that
