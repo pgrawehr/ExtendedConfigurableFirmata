@@ -3375,7 +3375,7 @@ void FirmataIlExecutor::InitStaticVector()
 			int* token = (int*)currentPtr;
 			*token = field->Int32;
 			Variable* var = AddBytes((Variable*)currentPtr, 4);
-			var->Type = field->Type & VariableKind::TypeFilter;
+			var->Type = field->Type & ~VariableKind::StaticMember; // Keep the "thread static" bit
 			size_t sizeToUse = MAX(field->fieldSize(), 4);
 			var->Marker = VARIABLE_DEFAULT_MARKER;
 			var->setSize((uint16_t)sizeToUse);
@@ -3394,21 +3394,61 @@ void FirmataIlExecutor::InitStaticVector()
 }
 
 /// <summary>
+/// Returns true if the given static variable should use a thread-specific slot. Returns false if the current thread is 0
+///	Therefore the default thread uses the default slot for its static variables.
+/// </summary>
+/// <param name="thread">The current thread</param>
+/// <param name="variable">The variable</param>
+/// <returns>True if the variable is thread specific and the current thread is not 0</returns>
+bool FirmataIlExecutor::IsThreadSpecific(ThreadState* thread, Variable *variable)
+{
+	if (thread->threadId == 0)
+	{
+		return false;
+	}
+
+	if ((variable->Type & VariableKind::ThreadSpecific) == VariableKind::ThreadSpecific)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+/// <summary>
 /// Load a value from a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
 ///	<param name="description">Filled with the field description when returning</param>
 ///	<returns>A pointer to the data of the field</returns>
-byte* FirmataIlExecutor::Ldsfld(int token, VariableDescription& description)
+byte* FirmataIlExecutor::Ldsfld(ThreadState* thread, int token, VariableDescription& description)
 {
 	InitStaticVector();
 
 	Variable* ptr = FindStaticField(token);
 
-	description.Marker = VARIABLE_DEFAULT_MARKER;
-	description.Size = ptr->fieldSize();
-	description.Type = ptr->Type & VariableKind::TypeFilter;
-	return (byte*)&ptr->Int32;
+	if (IsThreadSpecific(thread, ptr))
+	{
+		if (!thread->threadStatics.contains(token))
+		{
+			thread->threadStatics.insert(token, *ptr);
+		}
+		Variable& data = thread->threadStatics.at(token);
+		data.Type = data.Type & VariableKind::TypeFilter;
+
+		description.Type = ptr->Type & VariableKind::TypeFilter;
+		description.Size = ptr->fieldSize();
+		description.Marker = VARIABLE_DEFAULT_MARKER;
+
+		return (byte*) &(data.Int32);
+	}
+	else
+	{
+		description.Marker = VARIABLE_DEFAULT_MARKER;
+		description.Size = ptr->fieldSize();
+		description.Type = ptr->Type & VariableKind::TypeFilter;
+		return (byte*)&ptr->Int32;
+	}
 }
 
 Variable* FirmataIlExecutor::FindStaticField(int32_t token) const
@@ -3433,7 +3473,7 @@ Variable* FirmataIlExecutor::FindStaticField(int32_t token) const
 /// Load a value address of a static field
 /// </summary>
 /// <param name="token">Token of the static field</param>
-Variable FirmataIlExecutor::Ldsflda(int token)
+Variable FirmataIlExecutor::Ldsflda(ThreadState* thread, int token)
 {
 	Variable ret;
 	InitStaticVector();
@@ -3454,18 +3494,45 @@ Variable FirmataIlExecutor::Ldsflda(int token)
 	}
 
 	Variable* staticVar = FindStaticField(token);
+	if (IsThreadSpecific(thread, staticVar))
+	{
+		if (!thread->threadStatics.contains(token))
+		{
+			thread->threadStatics.insert(token, *staticVar);
+		}
+
+		Variable& data = thread->threadStatics.at(token);
+		ret.Object = &data.Int32;
+		return ret;
+	}
+
 	ret.Object = &staticVar->Int32;
 	return ret;
 }
 
 
-void FirmataIlExecutor::Stsfld(int token, Variable& value)
+void FirmataIlExecutor::Stsfld(ThreadState* thread, int token, Variable& value)
 {
 	InitStaticVector();
 
 	Variable* ptr = FindStaticField(token);
-	ASSERT(value.fieldSize() <= ptr->fieldSize());
-	memcpy_s(&ptr->Int32, ptr->fieldSize(), &value.Int32, ptr->fieldSize());
+	if (IsThreadSpecific(thread, ptr))
+	{
+		Variable& allocated = thread->threadStatics.insertOrUpdate(token, *ptr);
+		allocated.Type = allocated.Type & VariableKind::TypeFilter;
+		if (value.fieldSize() > 8)
+		{
+			// Just to test whether we need to support this case
+			throw ClrException(SystemException::NotSupported, token);
+		}
+
+		memcpy(&allocated.Int32, &value.Int32, value.fieldSize());
+	}
+	else
+	{
+		ASSERT(value.fieldSize() <= ptr->fieldSize());
+		memcpy_s(&ptr->Int32, ptr->fieldSize(), &value.Int32, ptr->fieldSize());
+	}
 }
 
 /// <summary>
@@ -6048,13 +6115,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					}
 		            	// Store a static field value on the stack
 					case CEE_STSFLD:
-						Stsfld(token, stack->top());
+						Stsfld(threadState, token, stack->top());
 						stack->pop();
 						break;
 		            case CEE_LDSFLD:
 					{
 						VariableDescription desc;
-						byte* dataPtr = Ldsfld(token, desc);
+						byte* dataPtr = Ldsfld(threadState, token, desc);
 
 						// Combine the variable again with its metadata, so we can put it back to the stack
 						EnsureStackVarSize(desc.fieldSize());
@@ -6080,7 +6147,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						if ((int)(desc.Type & VariableKind::StaticMember) != 0)
 						{
 							// Obj can be ignored in this case (but needs popping nevertheless)
-							stack->push(Ldsflda(token));
+							stack->push(Ldsflda(threadState, token));
 						}
 						else
 						{
@@ -6089,7 +6156,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					}
 					break;
 					case CEE_LDSFLDA:
-						stack->push(Ldsflda(token));
+						stack->push(Ldsflda(threadState, token));
 						break;
 					default:
 						InvalidOpCode(PC, instr);

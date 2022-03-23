@@ -227,7 +227,7 @@ class ThreadState
 {
 public:
 	ThreadState(int id)
-		: threadStatics(10), managedThreadInstance(VariableKind::Object)
+		: threadStatics(), managedThreadInstance(VariableKind::Object)
 	{
 		rootOfExecutionStack = nullptr;
 		threadId = id;
@@ -236,7 +236,7 @@ public:
 	int threadId;
 	ExecutionState* rootOfExecutionStack;
 	RuntimeException currentException;
-	VariableDynamicStack threadStatics;
+	VariableList threadStatics;
 	Variable managedThreadInstance;
 };
 
@@ -348,10 +348,10 @@ class FirmataIlExecutor: public FirmataFeature
 	                          const VariableVector& args, Variable&
 	                          result);
 
-	byte* Ldsfld(int token, VariableDescription& description);
+	byte* Ldsfld(ThreadState* thread, int token, VariableDescription& description);
 	Variable* FindStaticField(int32_t token) const;
-	Variable Ldsflda(int token);
-    void Stsfld(int token, Variable& value);
+	Variable Ldsflda(ThreadState* thread, int token);
+    void Stsfld(ThreadState* thread, int token, Variable& value);
     void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
 
 	byte* Ldfld(Variable& obj, int32_t token, VariableDescription& description);
@@ -419,6 +419,7 @@ class FirmataIlExecutor: public FirmataFeature
 	int* CopySpecialTokenListToFlash();
 
 	void InitStaticVector();
+	static bool IsThreadSpecific(ThreadState* thread, Variable* variable);
 
 	GarbageCollector _gc;
 	uint32_t _instructionsExecuted;

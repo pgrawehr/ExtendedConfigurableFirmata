@@ -385,12 +385,29 @@ void GarbageCollector::MarkStacks(FirmataIlExecutor* referenceContainer)
 {
 	for (int i = 0; i < MAX_THREADS; i++)
 	{
-		if (referenceContainer->_threads[i] == nullptr)
+		ThreadState* thread = referenceContainer->_threads[i];
+		if (thread == nullptr)
 		{
 			continue;
 		}
 
-		ExecutionState* state = referenceContainer->_threads[i]->rootOfExecutionStack;
+		ExecutionState* state = thread->rootOfExecutionStack;
+
+		if (state == nullptr)
+		{
+			continue;
+		}
+
+		// The thread itself is a root object
+		MarkVariable(thread->managedThreadInstance, referenceContainer);
+
+		VariableListEntry* e = thread->threadStatics.first();
+		while (e != nullptr)
+		{
+			Variable& ref = e->Data;
+			MarkVariable(ref, referenceContainer);
+			e = thread->threadStatics.next(e);
+		}
 
 		while (state != nullptr)
 		{

@@ -131,7 +131,7 @@ public:
 				// Check size is equal. There's something seriously wrong if not
 				if (current->Data.fieldSize() != entry.fieldSize())
 				{
-					return entry; // todo: Throw. This must not happen
+					throw ClrException(SystemException::FieldAccess, token);
 				}
 				// Overwrite existing content
 				memcpy(&current->Data.Int32, &entry.Int32, entry.fieldSize());
