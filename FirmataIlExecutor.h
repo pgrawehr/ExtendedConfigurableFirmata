@@ -217,9 +217,19 @@ class ExecutionState
 		return _pc;
 	}
 	
-	int TaskId()
+	int TaskId() const
 	{
 		return _taskId;
+	}
+
+	int MethodToken() const
+	{
+		if (_executingMethod != nullptr)
+		{
+			return _executingMethod->methodToken;
+		}
+
+		return 0;
 	}
 };
 
@@ -253,6 +263,7 @@ public:
 	void* object;
 	ThreadState* owningThread;
 	int lockCount;
+	int lockMethodToken;
 };
 
 class Breakpoint
@@ -388,6 +399,7 @@ class FirmataIlExecutor: public FirmataFeature
 	void SendVariables(ExecutionState* stackFrame, uint32_t frameNo, int variableType);
 	void SendVariable(const Variable& variable, int& idx);
 	MethodState ExecuteIlCode(ThreadState* threadState, Variable* returnValue);
+	ExecutionState* PreviousStackFrame(ThreadState* thread, ExecutionState* currentFrame) const;
 	void SignExtend(Variable& variable, int inputSize);
 	ClassDeclaration* GetTypeFromTypeInstance(Variable& ownTypeInstance);
 	bool StringEquals(const VariableVector& args, int stringComparison);

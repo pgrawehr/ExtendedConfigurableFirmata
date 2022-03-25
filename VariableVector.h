@@ -129,6 +129,11 @@ public:
 	{
 		if (_defaultSizesOnly)
 		{
+			if (index >= _size)
+			{
+				throw stdSimple::ExecutionEngineException("Variable index out of range");
+			}
+
 			return _data[index];
 		}
 		else

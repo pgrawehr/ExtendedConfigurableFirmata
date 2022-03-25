@@ -487,6 +487,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_classes.CopyContentsToFlash(_flashMemoryManager);
 				_methods.CopyContentsToFlash(_flashMemoryManager);
 				_constants.CopyContentsToFlash(_flashMemoryManager);
+				_clauses.CopyContentsToFlash(_flashMemoryManager);
 				}
 				SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				break;
@@ -976,6 +977,17 @@ void FirmataIlExecutor::report(bool elapsed)
 	{
 		// The method is still running
 		return;
+	}
+
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		if (_activeLocks[i].owningThread == _threads[threadToSchedule])
+		{
+			Firmata.sendStringf(F("Detected leaked monitor lock for thread %d"), threadToSchedule);
+			_activeLocks[i].lockCount = 0;
+			_activeLocks[i].owningThread = nullptr;
+			_activeLocks[i].object = nullptr;
+		}
 	}
 
 	// A thread other than the main thread has ended (either by itself or due to an unhandled exception)
@@ -1581,6 +1593,8 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 						_activeLocks[i].object = args[0].Object;
 						_activeLocks[i].lockCount = 1;
 						_activeLocks[i].owningThread = currentThread;
+						ExecutionState* previousFrame = PreviousStackFrame(currentThread, currentFrame);
+						_activeLocks[i].lockMethodToken = previousFrame->MethodToken();
 						found = true;
 						break;
 					}
@@ -1611,6 +1625,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 					{
 						lock.owningThread = nullptr;
 						lock.object = nullptr;
+						lock.lockMethodToken = 0;
 					}
 					found = true;
 					break;
@@ -5558,11 +5573,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					throw ClrException(SystemException::ClassNotFound, typeToken);
 				}
 
-				ExecutionState* frame = threadState->rootOfExecutionStack; // start at root
-				while (frame->_next != currentFrame)
-				{
-					frame = frame->_next;
-				}
+				ExecutionState* frame = PreviousStackFrame(threadState, currentFrame);
 
 				// Remove the last frame and set the PC for the new current frame. This will make it look like the ctor was called normally using a newobj instruction.
 				frame->_next = newState;
@@ -5591,11 +5602,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 
 				// We're called into a "special" (built-in) method. 
 				// Perform a method return
-				ExecutionState* frame = threadState->rootOfExecutionStack; // start at root
-				while (frame->_next != currentFrame)
-				{
-					frame = frame->_next;
-				}
+				ExecutionState* frame = PreviousStackFrame(threadState, currentFrame); // start at root
+
 				// Remove the last frame and set the PC for the new current frame
 				frame->_next = nullptr;
 
@@ -5677,10 +5685,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					}
 
 					// Find the frame which has the current frame as next (should be the second-last on the stack now)
-					while (frame->_next != currentFrame)
-					{
-						frame = frame->_next;
-					}
+					frame = PreviousStackFrame(threadState, currentFrame);
 					// Remove the last frame and set the PC for the new current frame
 
 					frame->_next = nullptr;
@@ -6512,8 +6517,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				{
 					if (instr == CEE_CALLI && newMethod->MethodFlags() & (int)MethodFlags::Static)
 					{
-						// If the target method of a calli instruction is static, we drop argument 0
-						while (argumentCount > 1)
+						while (argumentCount > 0)
 						{
 							argumentCount--;
 							Variable& v = oldStack->top();
@@ -7251,6 +7255,25 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 
 	// We interrupted execution to not waste to much time here - the parent will return to us asap
 	return MethodState::Running;
+}
+
+/// <summary>
+/// Returns the previous stack frame.
+/// </summary>
+/// <param name="thread">The current thread</param>
+/// <param name="currentFrame">The current stack frame. Must be in the stack of the current thread.</param>
+/// <returns>The previous stack frame.</returns>
+ExecutionState* FirmataIlExecutor::PreviousStackFrame(ThreadState* thread, ExecutionState* currentFrame) const
+{
+	// Don't expect root to be null here, and expect that currentFrame actually exists.
+	ExecutionState* frame = thread->rootOfExecutionStack;
+	// Find the frame which has the current frame as next (should be the second-last on the stack now)
+	while (frame->_next != currentFrame)
+	{
+		frame = frame->_next;
+	}
+
+	return frame;
 }
 
 /// <summary>
