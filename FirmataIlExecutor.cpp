@@ -1726,16 +1726,16 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 						result.Boolean = false;
 						return true;
 					}
-					else if (args[i].Int32 == -1) // Infinite timeout
+					else if (args[1].Int32 == -1) // Infinite timeout
 					{
 						return false;
 					}
 					else
 					{
 						// Thread found, timeout not elapsed -> Wait and retry
-						if (args[i].Int32 > 0)
+						if (args[1].Int32 > 0)
 						{
-							args[i].Int32 -= 1; // TODO: Use adequate timing
+							args[1].Int32 -= 1; // TODO: Use adequate timing
 						}
 						return false;
 					}
@@ -2956,7 +2956,9 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Int32 = ERROR_SUCCESS;
 			if (args[0].Int32 == STANDARD_OUTPUT_HANDLE || args[0].Int32 == STANDARD_ERROR_HANDLE) // Standard or error outputs
 			{
-				char* buf = GetAsUtf8String((wchar_t*)args[1].Object, args[2].Int32);
+				wchar_t* stringData = (wchar_t*)args[1].Object;
+				int length = args[2].Int32;
+				char* buf = GetAsUtf8String(stringData, length);
 				Firmata.sendString(STRING_DATA, buf);
 				freeEx(buf);
 				int* written = (int*)args[3].Object; // A ref parameter
