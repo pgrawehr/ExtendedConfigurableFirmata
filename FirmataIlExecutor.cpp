@@ -6522,7 +6522,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 							argumentCount--;
 							Variable& v = oldStack->top();
 							// This calls operator =, potentially copying more than sizeof(Variable)
-							arguments->at(argumentCount - 1) = v;
+							arguments->at(argumentCount) = v;
 							
 							oldStack->pop();
 						}
