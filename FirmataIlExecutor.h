@@ -62,6 +62,13 @@ enum class ExecutionError : byte
 	InternalError = 4,
 };
 
+enum class TriStateBool
+{
+	False = 0,
+	True = 1,
+	Neither = -1,
+};
+
 #define GENERIC_TOKEN_MASK 0xFF800000
 #define SPECIAL_TOKEN_MASK 0xFF000000
 #define NULLABLE_TOKEN_MASK 0x00800000
@@ -258,12 +265,13 @@ public:
 		object = nullptr;
 		owningThread = nullptr;
 		lockCount = 0;
+		endTime = 0;
 	}
 
 	void* object;
 	ThreadState* owningThread;
 	int lockCount;
-	int lockMethodToken;
+	int endTime;
 };
 
 class Breakpoint
@@ -326,6 +334,8 @@ class FirmataIlExecutor: public FirmataFeature
 
 	static char* GetAsUtf8String(Variable& string);
 	static char* GetAsUtf8String(const wchar_t* stringData, int length);
+	TriStateBool MonitorTryEnter(ThreadState* currentThread, ExecutionState* currentFrame, void* object, int timeout);
+	void MonitorExit(ThreadState* currentThread, void* object);
 
 	void SetLastError(int error)
 	{

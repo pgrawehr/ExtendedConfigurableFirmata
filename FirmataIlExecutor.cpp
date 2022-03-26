@@ -369,14 +369,14 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				break;
 			case ExecutorCommand::DeclareMethod:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
-				if (argc < 6)
+				if (argc < 7)
 				{
 					Firmata.sendString(F("Not enough IL data parameters"));
 					SendAckOrNack(subCommand, sequenceNo, ExecutionError::InvalidArguments);
 					return true;
 				}
-				SendAckOrNack(subCommand, sequenceNo, LoadIlDeclaration(DecodePackedUint32(argv + 2), argv[7], argv[8], argv[9],
-				                                                        (NativeMethod)DecodePackedUint32(argv + 10)));
+				SendAckOrNack(subCommand, sequenceNo, LoadIlDeclaration(DecodePackedUint32(argv + 2), DecodePackedUint14(argv + 7), argv[9], argv[10],
+				                                                        (NativeMethod)DecodePackedUint32(argv + 11)));
 				break;
 			case ExecutorCommand::MethodSignature:
 				FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_LOADING_PROGRAM, 200);
@@ -1516,6 +1516,93 @@ char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
 	return outStart;
 }
 
+TriStateBool FirmataIlExecutor::MonitorTryEnter(ThreadState* currentThread, ExecutionState* currentFrame,
+	void* object, int timeout)
+{
+	ScopeLock lk;
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		auto& lock = _activeLocks[i];
+		if (lock.object == object)
+		{
+			if (lock.owningThread == currentThread)
+			{
+				lock.lockCount++;
+				return TriStateBool::True;
+			}
+			else
+			{
+				// There exists already a lock for this object, but from another thread -> Wait
+				int now = millis();
+				if (timeout == -1)
+				{
+					// Infinite timeout
+					return TriStateBool::Neither;
+				}
+				else if (now > lock.endTime && !(now > 0 && lock.endTime < 0))
+				{
+					// Timeout - now is larger than endtime, but not still positive when the endtime is negative (wrapparound case)
+					return TriStateBool::False;
+				}
+				else
+				{
+					// Finite timeout that has not elapsed
+					return TriStateBool::Neither;
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		if (_activeLocks[i].object == nullptr)
+		{
+			_activeLocks[i].object = object;
+			_activeLocks[i].lockCount = 1;
+			_activeLocks[i].owningThread = currentThread;
+			_activeLocks[i].endTime = -1;
+			if (timeout > 0)
+			{
+				_activeLocks[i].endTime = millis() + timeout;
+			}
+
+			return TriStateBool::True;
+		}
+	}
+
+	throw ClrException("No more locks", SystemException::ExecutionEngine, 0);
+}
+
+void FirmataIlExecutor::MonitorExit(ThreadState* currentThread, void* object)
+{
+	ScopeLock lk;
+	bool found = false;
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		auto& lock = _activeLocks[i];
+		if (lock.object == object)
+		{
+			if (lock.owningThread == currentThread)
+			{
+				lock.lockCount--;
+				if (lock.lockCount == 0)
+				{
+					lock.owningThread = nullptr;
+					lock.object = nullptr;
+					lock.endTime = -1;
+				}
+				found = true;
+				break;
+			}
+		}
+	}
+		
+	if (!found)
+	{
+		throw ClrException("Releasing a lock that is not owned", SystemException::InvalidOperation, 0);
+	}
+}
+
 /// <summary>
 /// Executes the given low-level function. Note that args[0] is the this pointer for instance methods
 /// </summary>
@@ -1545,100 +1632,21 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	{
 	case NativeMethod::MonitorTryEnter:
 		{
+			TriStateBool b = MonitorTryEnter(currentThread, currentFrame, args[0].Object, args[1].Int32);
+			if (b == TriStateBool::Neither)
+			{
+				return false;
+			}
+
 			result.Type = VariableKind::Boolean;
-			result.Boolean = false;
-			// TODO: Once we really run on multiple cores, replace noInterrupts/interrupts with a function that takes a global mutex
-			ASSERT(args.size() == 2);
-			ScopeLock lk;
-			bool found = false;
-			for (int i = 0; i < MAX_LOCKS; i++)
-			{
-				auto& lock = _activeLocks[i];
-				if (lock.object == args[0].Object)
-				{
-					found = true;
-					if (lock.owningThread == currentThread)
-					{
-						lock.lockCount++;
-					}
-					else
-					{
-						// There exists already a lock for this object, but from another thread -> Wait
-						if (args[1].Int32 == -1)
-						{
-							return false;
-						}
-						else if (args[1].Int32 == 0)
-						{
-							// Timeout
-							result.Boolean = false;
-							return true;
-						}
-						else
-						{
-							args[1].Int32 -= 1;
-							return false;
-						}
-					}
-				}
-			}
-
-			if (!found)
-			{
-				found = false;
-				for (int i = 0; i < MAX_LOCKS; i++)
-				{
-					if (_activeLocks[i].object == nullptr)
-					{
-						_activeLocks[i].object = args[0].Object;
-						_activeLocks[i].lockCount = 1;
-						_activeLocks[i].owningThread = currentThread;
-						ExecutionState* previousFrame = PreviousStackFrame(currentThread, currentFrame);
-						_activeLocks[i].lockMethodToken = previousFrame->MethodToken();
-						found = true;
-						break;
-					}
-				}
-
-				if (!found)
-				{
-					interrupts();
-					throw ClrException("No more locks", SystemException::ExecutionEngine, 0);
-				}
-			}
-			result.Boolean = true;
+			result.Boolean = b == TriStateBool::True ? true : false;
 		}
 		break;
 	case NativeMethod::MonitorExit:
 	{
-		ScopeLock lk;
-		bool found = false;
-		for (int i = 0; i < MAX_LOCKS; i++)
-		{
-			auto& lock = _activeLocks[i];
-			if (lock.object == args[0].Object)
-			{
-				if (lock.owningThread == currentThread)
-				{
-					lock.lockCount--;
-					if (lock.lockCount == 0)
-					{
-						lock.owningThread = nullptr;
-						lock.object = nullptr;
-						lock.lockMethodToken = 0;
-					}
-					found = true;
-					break;
-				}
-			}
-		}
-		
-		if (!found)
-		{
-			throw ClrException("Releasing a lock that is not owned", SystemException::InvalidOperation, 0);
-		}
-	}
+		MonitorExit(currentThread, args[0].Object);
 		result.Type = VariableKind::Void;
+	}
 		break;
 	case NativeMethod::ThreadInitialize:
 	{
@@ -5695,6 +5703,13 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					ExecutionState* exitingFrame = currentFrame; // Need to keep it until we have saved the return value
 					currentFrame = frame;
 
+					if (exitingFrame->_executingMethod->MethodFlags() & (byte)MethodFlags::Synchronized)
+					{
+						// this works only for instance methods, but the compiler currently reports an error if Synchronized is used on a static method
+						Variable& instance = arguments->at(0);
+						MonitorExit(threadState, instance.Object);
+					}
+
 					// If the method we just terminated is not of type void, we push the result to the 
 					// stack of the calling method. If it was a ctor, we have already pushed the return value.
 					if ((currentMethod->MethodFlags() & (byte)MethodFlags::Void) == 0 && (currentMethod->MethodFlags() & (byte)MethodFlags::Ctor) == 0)
@@ -6216,7 +6231,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				if (instr == CEE_CALLVIRT || (instr == CEE_CALLI && (newMethod->MethodFlags() & (int)MethodFlags::Virtual)))
 				{
 					// For a virtual call, we need to grab the instance we operate on from the stack.
-					// The this pointer for the new method is the object that is last on the stack, so we need to use
+					// The this pointer for the new method is the object that is closest the the bottom of the stack, so we need to use
 					// the argument count. Fortunately, this also works if so far we only have the abstract base.
 					Variable& instance = stack->nth(newMethod->NumberOfArguments() - 1); // numArgs includes the this pointer
 
@@ -6324,13 +6339,29 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						cls = _classes.GetClassWithToken(cls->ParentToken);
 					}
 					// We didn't find another method to call - we'd better already point to the right one
-				}
+				} // End of if (method is virtual)
+
 				outer:
 				// Call to an abstract base class or an interface method - if this happens,
 				// we've probably not done the virtual function resolution correctly
 				if ((int)newMethod->MethodFlags() & (int)MethodFlags::Abstract)
 				{
 					throw ClrException("Call to abstract method", SystemException::MissingMethod, newMethod->methodToken);
+				}
+
+				if (newMethod->MethodFlags() & (byte)MethodFlags::Synchronized)
+				{
+					// this works only for instance methods, but the compiler currently reports an error if Synchronized is used on a static method
+					Variable& instance = stack->nth(newMethod->NumberOfArguments() - 1); // See comment below
+					TriStateBool lockTaken = MonitorTryEnter(threadState, currentFrame, instance.Object, -1); // This can only return success or wait
+					if (lockTaken == TriStateBool::Neither)
+					{
+						PC -= 5; // Retry the "CALL" or "CALLVIRT" instruction (can't possibly be anything else, can it?)
+						instructionsExecutedThisLoop = NUM_INSTRUCTIONS_AT_ONCE + 1;
+						break;
+					}
+
+					// TODO: We currently leak the synchronization lock if the synchronized method throws an exception. But that's typically something fatal anyway.
 				}
 
 				if (instr == CEE_NEWOBJ)
