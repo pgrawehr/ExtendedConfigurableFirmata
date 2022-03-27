@@ -43,18 +43,18 @@ void HardwareAccess::Init()
 
 void HardwareAccess::Update()
 {
-	uint32_t microSeconds = micros();
-	if (microSeconds < _lastTickCount)
+	uint32_t milliSeconds = millis();
+	if (milliSeconds < _lastTickCount)
 	{
 		_tickCount64 += 0x100000000; // increase bit 32
 	}
-	_lastTickCount = microSeconds;
+	_lastTickCount = milliSeconds;
 }
 
 int64_t HardwareAccess::TickCount64()
 {
 	int64_t value = _tickCount64;
-	value += (uint32_t)micros();
+	value += (uint32_t)millis();
 	return value;
 }
 
@@ -353,8 +353,17 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Boolean = true;
 		}
 		break;
-		// These two are quite equivalent, I think.
 	case NativeMethod::Interop_Kernel32QueryUnbiasedInterruptTime:
+	{
+		ASSERT(args.size() == 1);
+		Variable& ptr = args.at(0); // long* lpFrequency
+		int64_t* lpPtr = (int64_t*)ptr.Object;
+		*lpPtr = TickCount64() * 10000; // This returns in 100ns-resolution
+		result.Type = VariableKind::Boolean;
+		result.setSize(4);
+		result.Boolean = true; // This cannot fail (unless lpPtr is null, which shall not happen)
+		break;
+	}
 	case NativeMethod::InteropQueryPerformanceCounter:
 		{
 		ASSERT(args.size() == 1);

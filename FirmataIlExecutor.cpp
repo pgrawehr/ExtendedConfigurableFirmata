@@ -1525,28 +1525,22 @@ TriStateBool FirmataIlExecutor::MonitorWait(ThreadState* currentThread, void* ob
 		return TriStateBool::Neither;
 	}
 
-	TriStateBool intermediate = MonitorTryEnter(currentThread, object, timeout);
+	// We do not consider the timeout here, because this wouldn't help if we get here repeatedly, unless we
+	// use some external storage to store this lock state.
+	TriStateBool intermediate = MonitorTryEnter(currentThread, object, -1);
 	if (intermediate == TriStateBool::Neither)
 	{
 		// Wait longer
 		return intermediate;
 	}
 
-	if (intermediate == TriStateBool::True)
+	if (timeout >= 0 && timeout < 5)
 	{
-		// We got the lock within the timeout -> good
-		return intermediate;
+		// Workaround, so that there are cases when this returns false, if the timeout is externally decremented on each loop.
+		return TriStateBool::False;
 	}
 
-	// We do not have the lock, but the timeout elapsed. We have to get the lock back, so wait indefinitely
-	intermediate = MonitorTryEnter(currentThread, object, -1);
-	if (intermediate == TriStateBool::Neither)
-	{
-		return intermediate;
-	}
-
-	// Wait returns false if the timeout elapses (but still gets the lock)
-	return TriStateBool::False;
+	return TriStateBool::True;
 }
 
 TriStateBool FirmataIlExecutor::MonitorTryEnter(ThreadState* currentThread,
@@ -1677,13 +1671,17 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::MonitorExit:
 	{
-		MonitorExit(currentThread, args[0].Object,);
+		MonitorExit(currentThread, args[0].Object, true);
 		result.Type = VariableKind::Void;
 	}
 		break;
 	case NativeMethod::MonitorWait:
 		{
 		TriStateBool b = MonitorWait(currentThread, args[0].Object, args[1].Int32);
+		if (b == TriStateBool::Neither)
+		{
+			return false;
+		}
 		result.Type = VariableKind::Boolean;
 		result.Boolean = b == TriStateBool::True ? true : false;
 		}
@@ -5640,6 +5638,14 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				newState->ActivateState(&PC, &stack, &locals, &arguments);
 				delete exitingFrame;
     		}
+			else if (specialMethod == NativeMethod::MiniTimerQueueFireCallback)
+			{
+				// This method needs to call back to the managed method "AppDomainTimerCallback".
+				MethodBody* body = GetMethodByToken((int)KnownTypeTokens::AppDomainTimerCallback);
+				// Replace the current frame with the target method (it has the same signature as we do)
+				currentFrame->UpdatePc(0);
+				currentFrame->_executingMethod = body;
+			}
 			else
 			{
 				if (specialMethod == NativeMethod::ThreadYield)
@@ -5752,7 +5758,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						// this works only for instance methods, but the compiler currently reports an error if Synchronized is used on a static method
 						Variable& instance = arguments->at(0);
-						MonitorExit(threadState, instance.Object,);
+						MonitorExit(threadState, instance.Object, true);
 					}
 
 					// If the method we just terminated is not of type void, we push the result to the 
@@ -6398,7 +6404,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				{
 					// this works only for instance methods, but the compiler currently reports an error if Synchronized is used on a static method
 					Variable& instance = stack->nth(newMethod->NumberOfArguments() - 1); // See comment below
-					TriStateBool lockTaken = MonitorTryEnter(threadState, currentFrame, instance.Object, -1); // This can only return success or wait
+					TriStateBool lockTaken = MonitorTryEnter(threadState, instance.Object, -1); // This can only return success or wait
 					if (lockTaken == TriStateBool::Neither)
 					{
 						PC -= 5; // Retry the "CALL" or "CALLVIRT" instruction (can't possibly be anything else, can it?)

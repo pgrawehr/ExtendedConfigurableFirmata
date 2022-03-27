@@ -22,8 +22,7 @@ public:
 class HardwareAccess : public LowlevelInterface
 {
 	// These two members keep the current system tick count as a 64 bit variable, internally working around possible overflows.
-	// They should run at the highest measureable frequency of a particular system. 
-	static int64_t _tickCount64; // Uses the frequency below (1.000.000 for arduinos, with the fastest counter running at microsecond-resolution)
+	static int64_t _tickCount64;
 	static int64_t _tickCountFrequency;
 	static uint32_t _lastTickCount;
 public:
