@@ -1516,7 +1516,40 @@ char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
 	return outStart;
 }
 
-TriStateBool FirmataIlExecutor::MonitorTryEnter(ThreadState* currentThread, ExecutionState* currentFrame,
+TriStateBool FirmataIlExecutor::MonitorWait(ThreadState* currentThread, void* object, int timeout)
+{
+	bool lockReturned = MonitorExit(currentThread, object, false);
+	if (lockReturned)
+	{
+		// The first time, always yield (otherwise, we would certainly get the lock back immediately)
+		return TriStateBool::Neither;
+	}
+
+	TriStateBool intermediate = MonitorTryEnter(currentThread, object, timeout);
+	if (intermediate == TriStateBool::Neither)
+	{
+		// Wait longer
+		return intermediate;
+	}
+
+	if (intermediate == TriStateBool::True)
+	{
+		// We got the lock within the timeout -> good
+		return intermediate;
+	}
+
+	// We do not have the lock, but the timeout elapsed. We have to get the lock back, so wait indefinitely
+	intermediate = MonitorTryEnter(currentThread, object, -1);
+	if (intermediate == TriStateBool::Neither)
+	{
+		return intermediate;
+	}
+
+	// Wait returns false if the timeout elapses (but still gets the lock)
+	return TriStateBool::False;
+}
+
+TriStateBool FirmataIlExecutor::MonitorTryEnter(ThreadState* currentThread,
 	void* object, int timeout)
 {
 	ScopeLock lk;
@@ -1573,10 +1606,9 @@ TriStateBool FirmataIlExecutor::MonitorTryEnter(ThreadState* currentThread, Exec
 	throw ClrException("No more locks", SystemException::ExecutionEngine, 0);
 }
 
-void FirmataIlExecutor::MonitorExit(ThreadState* currentThread, void* object)
+bool FirmataIlExecutor::MonitorExit(ThreadState* currentThread, void* object, bool throwIfNotOwned)
 {
 	ScopeLock lk;
-	bool found = false;
 	for (int i = 0; i < MAX_LOCKS; i++)
 	{
 		auto& lock = _activeLocks[i];
@@ -1591,16 +1623,17 @@ void FirmataIlExecutor::MonitorExit(ThreadState* currentThread, void* object)
 					lock.object = nullptr;
 					lock.endTime = -1;
 				}
-				found = true;
-				break;
+				return true;
 			}
 		}
 	}
 		
-	if (!found)
+	if (throwIfNotOwned)
 	{
 		throw ClrException("Releasing a lock that is not owned", SystemException::InvalidOperation, 0);
 	}
+
+	return false;
 }
 
 /// <summary>
@@ -1632,7 +1665,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	{
 	case NativeMethod::MonitorTryEnter:
 		{
-			TriStateBool b = MonitorTryEnter(currentThread, currentFrame, args[0].Object, args[1].Int32);
+			TriStateBool b = MonitorTryEnter(currentThread, args[0].Object, args[1].Int32);
 			if (b == TriStateBool::Neither)
 			{
 				return false;
@@ -1644,9 +1677,16 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::MonitorExit:
 	{
-		MonitorExit(currentThread, args[0].Object);
+		MonitorExit(currentThread, args[0].Object,);
 		result.Type = VariableKind::Void;
 	}
+		break;
+	case NativeMethod::MonitorWait:
+		{
+		TriStateBool b = MonitorWait(currentThread, args[0].Object, args[1].Int32);
+		result.Type = VariableKind::Boolean;
+		result.Boolean = b == TriStateBool::True ? true : false;
+		}
 		break;
 	case NativeMethod::ThreadInitialize:
 	{
@@ -5602,7 +5642,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
     		}
 			else
 			{
-				if (!ExecuteSpecialMethod(threadState, currentFrame, specialMethod, *arguments, retVal))
+				if (specialMethod == NativeMethod::ThreadYield)
+				{
+					// Give up our time slice, but do not enter wait state (breaking here would not remove the call from the stack)
+					instructionsExecutedThisLoop = NUM_INSTRUCTIONS_AT_ONCE + 1;
+				}
+				else if (!ExecuteSpecialMethod(threadState, currentFrame, specialMethod, *arguments, retVal))
 				{
 					// If this returns false, we exit the execution loop for this thread and execute the method again next time
 					// That's how we (busy-)wait inside native methods
@@ -5707,7 +5752,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						// this works only for instance methods, but the compiler currently reports an error if Synchronized is used on a static method
 						Variable& instance = arguments->at(0);
-						MonitorExit(threadState, instance.Object);
+						MonitorExit(threadState, instance.Object,);
 					}
 
 					// If the method we just terminated is not of type void, we push the result to the 
@@ -6197,7 +6242,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 			// FALL TROUGH!
 			case InlineMethod:
             {
-				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ && instr != CEE_LDFTN && instr != CEE_CALLI)
+				if (instr != CEE_CALLVIRT && instr != CEE_CALL && instr != CEE_NEWOBJ && instr != CEE_LDFTN && instr != CEE_CALLI && instr != CEE_LDVIRTFTN)
 				{
 					InvalidOpCode(PC, instr);
 					return MethodState::Aborted;
@@ -6228,7 +6273,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				}
 
 				ClassDeclaration* cls = nullptr;
-				if (instr == CEE_CALLVIRT || (instr == CEE_CALLI && (newMethod->MethodFlags() & (int)MethodFlags::Virtual)))
+				if (instr == CEE_CALLVIRT || instr == CEE_LDVIRTFTN || (instr == CEE_CALLI && (newMethod->MethodFlags() & (int)MethodFlags::Virtual)))
 				{
 					// For a virtual call, we need to grab the instance we operate on from the stack.
 					// The this pointer for the new method is the object that is closest the the bottom of the stack, so we need to use
@@ -6479,10 +6524,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				}
 				*/
 
-				if (instr == CEE_LDFTN)
+				if (instr == CEE_LDFTN || instr == CEE_LDVIRTFTN)
 				{
 					Variable ftptr;
-					ftptr.setSize(sizeof(void*));
+					ftptr.setSize(2 * sizeof(void*));
 					ftptr.Marker = VARIABLE_DEFAULT_MARKER;
 					ftptr.Type = VariableKind::FunctionPointer;
 					ftptr.Uint64 = 0; // We may later need the top word for the object reference (CEE_LDVIRTFTN instruction)

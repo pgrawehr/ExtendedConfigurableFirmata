@@ -126,6 +126,12 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Type = VariableKind::Int32;
 		break;
 	}
+	case NativeMethod::EnvironmentTickCount64:
+		{
+		result.Int64 = TickCount64();
+		result.Type = VariableKind::Int64;
+		}
+		break;
 	case NativeMethod::ArduinoNativeHelpersSleepMicroseconds:
 		delayMicroseconds(args[0].Uint32);
 		break;

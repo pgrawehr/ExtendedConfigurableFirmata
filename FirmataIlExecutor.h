@@ -334,8 +334,9 @@ class FirmataIlExecutor: public FirmataFeature
 
 	static char* GetAsUtf8String(Variable& string);
 	static char* GetAsUtf8String(const wchar_t* stringData, int length);
-	TriStateBool MonitorTryEnter(ThreadState* currentThread, ExecutionState* currentFrame, void* object, int timeout);
-	void MonitorExit(ThreadState* currentThread, void* object);
+	TriStateBool MonitorTryEnter(ThreadState* currentThread, void* object, int timeout);
+	bool MonitorExit(ThreadState* currentThread, void* object, bool throwIfNotOwned);
+	TriStateBool MonitorWait(ThreadState* currentThread, void* object, int timeout);
 
 	void SetLastError(int error)
 	{
