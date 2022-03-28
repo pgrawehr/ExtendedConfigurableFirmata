@@ -248,6 +248,8 @@ public:
 	{
 		rootOfExecutionStack = nullptr;
 		threadId = id;
+		threadFlags = 0;
+		waitTimeout = -2; // Not set
 	}
 
 	int threadId;
@@ -255,6 +257,10 @@ public:
 	RuntimeException currentException;
 	VariableList threadStatics;
 	Variable managedThreadInstance;
+	// Bit 0: Thread pool thread (for IsThreadPoolThread property)
+	// Bit 1: Background thread (for IsBackground property)
+	int threadFlags;
+	int waitTimeout; // global per-thread variable for timeouts in wait functions
 };
 
 class MonitorLock
@@ -336,6 +342,7 @@ class FirmataIlExecutor: public FirmataFeature
 	static char* GetAsUtf8String(const wchar_t* stringData, int length);
 	TriStateBool MonitorTryEnter(ThreadState* currentThread, void* object, int timeout);
 	bool MonitorExit(ThreadState* currentThread, void* object, bool throwIfNotOwned);
+	ThreadState* FindThread(Variable& threadVar) const;
 	TriStateBool MonitorWait(ThreadState* currentThread, void* object, int timeout);
 
 	void SetLastError(int error)

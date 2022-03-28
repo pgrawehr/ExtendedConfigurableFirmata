@@ -1630,6 +1630,20 @@ bool FirmataIlExecutor::MonitorExit(ThreadState* currentThread, void* object, bo
 	return false;
 }
 
+ThreadState* FirmataIlExecutor::FindThread(Variable& threadVar) const
+{
+	for (int i = 0; i < MAX_THREADS; i++)
+	{
+		ThreadState* t = _threads[i];
+		if (t != nullptr && t->managedThreadInstance.Object == threadVar.Object)
+		{
+			return t;
+		}
+	}
+
+	return nullptr;
+}
+
 /// <summary>
 /// Executes the given low-level function. Note that args[0] is the this pointer for instance methods
 /// </summary>
@@ -1686,6 +1700,54 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Boolean = b == TriStateBool::True ? true : false;
 		}
 		break;
+	case NativeMethod::Thread_get_IsThreadPoolThread:
+		{
+			ThreadState* t = FindThread(args[0]);
+			if (t == nullptr)
+			{
+				throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+			}
+
+			result.Type = VariableKind::Boolean;
+			result.Boolean = t->threadFlags & 1;
+		}
+		break;
+	case NativeMethod::Thread_set_IsThreadPoolThread:
+		{
+			ThreadState* t = FindThread(args[0]);
+			if (t == nullptr)
+			{
+				throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+			}
+
+			t->threadFlags &= ~1;
+			t->threadFlags |= (args[1].Boolean ? 1 : 0);
+		}
+		break;
+	case NativeMethod::Thread_get_IsBackground:
+	{
+		ThreadState* t = FindThread(args[0]);
+		if (t == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+		}
+
+		result.Type = VariableKind::Boolean;
+		result.Boolean = t->threadFlags & 2;
+	}
+	break;
+	case NativeMethod::Thread_set_IsBackground:
+	{
+		ThreadState* t = FindThread(args[0]);
+		if (t == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+		}
+
+		t->threadFlags &= ~2;
+		t->threadFlags |= (args[1].Boolean ? 2 : 0);
+	}
+	break;
 	case NativeMethod::ThreadInitialize:
 	{
 		ASSERT(args.size() == 1); // This is a member method
@@ -1788,8 +1850,24 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 				}
 			}
 
-			// The thread object was not found -> Return true and continue
+			// The thread object was not found -> Return true and continue (the thread we want to join on has already ended)
 			result.Boolean = true;
+		}
+		break;
+	case NativeMethod::WaitHandleWaitOneCore:
+		{
+		ASSERT(args.size() == 2); // private static extern int WaitOneCore(IntPtr waitHandle, int millisecondsTimeout);
+			if (args[0].Object == nullptr)
+			{
+				throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+			}
+			// Todo: Check object we wait for.
+
+			// If we need waiting, use the global timeout variable
+			/*if (currentThread->waitTimeout == -2)
+			{
+				currentThread->w
+			}*/
 		}
 		break;
 	case NativeMethod::TypeEquals:
@@ -3565,6 +3643,7 @@ Variable FirmataIlExecutor::Ldsflda(ThreadState* thread, int token)
 		}
 
 		Variable& data = thread->threadStatics.at(token);
+		data.Type = data.Type & VariableKind::TypeFilter;
 		ret.Object = &data.Int32;
 		return ret;
 	}
