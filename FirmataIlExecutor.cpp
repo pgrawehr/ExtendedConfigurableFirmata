@@ -78,15 +78,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 FirmataIlExecutor::FirmataIlExecutor()
 	: _nextStepBehavior()
 {
-	for (int i = 0; i < MAX_THREADS; i++)
-	{
-		_threads[i] = nullptr;
-	}
-
-	for (int i = 0; i < MAX_LOCKS; i++)
-	{
-		_activeLocks[i] = MonitorLock();
-	}
+	ClearHandles();
 
 	_stringHeapRam = nullptr;
 	_stringHeapRamSize = 0;
@@ -105,6 +97,24 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
+}
+
+void FirmataIlExecutor::ClearHandles()
+{
+	for (int i = 0; i < MAX_THREADS; i++)
+	{
+		_threads[i] = nullptr;
+	}
+
+	for (int i = 0; i < MAX_LOCKS; i++)
+	{
+		_activeLocks[i] = MonitorLock();
+	}
+
+	for (int i = 0; i < MAX_HANDLES; i++)
+	{
+		_waitHandles[i] = EventWaitHandle();
+	}
 }
 
 bool FirmataIlExecutor::AutoStartProgram()
@@ -135,7 +145,7 @@ bool FirmataIlExecutor::AutoStartProgram()
 		ExecutionState* rootState = new ExecutionState(0, method->MaxExecutionStack(), method);
 		if (rootState == nullptr)
 		{
-			Firmata.sendString(F("Out of memory starting task"));
+			Firmata.sendString(F("Out of memory starting application"));
 			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
 			return false;
 		}
@@ -143,18 +153,10 @@ bool FirmataIlExecutor::AutoStartProgram()
 		_instructionsExecuted = 0;
 		_taskStartTime = millis();
 
-		ThreadState* thread = new ThreadState(0);
-		if (thread == nullptr)
+		if (!InitializeMainThread(rootState))
 		{
-			Firmata.sendString(F("Out of memory allocating thread"));
-			delete rootState;
-			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
 			return false;
 		}
-
-		thread->rootOfExecutionStack = rootState;
-		// AutoStart should only be called when no threads are running
-		_threads[0] = thread;
 	}
 	
 	return true;
@@ -1257,6 +1259,24 @@ void FirmataIlExecutor::SendPackedUInt64(uint64_t value)
 }
 
 
+bool FirmataIlExecutor::InitializeMainThread(ExecutionState* rootState)
+{
+	ThreadState* thread = new ThreadState(0);
+	if (thread == nullptr)
+	{
+		Firmata.sendString(F("Out of memory allocating thread"));
+		delete rootState;
+		FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
+		return false;
+	}
+
+	thread->rootOfExecutionStack = rootState;
+	_threads[0] = thread;
+	void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Thread, 0);
+	_threads[0]->managedThreadInstance.Object = ptr;
+	return true;
+}
+
 ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, int taskId, byte argc, byte* argv)
 {
 	Variable result;
@@ -1283,14 +1303,7 @@ ExecutionError FirmataIlExecutor::DecodeParametersAndExecute(int methodToken, in
 	_instructionsExecuted = 0;
 	_taskStartTime = millis();
 
-	ThreadState* thread = new ThreadState(0);
-	if (thread == nullptr)
-	{
-		OutOfMemoryException::Throw("Out of memory allocating thread");
-	}
-
-	thread->rootOfExecutionStack = rootState;
-	_threads[0] = thread;
+	InitializeMainThread(rootState);
 
 	int idx = 0;
 	for (int i = 0; i < method->NumberOfArguments(); i++)
@@ -1748,6 +1761,12 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		t->threadFlags |= (args[1].Boolean ? 2 : 0);
 	}
 	break;
+	case NativeMethod::ThreadGetCurrentThreadNative:
+	{
+		result.Type = VariableKind::Object;
+		result.Object = currentThread->managedThreadInstance.Object;
+	}
+	break;
 	case NativeMethod::ThreadInitialize:
 	{
 		ASSERT(args.size() == 1); // This is a member method
@@ -1857,19 +1876,64 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::WaitHandleWaitOneCore:
 		{
 		ASSERT(args.size() == 2); // private static extern int WaitOneCore(IntPtr waitHandle, int millisecondsTimeout);
+		result.Type = VariableKind::Int32;
+		int timeout = args[1].Int32;
 			if (args[0].Object == nullptr)
 			{
 				throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
 			}
-			// Todo: Check object we wait for.
-
-			// If we need waiting, use the global timeout variable
-			/*if (currentThread->waitTimeout == -2)
+			EventWaitHandle* handle = (EventWaitHandle*)args[0].Object;
+			if (handle->signaled)
 			{
-				currentThread->w
-			}*/
+				if (handle->flags & 1) // Autoreset?
+				{
+					handle->signaled = false;
+				}
+				result.Int32 = 0;
+				
+				return true;
+			}
+
+			if (timeout == -1)
+			{
+				return false;
+			}
+			if (timeout == 0)
+			{
+				result.Int32 = 0x102; // WaitTimeout
+			}
+
+			args[1].Int32--; // No precise timing here (can't use the handle store, because multiple threads could be waiting for the same event)
+			return false;
 		}
-		break;
+	case NativeMethod::Interop_Kernel32CreateEventEx:
+	{
+		ASSERT(args.size() == 3);
+		if (args[0].Object != nullptr) // name
+		{
+			// Named events are not supported (they are in fact only supported on windows)
+			throw ClrException(SystemException::NotSupported, 0);
+		}
+		result.Type = VariableKind::AddressOfVariable;
+
+		result.setSize(4);
+		int flags = args[1].Int32;
+		for (int i = 0; i < MAX_HANDLES; i++)
+		{
+			if (_waitHandles[i].handle == -1)
+			{
+				_waitHandles[i].handle = i + 1;
+				_waitHandles[i].flags = (byte)flags;
+				_waitHandles[i].signaled = flags & 2 ? true : false;
+				result.Object = &_waitHandles[i];
+				SetLastError(0);
+				return true;
+			}
+		}
+		result.Object = nullptr;
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+	}
+	break;
 	case NativeMethod::TypeEquals:
 		ASSERT(args.size() == 2);
 		{
@@ -8321,6 +8385,7 @@ void FirmataIlExecutor::reset()
 
 	_gc.Clear(true);
 	_weakDependencies.clear(true);
+	ClearHandles();
 	
 	TRACE(Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), freeMemory()));
 }

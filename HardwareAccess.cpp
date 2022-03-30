@@ -418,15 +418,6 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			memset(ptr.Object, 0, 4); // Let's assume this minimum size - SIZEOF(CONDITION_VARIABLE) should be 4
 		}
 		break;
-	case NativeMethod::Interop_Kernel32CreateEventEx:
-		{
-			ASSERT(args.size() == 3);
-			result.Type = VariableKind::AddressOfVariable;
-			result.Object = xSemaphoreCreateBinary();
-			result.setSize(4);
-			executor->SetLastError(0);
-		}
-		break;
 	case NativeMethod::Interop_Kernel32GetLastError:
 		result.Type = VariableKind::Uint32;
 		result.Uint32 = executor->GetLastError();

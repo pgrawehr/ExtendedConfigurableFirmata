@@ -81,6 +81,7 @@ enum class TriStateBool
 
 #define MAX_THREADS 10
 #define MAX_LOCKS 10
+#define MAX_HANDLES 10
 
 const int NUM_INSTRUCTIONS_AT_ONCE = 50;
 
@@ -280,6 +281,21 @@ public:
 	int endTime;
 };
 
+class EventWaitHandle
+{
+public:
+	EventWaitHandle()
+	{
+		handle = -1;
+		signaled = false;
+		flags = 0;
+	}
+
+	int handle;
+	bool signaled;
+	byte flags; // 1 = Manual reset 2 = Initially signaled
+};
+
 class Breakpoint
 {
 public:
@@ -317,7 +333,8 @@ class FirmataIlExecutor: public FirmataFeature
 	friend class GarbageCollector;
  public:
     FirmataIlExecutor();
-    bool AutoStartProgram();
+	void ClearHandles();
+	bool AutoStartProgram();
     boolean handlePinMode(byte pin, int mode) override;
     void handleCapability(byte pin) override;
 
@@ -436,6 +453,7 @@ class FirmataIlExecutor: public FirmataFeature
 	ExecutionState* GetNthMethodOnStack(ExecutionState* state, uint32_t& n);
 	void SendPackedUInt32(uint32_t value);
 	void SendPackedUInt64(uint64_t value);
+	bool InitializeMainThread(ExecutionState* rootState);
 	uint32_t ReadUint32FromArbitraryAddress(byte* pCode);
 	uint16_t CreateExceptionFrame(ExecutionState* currentFrame, uint16_t continuationAddress, ExceptionClause* c, Variable &exception);
 	Variable CreateStringInstance(size_t length, const char* string);
@@ -456,6 +474,7 @@ class FirmataIlExecutor: public FirmataFeature
 	uint32_t _taskStartTime;
 	ThreadState* _threads[MAX_THREADS];
 	MonitorLock _activeLocks[MAX_LOCKS]; // Monitor locks - assume a constant maximum number of simultaneous locks
+	EventWaitHandle _waitHandles[MAX_HANDLES];
 	int _lastThreadRun;
 
 	SortedClassList _classes;
