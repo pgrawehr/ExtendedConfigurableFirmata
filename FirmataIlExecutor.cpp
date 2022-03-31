@@ -7454,6 +7454,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 		else
 		{
 			// No suitable handler found
+			SendDebugState(threadState->rootOfExecutionStack);
 			CreateFatalException(threadState, cx.ExceptionType(), v, cx.ExceptionToken());
 			return MethodState::Aborted;
 		}

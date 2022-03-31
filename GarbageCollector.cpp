@@ -496,6 +496,25 @@ bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 	return false;
 }
 
+void GarbageCollector::MarkRawMemoryBlock(void* object, size_t objectSize, FirmataIlExecutor* referenceContainer)
+{
+	int* startPtr = (int*)object;
+	for (size_t idx = 0; idx < objectSize / (sizeof(void*)); idx++)
+	{
+		int* ptrToTest = startPtr + idx;
+		if (IsValidMemoryPointer((void*)*ptrToTest))
+		{
+			Variable referenceField;
+			referenceField.Marker = VARIABLE_DEFAULT_MARKER;
+			referenceField.Type = VariableKind::Object;
+			referenceField.setSize(sizeof(void*));
+			// Create a variable object from a reference field that is stored in an object
+			referenceField.Object = (void*)*ptrToTest;
+			MarkVariable(referenceField, referenceContainer);
+		}
+	}
+}
+
 /// <summary>
 /// Mark the given variable as "not free"
 /// </summary>
@@ -511,21 +530,7 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 	{
 		// A value type (of any kind or length) - may contain pointers as well (we don't have full type info on these)
 		// To make things simpler, value types which contain reference types have their fields pointer-aligned
-		int* startPtr = (int*)&variable.Object;
-		for (size_t idx = 0; idx < variable.fieldSize() / (sizeof(void*)); idx++)
-		{
-			int* ptrToTest = startPtr + idx;
-			if (IsValidMemoryPointer((void*)*ptrToTest))
-			{
-				Variable referenceField;
-				referenceField.Marker = VARIABLE_DEFAULT_MARKER;
-				referenceField.Type = VariableKind::Object;
-				referenceField.setSize(sizeof(void*));
-				// Create a variable object from a reference field that is stored in an object
-				referenceField.Object = (void*)*ptrToTest;
-				MarkVariable(referenceField, referenceContainer);
-			}
-		}
+		MarkRawMemoryBlock(&variable.Object, variable.fieldSize(), referenceContainer);
 		return;
 	}
 
@@ -664,6 +669,22 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 			referenceField.setSize(4);
 			referenceField.Object = (void*)*AddBytes((int*)ptr, offset);
 			MarkVariable(referenceField, referenceContainer);
+		}
+		else
+		{
+			int size = handle->fieldSize();
+			if (size >= sizeof(void*))
+			{
+				// Could this member be an object reference?
+				void* potentiallyAnObject = (void*) *AddBytes((int*)ptr, offset);
+				// This tests whether it's really pointing to a valid object start address
+				if (IsValidMemoryPointer(potentiallyAnObject))
+				{
+					hd = BlockHd::Cast(AddBytes(potentiallyAnObject, -((int32_t)ALLOCATE_ALLIGNMENT)));
+					hd->flags = BlockFlags::Used;
+					MarkRawMemoryBlock(potentiallyAnObject, handle->fieldSize(), referenceContainer);
+				}
+			}
 		}
 		
 		offset += handle->fieldSize();

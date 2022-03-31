@@ -124,6 +124,7 @@ private:
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
 	void MarkStacks(FirmataIlExecutor* referenceContainer);
 	bool IsValidMemoryPointer(void* ptr);
+	void MarkRawMemoryBlock(void* object, size_t objectSize, FirmataIlExecutor* referenceContainer);
 	void MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer);
 
 	int _totalAllocSize;
