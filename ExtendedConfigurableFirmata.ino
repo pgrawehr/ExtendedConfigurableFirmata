@@ -11,10 +11,6 @@
 #include "FreeMemory.h"
 // Use this to enable WIFI instead of serial communication. Tested on ESP32.
 
-#ifdef ARDUINO_M5STACK_Core2
-#include <M5Tough.h>
-#endif
-
 #if __has_include("wifiConfig.h")
 #include "wifiConfig.h"
 #else
@@ -207,9 +203,6 @@ void initTransport()
 	Firmata.sendString(F("WIFI network connection established"));
 	ntpClient.StartTimeSync(WIFI_STATUS_LED);
 	FtpServer.Init();
-#ifdef ARDUINO_M5STACK_Core2
-	M5.begin(true, false, false, true);
-#endif
 #else
 	Firmata.begin(115200);
 #endif
