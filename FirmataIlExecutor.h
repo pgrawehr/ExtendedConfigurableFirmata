@@ -441,7 +441,7 @@ class FirmataIlExecutor: public FirmataFeature
 	bool StringEquals(const VariableVector& args);
 	void CreateFatalException(ThreadState* threadWithException, SystemException exception, Variable& managedException, int hintToken);
     void* CreateInstance(ClassDeclaration* cls);
-	void* CreateInstanceOfClass(int32_t typeToken, uint32_t length);
+	void* CreateInstanceOfClass(int32_t typeToken, uint32_t length, bool throwIfNotFound = true);
     ClassDeclaration* ResolveClassFromCtorToken(int32_t ctorToken);
     ClassDeclaration* ResolveClassFromFieldToken(int32_t fieldToken);
     static uint16_t SizeOfClass(ClassDeclaration* cls);

@@ -1272,7 +1272,8 @@ bool FirmataIlExecutor::InitializeMainThread(ExecutionState* rootState)
 
 	thread->rootOfExecutionStack = rootState;
 	_threads[0] = thread;
-	void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Thread, 0);
+	// If the class "Thread" is not available, we hopefully don't need it.
+	void* ptr = CreateInstanceOfClass((int)KnownTypeTokens::Thread, 0, false);
 	_threads[0]->managedThreadInstance.Object = ptr;
 	return true;
 }
@@ -3109,7 +3110,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 				SetLastError(ERROR_INSUFFICIENT_BUFFER);
 				break;
 			}
-			memcpy_s(destination, destinationLen, source, sourceLen * 2);
+			memcpy(destination, source, sourceLen * 2);
 			result.Int32 = destinationLen;
 		}
 		else if (codePage == 65001) // UTF-8
@@ -3737,7 +3738,7 @@ void FirmataIlExecutor::Stsfld(ThreadState* thread, int token, Variable& value)
 	else
 	{
 		ASSERT(value.fieldSize() <= ptr->fieldSize());
-		memcpy_s(&ptr->Int32, ptr->fieldSize(), &value.Int32, ptr->fieldSize());
+		memcpy(&ptr->Int32, &value.Int32, ptr->fieldSize());
 	}
 }
 
@@ -7944,9 +7945,13 @@ MethodState FirmataIlExecutor::IsAssignableFrom(ClassDeclaration* typeToAssignTo
 /// <summary>
 /// Creates a class directly by its type (used i.e. to create instances of System::Type or System::String)
 /// </summary>
-void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, uint32_t length /* for string */)
+void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, uint32_t length /* for string */, bool throwIfNotFound)
 {
-	ClassDeclaration* cls = _classes.GetClassWithToken(typeToken);
+	ClassDeclaration* cls = _classes.GetClassWithToken(typeToken, throwIfNotFound);
+	if (cls == nullptr)
+	{
+		return nullptr;
+	}
 	TRACE(Firmata.sendString(F("Class to create is 0x"), cls->ClassToken));
 	// Compute sizeof(class)
 	size_t sizeOfClass = SizeOfClass(cls);
