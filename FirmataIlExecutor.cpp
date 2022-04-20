@@ -1397,9 +1397,26 @@ char* FirmataIlExecutor::GetAsUtf8String(const wchar_t* stringData, int length)
 		empty[0] = 0;
 		return empty;
 	}
-	
+
+	// Calculate required buffer size
+	int totalLength = 0;
+	char charBuf[10];
+	for (int i = 0; i < length; i++)
+	{
+		char* temp = charBuf;
+		uint16_t charToEncode = *input;
+		input++;
+		totalLength += unicode_to_utf8(charToEncode, temp);
+	}
+
+	// Reset
+	input = (uint16_t*)stringData;
 	int outLength = 0;
-	char* outbuf = (char*)malloc(length * 4 + 2);
+	char* outbuf = (char*)malloc(totalLength + 1);
+	if (outbuf == nullptr)
+	{
+		OutOfMemoryException::Throw("Unable to allocate memory for UTF8 string");
+	}
 	char* outStart = outbuf;
 	for(int i = 0; i < length; i++)
 	{
@@ -7756,4 +7773,5 @@ void FirmataIlExecutor::reset()
 	_weakDependencies.clear(true);
 	
 	TRACE(Firmata.sendStringf(F("Execution memory cleared. Free bytes: %d"), freeMemory()));
+	printMemoryStatistics();
 }

@@ -24,9 +24,6 @@ SimulatorClock TheClock;
 // Reference the instance of the firmata i2c driver
 extern I2CFirmata i2c;
 
-// this pin is used as input for the random number generator
-const int OPEN_ANALOG_PIN = A0;
-
 const int IO_COMPLETIONPORT_DUMMY = 0x00DDDBAD;
 
 int64_t HardwareAccess::_tickCountFrequency = 1000000;
@@ -67,6 +64,10 @@ void HardwareAccess::Reboot()
 #ifdef ESP32
 	ESP.restart();
 #endif 
+}
+
+uint64_t rightrot(uint64_t x, int n) {
+	return (x >> n) | (x << ((sizeof(x) * CHAR_BIT) - n));
 }
 
 
@@ -174,9 +175,15 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		ASSERT(args.size() == 2);
 		byte* ptr = (byte*)args[0].Object; // This is an unmanaged pointer
 		int size = args[1].Int32;
+
+		uint64_t seed = _lastTickCount ^ millis();
 		for (int i = 0; i < size; i++)
 		{
-			byte b = (byte)analogRead(OPEN_ANALOG_PIN);
+			// This would get real random data, but may cause some side effects, based on the hardware
+			// byte b = (byte)analogRead(OPEN_ANALOG_PIN);
+
+			byte b = (byte)(seed + i);
+			seed = rightrot(seed, 1);
 			*AddBytes(ptr, i) = b;
 		}
 		result.Type = VariableKind::Void;
@@ -366,6 +373,10 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		Variable& size = args.at(0);
 		result.Type = VariableKind::AddressOfVariable;
 		void* memory = mallocEx(size.Int32);
+		if (memory == nullptr)
+		{
+			OutOfMemoryException::Throw("Kernel32AllocHGlobal: Not enough native memory to allocate");
+		}
 		memset(memory, 0, size.Int32);
 		result.Object = memory;
 	}
