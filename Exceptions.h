@@ -29,6 +29,7 @@ namespace stdSimple
 
 		static void Throw(const char* msg)
 		{
+			Firmata.sendStringf(F("Out of memory exception encountered: %s"), msg);
 			throw OutOfMemoryException(msg);
 		}
 	};

@@ -89,31 +89,4 @@ void SetMemoryExecutionMode(bool executionModeEnabled)
 }
 
 
-#else
-
-void* mallocEx(size_t length)
-{
-	void* ret = malloc(length);
-
-	return ret;
-}
-
-void* reallocEx(void* existingPtr, size_t newLength)
-{
-	return realloc(existingPtr, newLength);
-}
-
-
-void freeInternal(void* ptr)
-{
-	free(ptr);
-}
-
-void SetMemoryExecutionMode(bool executionModeEnabled)
-{
-	_executionMode = executionModeEnabled;
-}
-
-
-
 #endif

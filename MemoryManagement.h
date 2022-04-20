@@ -9,10 +9,20 @@
 	#include "WProgram.h"
 #endif
 
+#if 0
 void* mallocEx(size_t length);
 void* reallocEx(void* existingPtr, size_t newLength);
 
 void freeInternal(void* ptr);
+
+void SetMemoryExecutionMode(bool executionModeEnabled);
+#endif
+
+static void* _glastAlloc;
+#define mallocEx(length) (_glastAlloc = malloc(length)); {if (!_glastAlloc) Firmata.sendStringf(F("Failed to allocate %d bytes"), length);}
+#define reallocEx(ptr, newLength) realloc(ptr, newLength);
+#define freeInternal(ptr) free(ptr);
+#define SetMemoryExecutionMode(mode)
 
 template<class T>
 void freeEx(T*& ptr)
@@ -34,7 +44,6 @@ void deleteEx(T*& ptr)
 	}
 }
 
-void SetMemoryExecutionMode(bool executionModeEnabled);
 
 
 #endif
