@@ -3477,7 +3477,7 @@ byte* FirmataIlExecutor::Ldfld(Variable& obj, int32_t token, VariableDescription
 		offset += handle->fieldSize();
 	}
 
-	Firmata.sendStringf(F("Class %lx has no member %lx"), vtable->ClassToken, token);
+	Firmata.sendStringf(F("LDFLD: Class %lx has no field %lx"), vtable->ClassToken, token);
 	throw ClrException("Token not found in class", SystemException::FieldAccess, token);
 }
 
@@ -3556,7 +3556,7 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 		offset += handle->fieldSize();
 	}
 
-	Firmata.sendStringf(F("Class %lx has no member %lx"), vtable->ClassToken, token);
+	Firmata.sendStringf(F("LDFLDA: Class %lx has no field %lx"), vtable->ClassToken, token);
 	throw ClrException(SystemException::FieldAccess, token);
 }
 

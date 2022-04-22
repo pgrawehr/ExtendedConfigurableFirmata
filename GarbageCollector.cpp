@@ -3,6 +3,7 @@
 #include "FirmataIlExecutor.h"
 #include "GarbageCollector.h"
 #include "SelfTest.h"
+#include "FreeMemory.h"
 
 void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 {
@@ -55,6 +56,8 @@ byte* GarbageCollector::Allocate(uint32_t size)
 
 		if (newBlockPtr == nullptr)
 		{
+			Firmata.sendStringf(F("Failed to increase size of GC controlled memory. Need a block of size %d, but couldn't get %d bytes of extra Heap"), size, sizeToAllocate);
+			printMemoryStatistics();
 			// Still null? That's bad. Either the memory is completely exhausted, or the requested block is just way to large
 			OutOfMemoryException::Throw("Out of memory increasing GC controlled memory");
 		}
@@ -69,12 +72,15 @@ byte* GarbageCollector::Allocate(uint32_t size)
 		BlockHd::SetBlockAtAddress(newBlockPtr, block.FreeBytesInBlock, BlockFlags::Free);
 		
 		_gcBlocks.push_back(block);
+		_totalGcMemorySize += sizeToAllocate;
 
+		PrintStatistics();
 		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
 	}
 
 	if (ret == nullptr)
 	{
+		Firmata.sendStringf(F("Out of GC memory when attempting to allocate %d bytes"), size);
 		OutOfMemoryException::Throw("Out of GC memory.");
 	}
 #if GC_DEBUG_LEVEL >= 2
@@ -214,6 +220,8 @@ void GarbageCollector::PrintStatistics()
 {
 	Firmata.sendStringf(F("Total GC memory allocated: %d bytes in %d instances"), _totalAllocSize, _totalAllocations);
 	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), _currentMemoryUsage, _maxMemoryUsage);
+	Firmata.sendStringf(F("Total size of GC controlled heap: %d in %d blocks"), _totalGcMemorySize, _gcBlocks.size());
+	printMemoryStatistics();
 }
 
 void GarbageCollector::Clear(bool printStatistics)
@@ -229,7 +237,8 @@ void GarbageCollector::Clear(bool printStatistics)
 	}
 
 	_gcBlocks.clear();
-	
+
+	_totalGcMemorySize = 0;
 	_totalAllocSize = 0;
 	_totalAllocations = 0;
 	_currentMemoryUsage = 0;
@@ -279,7 +288,6 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 /// <summary>
 /// Computes the "result" of the garbage collect operation (how much memory was freed, how much total memory is now available etc.)
 /// </summary>
-/// <param name="wipeMemory">Set to true to wipe any free blocks (typically used for debugging, to quicker see if the GC does something odd)</param>
 /// <returns>The number of bytes freed</returns>
 int GarbageCollector::ComputeFreeBlockSizes()
 {
@@ -287,10 +295,45 @@ int GarbageCollector::ComputeFreeBlockSizes()
 	int totalMemoryInUse = 0;
 	for (size_t idx = 0; idx < _gcBlocks.size(); idx++)
 	{
-		int blockLen = _gcBlocks[idx].BlockSize;
-		int offset = 0;
+		uint32_t blockLen = _gcBlocks[idx].BlockSize;
+		uint32_t offset = 0;
 		BlockHd* hd = _gcBlocks[idx].BlockStart;
+		// Chain adjacent free blocks
+		while (offset < blockLen)
+		{
+			uint32_t entryLength = hd->BlockSize;
+			uint32_t nextOffset = offset + entryLength + ALLOCATE_ALLIGNMENT;
+
+			if (hd->IsFree() && nextOffset < blockLen)
+			{
+				BlockHd* hdNext = AddBytes(hd, entryLength + ALLOCATE_ALLIGNMENT);
+				if (hdNext->IsFree())
+				{
+					// This and the next are free. Extend the size of this block to include the next (the ALLOCATE_ALIGNMENT
+					// is the size of the next block header that we also free by this)
+					hd->BlockSize = hd->BlockSize + hdNext->BlockSize + ALLOCATE_ALLIGNMENT;
+					nextOffset = offset + hd->BlockSize + ALLOCATE_ALLIGNMENT;
+					if (nextOffset >= blockLen)
+					{
+						// If we extended the tail block, we need to reset the tail pointer, otherwise
+						// we would allocate a block from there, which is not valid
+						_gcBlocks[idx].Tail = hd;
+						break;
+					}
+
+					// And continue on this block, because there could be another free block following
+					continue;
+				}
+			}
+			
+			hd = AddBytes(hd, entryLength + ALLOCATE_ALLIGNMENT);
+			offset = nextOffset;
+		}
+
+		hd = _gcBlocks[idx].BlockStart;
 		int blockFree = 0;
+		offset = 0;
+		// Calculate free bytes in block
 		while (offset < blockLen)
 		{
 			int entryLength = hd->BlockSize;

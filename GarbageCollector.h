@@ -92,6 +92,7 @@ public:
 		_maxMemoryUsage = 0;
 		_numAllocsSinceLastGc = 0;
 		_bytesAllocatedSinceLastGc = 0;
+		_totalGcMemorySize = 0;
 	}
 
 	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
@@ -133,5 +134,6 @@ private:
 	int _maxMemoryUsage;
 	int _numAllocsSinceLastGc;
 	int _bytesAllocatedSinceLastGc;
+	int _totalGcMemorySize;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };
