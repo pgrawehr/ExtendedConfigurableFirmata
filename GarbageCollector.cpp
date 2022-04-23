@@ -140,6 +140,36 @@ void GarbageCollector::ValidateBlocks()
 	}
 }
 
+byte* GarbageCollector::AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd)
+{
+	byte* ret;
+	uint16_t thisBlockSize = hd->BlockSize;
+	ASSERT(hd->BlockSize >= realSizeToReserve, "Attempted to reserve a block that's to small");
+	if (realSizeToReserve >= thisBlockSize + ALLOCATE_ALLIGNMENT)
+	{
+		// Split up the new block (but make sure we don't split away a 0-byte block)
+		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
+		hd->BlockSize = realSizeToReserve;
+		hd->flags = BlockFlags::Used;
+		hd = AddBytes(hd, ALLOCATE_ALLIGNMENT + realSizeToReserve);
+		if (hd < block.BlockStart + block.BlockSize)
+		{
+			BlockHd::SetBlockAtAddress(hd, thisBlockSize - ALLOCATE_ALLIGNMENT - realSizeToReserve, BlockFlags::Free);
+		}
+				
+		block.FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
+	}
+	else
+	{
+		// Take the whole block (it's exactly the size we need)
+		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
+		hd->flags = BlockFlags::Used; // Reserve the whole block
+		block.FreeBytesInBlock -= thisBlockSize;
+	}
+
+	return ret;
+}
+
 byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 {
 	if (size == 0)
@@ -182,6 +212,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 	block.Tail = block.BlockStart + block.BlockSize;
 	// There's not enough room at the end of the block. Check whether we find a place within the block
 	hd = block.BlockStart;
+	BlockHd* possibleHd = nullptr;
 	while (hd < AddBytes(block.BlockStart,block.BlockSize) && hd->BlockSize != 0)
 	{
 		uint16_t thisBlockSize = hd->BlockSize;
@@ -193,24 +224,25 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		
 		if (thisBlockSize >= realSizeToReserve && thisBlockSize <= 2 * realSizeToReserve)
 		{
-			if (realSizeToReserve >= thisBlockSize + ALLOCATE_ALLIGNMENT)
-			{
-				// Split up the new block (but make sure we don't split away a 0-byte block)
-				ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
-				hd->BlockSize = realSizeToReserve;
-				hd->flags = BlockFlags::Used;
-				hd = AddBytes(hd, ALLOCATE_ALLIGNMENT + realSizeToReserve);
-				BlockHd::SetBlockAtAddress(hd, thisBlockSize - ALLOCATE_ALLIGNMENT - realSizeToReserve, BlockFlags::Free);
-				
-				block.FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
-				return ret;
-			}
-			ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
-			hd->flags = BlockFlags::Used; // Reserve the whole block
-			block.FreeBytesInBlock -= thisBlockSize + ALLOCATE_ALLIGNMENT;
-			return ret;
+			// We found an almost optimal block
+			return AllocateBlock(block, realSizeToReserve, hd);
 		}
+		else if (thisBlockSize >= realSizeToReserve)
+		{
+			// We found a free block that would fit.
+			// Remember it in case we find nothing better
+			if (possibleHd == nullptr || possibleHd->BlockSize > thisBlockSize)
+			{
+				possibleHd = hd;
+			}
+		}
+
 		hd = AddBytes(hd, (thisBlockSize + ALLOCATE_ALLIGNMENT));
+	}
+
+	if (possibleHd != nullptr)
+	{
+		return AllocateBlock(block, realSizeToReserve, possibleHd);
 	}
 
 	return nullptr;
@@ -358,8 +390,9 @@ int GarbageCollector::ComputeFreeBlockSizes()
 		if (blockFree > _gcBlocks[idx].FreeBytesInBlock)
 		{
 			totalFreed += blockFree - _gcBlocks[idx].FreeBytesInBlock;
-			_gcBlocks[idx].FreeBytesInBlock = (short)blockFree;
 		}
+
+		_gcBlocks[idx].FreeBytesInBlock = (uint16_t)blockFree;
 	}
 
 	_currentMemoryUsage = totalMemoryInUse;

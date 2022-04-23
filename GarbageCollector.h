@@ -98,6 +98,7 @@ public:
 	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
 	byte* Allocate(uint32_t size);
 	void ValidateBlocks();
+	byte* AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd);
 
 	void MarkDependentHandles(FirmataIlExecutor* referenceContainer);
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
