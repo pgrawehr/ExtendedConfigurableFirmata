@@ -75,10 +75,19 @@ const uint32_t ALLOCATE_ALLIGNMENT = (sizeof(BlockHd));
 class GcBlock
 {
 public:
+	GcBlock()
+	{
+		BlockStart = nullptr;
+		BlockSize = 0;
+		FreeBytesInBlock = 0;
+		Tail = nullptr;
+		Preallocated = false;
+	}
 	BlockHd* BlockStart;
 	uint16_t BlockSize;
 	uint16_t FreeBytesInBlock;
 	BlockHd* Tail;
+	bool Preallocated;
 };
 
 class GarbageCollector
@@ -98,6 +107,7 @@ public:
 
 	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
 	byte* Allocate(uint32_t size);
+	byte* Allocate(uint32_t size, bool preallocateOnly);
 	void ValidateBlock(GcBlock& block);
 	void ValidateBlocks();
 	byte* AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd);
@@ -114,7 +124,7 @@ public:
 		return _gcPressureHigh;
 	}
 
-	void Init(FirmataIlExecutor* referenceContainer);
+	void Init(FirmataIlExecutor* referenceContainer, size_t preallocateSize);
 	int64_t TotalAllocatedBytes() const
 	{
 		return _totalAllocSize;

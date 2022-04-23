@@ -188,7 +188,8 @@ void FirmataIlExecutor::Init()
 #endif
 	}
 
-	_gc.Init(this);
+	size_t memToPreallocate = MIN(freeMemory() / 2, 128 * 1024);
+	_gc.Init(this, memToPreallocate);
 
 	void* classes, *methods, *constants, *stringHeap, *clauses;
 	int* specialTokens;
@@ -3309,11 +3310,10 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 		throw ClrException("NullReferenceException accessing field", SystemException::NullReference, type->ClassToken);
 	}
 
-	vector<Variable*> allfields;
-	CollectFields(type, allfields);
-	for (auto handle1 =allfields.begin(); handle1 != allfields.end(); ++handle1)
+	VariableIterator it;
+	Variable* handle = nullptr;
+	while ((handle = CollectFields(type, it)))
 	{
-		Variable* handle = *handle1;
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -3381,7 +3381,7 @@ Variable& FirmataIlExecutor::GetVariableDescription(ClassDeclaration* vtable, in
 	return _clearVariable;
 }
 
-void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector)
+Variable* FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, VariableIterator& iterator)
 {
 	// Do a prefix-recursion to collect all fields in the class pointed to by vtable and its bases. The updated
 	// vector must be sorted base-class members first
@@ -3391,17 +3391,42 @@ void FirmataIlExecutor::CollectFields(ClassDeclaration* vtable, vector<Variable*
 		throw ExecutionEngineException("Accessing deleted object - this is a GC error");
 	}
 #endif
-	if (vtable->ParentToken > 1) // Token 1 is the token of System::Object, which does not have any fields, so we don't need to go there.
+
+	if (iterator.CurrentClass == nullptr)
 	{
-		ClassDeclaration* parent = _classes.GetClassWithToken(vtable->ParentToken);
-		CollectFields(parent, vector);
+		// Not initialized yet.
+		iterator.CurrentClass = GetClassWithToken(1); // "System.Object"
+		iterator.BottomClass = vtable;
+		iterator.CurrentIndex = 0;
 	}
 
-	int idx = 0;
-	for (auto handle = vtable->GetFieldByIndex(idx); handle != nullptr; handle = vtable->GetFieldByIndex(++idx))
+	auto handle = iterator.CurrentClass->GetFieldByIndex(iterator.CurrentIndex++);
+	
+	while (handle == nullptr)
 	{
-		vector.push_back(handle);
+		// No more members and at bottom of chain? We're done
+		if (handle == nullptr && iterator.CurrentClass == iterator.BottomClass)
+		{
+			// We're done
+			return nullptr;
+		}
+
+		// Find the next class in the chain (the one that derives from CurrentClass and is base of BottomClass, but searching backwards)
+		iterator.CurrentIndex = 0;
+		auto current = iterator.BottomClass;
+		auto parent = GetClassWithToken(iterator.BottomClass->ParentToken);
+		while (parent != iterator.CurrentClass)
+		{
+			current = parent;
+			parent = GetClassWithToken(parent->ParentToken);
+		}
+
+		// Since we start at System.Object, the above must find something (or return the identity if BottomClass has no parent except of Object)
+		iterator.CurrentClass = current;
+		handle = iterator.CurrentClass->GetFieldByIndex(iterator.CurrentIndex++);
 	}
+
+	return handle;
 }
 
 /// <summary>
@@ -3453,12 +3478,11 @@ byte* FirmataIlExecutor::Ldfld(Variable& obj, int32_t token, VariableDescription
 		throw ClrException(SystemException::NullReference, token);
 	}
 	
-	vector<Variable*> allfields;
-	CollectFields(vtable, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	VariableIterator it;
+	Variable* handle = nullptr;
+	while ((handle = CollectFields(vtable, it)))
 	{
 		// The type of handle1 is Variable**, because we must make sure not to use copy operations above
-		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -3530,12 +3554,10 @@ Variable FirmataIlExecutor::Ldflda(Variable& obj, int32_t token)
 		throw ClrException(SystemException::NullReference, token);
 	}
 
-	vector<Variable*> allfields;
-	CollectFields(vtable, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	VariableIterator it;
+	Variable* handle = nullptr;
+	while ((handle = CollectFields(vtable, it)))
 	{
-		// The type of handle1 is Variable**, because we must make sure not to use copy operations above
-		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{
@@ -3807,11 +3829,10 @@ void* FirmataIlExecutor::Stfld(MethodBody* currentMethod, Variable& obj, int32_t
 		return nullptr;
 	}
 	
-	vector<Variable*> allfields;
-	CollectFields(cls, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	VariableIterator it;
+	Variable* handle = nullptr;
+	while ((handle = CollectFields(cls, it)))
 	{
-		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{

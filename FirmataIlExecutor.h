@@ -145,6 +145,27 @@ public:
 	Variable Exception; // Is always of type object, therefore can be stored inline
 };
 
+class VariableIterator
+{
+public:
+	VariableIterator()
+	{
+		CurrentClass = nullptr;
+		BottomClass = nullptr;
+		CurrentIndex = 0;
+	}
+
+	int CurrentIndex;
+	/// <summary>
+	/// The class being iterated (a parent of the one below)
+	/// </summary>
+	ClassDeclaration* CurrentClass;
+	/// <summary>
+	/// The class on which the iteration is being performed (the most derived in the chain)
+	/// </summary>
+	ClassDeclaration* BottomClass;
+};
+
 
 class ExecutionState
 {
@@ -398,7 +419,7 @@ class FirmataIlExecutor: public FirmataFeature
 	Variable* FindStaticField(int32_t token) const;
 	Variable Ldsflda(ThreadState* thread, int token);
     void Stsfld(ThreadState* thread, int token, Variable& value);
-    void CollectFields(ClassDeclaration* vtable, vector<Variable*>& vector);
+	Variable* CollectFields(ClassDeclaration* vtable, VariableIterator& iterator);
 
 	byte* Ldfld(Variable& obj, int32_t token, VariableDescription& description);
 	Variable Ldflda(Variable& obj, int32_t token);

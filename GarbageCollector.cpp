@@ -5,8 +5,12 @@
 #include "SelfTest.h"
 #include "FreeMemory.h"
 
-void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
+void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preallocateSize)
 {
+	while (_totalGcMemorySize < preallocateSize)
+	{
+		Allocate(0, true);
+	}
 	// this performs a GC self-test
 	byte* first = Allocate(20);
 	byte* second = Allocate(31);
@@ -22,33 +26,45 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 	int collected = Collect(0, referenceContainer);
 	ASSERT(collected > 90);
 	ValidateBlocks();
-	Clear(false);
+	Clear(true);
 }
-
 
 byte* GarbageCollector::Allocate(uint32_t size)
 {
+	return Allocate(size, false);
+}
+
+/// <summary>
+/// Allocate a GC block of the given size
+/// </summary>
+/// <param name="size">Size of the memory block required</param>
+/// <param name="preallocateOnly">True to reserve the memory only (the size will be ignored)</param>
+/// <returns></returns>
+byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly)
+{
 	byte* ret = nullptr;
 	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
-	for (size_t i = 0; i < _gcBlocks.size(); i++)
+	if (!preallocateOnly)
 	{
-		GcBlock& b = _gcBlocks[i];
-		ret = TryAllocateFromBlock(b, size);
-		if (ret != nullptr)
+		for (size_t i = 0; i < _gcBlocks.size(); i++)
 		{
-			// The last of our current blocks is getting full. Increase GC efforts
-			if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+			GcBlock& b = _gcBlocks[i];
+			ret = TryAllocateFromBlock(b, size);
+			if (ret != nullptr)
 			{
-				_gcPressureHigh = true;
+				// The last of our current blocks is getting full. Increase GC efforts
+				if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+				{
+					_gcPressureHigh = true;
+				}
+				break;
 			}
-			break;
-		}
-		else
-		{
-			ValidateBlock(b);
+			else
+			{
+				ValidateBlock(b);
+			}
 		}
 	}
-
 	if (ret == nullptr)
 	{
 		// Allocate a new block
@@ -80,12 +96,18 @@ byte* GarbageCollector::Allocate(uint32_t size)
 		block.BlockStart = (BlockHd*)newBlockPtr;
 		block.FreeBytesInBlock = (uint16_t)(sizeToAllocate - ALLOCATE_ALLIGNMENT);
 		block.Tail = block.BlockStart;
+		block.Preallocated = preallocateOnly;
 		BlockHd::SetBlockAtAddress(newBlockPtr, block.FreeBytesInBlock, BlockFlags::Free);
 		
 		_gcBlocks.push_back(block);
 		_totalGcMemorySize += sizeToAllocate;
 
 		PrintStatistics();
+		if (preallocateOnly)
+		{
+			return nullptr;
+		}
+
 		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
 	}
 
@@ -303,14 +325,25 @@ void GarbageCollector::Clear(bool printStatistics)
 		PrintStatistics();
 	}
 
+	int totalSize = 0;
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
 	{
-		free(_gcBlocks[idx1].BlockStart);
+		GcBlock& block = _gcBlocks[idx1];
+		if (block.Preallocated == false)
+		{
+			free(block.BlockStart);
+			_gcBlocks.remove(idx1);
+		}
+		else
+		{
+			BlockHd* hd = block.BlockStart;
+			totalSize += block.BlockSize; // This is including the overhead
+			hd->BlockSize = block.BlockSize - ALLOCATE_ALLIGNMENT;
+			hd->flags = BlockFlags::Free;
+		}
 	}
 
-	_gcBlocks.clear();
-
-	_totalGcMemorySize = 0;
+	_totalGcMemorySize = totalSize;
 	_totalAllocSize = 0;
 	_totalAllocations = 0;
 	_currentMemoryUsage = 0;
@@ -772,11 +805,10 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 
 	// Iterate over the fields of a class
 	int offset = sizeof(void*);
-	vector<Variable*> allfields;
-	referenceContainer->CollectFields(cls, allfields);
-	for (auto handle1 = allfields.begin(); handle1 != allfields.end(); ++handle1)
+	VariableIterator it;
+	Variable* handle = nullptr;
+	while ((handle = referenceContainer->CollectFields(cls, it)))
 	{
-		Variable* handle = (*handle1);
 		// Ignore static member here
 		if ((handle->Type & VariableKind::StaticMember) != VariableKind::Void)
 		{

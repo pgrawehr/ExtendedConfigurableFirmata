@@ -314,6 +314,13 @@ namespace stdSimple
 		{
 			return complexVectorIterator((vector<T, TSize>*)this);
 		}
+
+		void remove(int index)
+		{
+			int elementsToMove = _count - (index + 1); // May be 0
+			memmove(&_data[index], &_data[index + 1], elementsToMove);
+			--_count;
+		}
 	};
 
 }
