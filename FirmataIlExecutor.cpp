@@ -5691,7 +5691,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 	// The compiler always inserts a return statement, so we can never run past the end of a method,
 	// however we use this counter to interrupt code execution every now and then to go back to the main loop
 	// and check for other tasks (i.e. serial input data)
-    while (instructionsExecutedThisLoop < NUM_INSTRUCTIONS_AT_ONCE)
+    while (instructionsExecutedThisLoop < NUM_INSTRUCTIONS_AT_ONCE && !_gc.GcRecommended())
     {
 #if DEBUGGER
 

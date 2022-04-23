@@ -32,16 +32,27 @@ byte* GarbageCollector::Allocate(uint32_t size)
 	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
 	for (size_t i = 0; i < _gcBlocks.size(); i++)
 	{
-		ret = TryAllocateFromBlock(_gcBlocks[i], size);
+		GcBlock& b = _gcBlocks[i];
+		ret = TryAllocateFromBlock(b, size);
 		if (ret != nullptr)
 		{
+			// The last of our current blocks is getting full. Increase GC efforts
+			if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+			{
+				_gcPressureHigh = true;
+			}
 			break;
+		}
+		else
+		{
+			ValidateBlock(b);
 		}
 	}
 
 	if (ret == nullptr)
 	{
 		// Allocate a new block
+		_gcPressureHigh = true;
 		uint32_t sizeToAllocate = MAX(DEFAULT_GC_BLOCK_SIZE, size + ALLOCATE_ALLIGNMENT);
 		void* newBlockPtr = nullptr;
 		while(newBlockPtr == nullptr && sizeToAllocate >= size)
@@ -100,43 +111,71 @@ byte* GarbageCollector::Allocate(uint32_t size)
 	return ret;
 }
 
+void GarbageCollector::ValidateBlock(GcBlock& block)
+{
+	int blockLen = block.BlockSize;
+	int offset = 0;
+	BlockHd* hd = block.BlockStart;
+	int free = 0;
+	int used = 0;
+	while (offset < blockLen)
+	{
+		int size = hd->BlockSize;
+#if GC_DEBUG_LEVEL >= 1
+		/*if (size <= 0)
+		{
+			throw ExecutionEngineException("Invalid block size in memory list. That shouldn't happen.");
+		}*/
+			
+		if (size > blockLen)
+		{
+			// A single entry cannot be larger than the memory block - something is wrong.
+			throw ExecutionEngineException("Block list inconsistent");
+		}
+
+		if (hd->Marker != BLOCK_MARKER)
+		{
+			throw ExecutionEngineException("Block marker missing.");
+		}
+#endif
+
+		if (hd->IsFree())
+		{
+			free += hd->BlockSize;
+		}
+		else
+		{
+			used += hd->BlockSize;
+		}
+		used += ALLOCATE_ALLIGNMENT; // For the block header
+
+		hd = AddBytes(hd, size + ALLOCATE_ALLIGNMENT);
+		offset = offset + size + ALLOCATE_ALLIGNMENT;
+	}
+
+	// At the end, the last block must end exactly at the block end.
+	if (offset != blockLen)
+	{
+		throw ExecutionEngineException("Memory list inconsistent");
+	}
+
+	if (free != block.FreeBytesInBlock)
+	{
+		Firmata.sendStringf(F("Inconsistent free memory size. Expected %d bytes free, but actually %d bytes available"), block.FreeBytesInBlock, free);
+	}
+
+	if (free + used != block.BlockSize)
+	{
+		Firmata.sendStringf(F("Inconsistent memory allocation sizes. Free bytes %d, used bytes (including headers) %d. Sum is %d but should be %d"), free, used, free + used, block.BlockSize);
+	}
+}
+
 void GarbageCollector::ValidateBlocks()
 {
 	for (size_t i = 0; i < _gcBlocks.size(); i++)
 	{
 		GcBlock& block = _gcBlocks[i];
-		int blockLen = block.BlockSize;
-		int offset = 0;
-		BlockHd* hd = block.BlockStart;
-		while (offset < blockLen)
-		{
-			int size = hd->BlockSize;
-#if GC_DEBUG_LEVEL >= 1
-			if (size <= 0)
-			{
-				throw ExecutionEngineException("Invalid block size in memory list. That shouldn't happen.");
-			}
-			
-			if (size > blockLen)
-			{
-				// A single entry cannot be larger than the memory block - something is wrong.
-				throw ExecutionEngineException("Block list inconsistent");
-			}
-
-			if (hd->Marker != BLOCK_MARKER)
-			{
-				throw ExecutionEngineException("Block marker missing.");
-			}
-#endif
-			hd = AddBytes(hd, size + ALLOCATE_ALLIGNMENT);
-			offset = offset + size + ALLOCATE_ALLIGNMENT;
-		}
-
-		// At the end, the last block must end exactly at the block end.
-		if (offset != blockLen)
-		{
-			throw ExecutionEngineException("Memory list inconsistent");
-		}
+		ValidateBlock(block);
 	}
 }
 
@@ -181,6 +220,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 
 	if (size > block.FreeBytesInBlock)
 	{
+		ValidateBlocks();
 		return nullptr;
 	}
 	
@@ -221,7 +261,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 			hd = AddBytes(hd, (thisBlockSize + ALLOCATE_ALLIGNMENT));
 			continue;
 		}
-		
+
 		if (thisBlockSize >= realSizeToReserve && thisBlockSize <= 2 * realSizeToReserve)
 		{
 			// We found an almost optimal block
@@ -405,7 +445,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 
 int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContainer)
 {
-	if (generation >= 2)
+	if (generation >= 2 && !_gcPressureHigh)
 	{
 		// If the generation is given as 2, we skip the GC run if we think not much memory has been allocated
 		if (_numAllocsSinceLastGc < 100 && _bytesAllocatedSinceLastGc < 5000)
@@ -423,6 +463,7 @@ int GarbageCollector::Collect(int generation, FirmataIlExecutor* referenceContai
 	TRACE(Firmata.sendString(F("GC done")));
 	_numAllocsSinceLastGc = 0;
 	_bytesAllocatedSinceLastGc = 0;
+	_gcPressureHigh = false;
 	return result;
 }
 
@@ -446,6 +487,12 @@ void GarbageCollector::MarkStatics(FirmataIlExecutor* referenceContainer)
 {
 	size_t offset = 0;
 	byte* start = referenceContainer->_staticVector;
+
+	if (start == nullptr)
+	{
+		return; // no static variables yet.
+	}
+
 	while (offset < referenceContainer->_staticVectorMemorySize)
 	{
 		// int currentToken = *AddBytes((int*)start, offset);
