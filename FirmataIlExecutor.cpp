@@ -189,11 +189,18 @@ void FirmataIlExecutor::Init()
 	}
 
 	size_t memToPreallocate = MIN(freeMemory() / 2, 128 * 1024);
-	_gc.Init(this, memToPreallocate);
-
+	
 	void* classes, *methods, *constants, *stringHeap, *clauses;
 	int* specialTokens;
 	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, clauses, _startupToken, _startupFlags, _staticVectorMemorySize);
+
+	if (classes == nullptr)
+	{
+		// If the flash is empty, don't preallocate, as we need the RAM for the upload.
+		memToPreallocate = 0;
+	}
+
+	_gc.Init(this, memToPreallocate);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);
@@ -449,6 +456,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				_startupToken = 0;
 				_startupFlags = 0;
 				_flashMemoryManager->Clear();
+				_gc.Clear(true, true);
 				_classes.clear(true);
 				_methods.clear(true);
 				_constants.clear(true);
@@ -8427,7 +8435,7 @@ void FirmataIlExecutor::reset()
 	_specialTypeListRamLength = 0;
 	freeEx(_specialTypeListRam);
 
-	_gc.Clear(true);
+	_gc.Clear(true, false);
 	_weakDependencies.clear(true);
 	ClearHandles();
 	

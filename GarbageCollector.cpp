@@ -26,7 +26,7 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preall
 	int collected = Collect(0, referenceContainer);
 	ASSERT(collected > 90);
 	ValidateBlocks();
-	Clear(true);
+	Clear(true, false);
 }
 
 byte* GarbageCollector::Allocate(uint32_t size)
@@ -318,9 +318,9 @@ void GarbageCollector::PrintStatistics()
 	printMemoryStatistics();
 }
 
-void GarbageCollector::Clear(bool printStatistics)
+void GarbageCollector::Clear(bool printStatistics, bool all)
 {
-	if (_totalAllocations > 0 && printStatistics)
+	if (printStatistics)
 	{
 		PrintStatistics();
 	}
@@ -329,10 +329,11 @@ void GarbageCollector::Clear(bool printStatistics)
 	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
 	{
 		GcBlock& block = _gcBlocks[idx1];
-		if (block.Preallocated == false)
+		if (block.Preallocated == false || all)
 		{
-			free(block.BlockStart);
+			freeEx(block.BlockStart);
 			_gcBlocks.remove(idx1);
+			idx1--;
 		}
 		else
 		{
@@ -340,6 +341,7 @@ void GarbageCollector::Clear(bool printStatistics)
 			totalSize += block.BlockSize; // This is including the overhead
 			hd->BlockSize = block.BlockSize - ALLOCATE_ALLIGNMENT;
 			hd->flags = BlockFlags::Free;
+			block.Tail = block.BlockStart;
 		}
 	}
 

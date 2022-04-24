@@ -115,7 +115,7 @@ public:
 	void MarkDependentHandles(FirmataIlExecutor* referenceContainer);
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
 
-	void Clear(bool printStatistics);
+	void Clear(bool printStatistics, bool all);
 
 	void PrintStatistics();
 
@@ -152,7 +152,7 @@ private:
 	int _maxMemoryUsage;
 	int _numAllocsSinceLastGc;
 	int _bytesAllocatedSinceLastGc;
-	int _totalGcMemorySize;
+	size_t _totalGcMemorySize;
 	bool _gcPressureHigh;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };

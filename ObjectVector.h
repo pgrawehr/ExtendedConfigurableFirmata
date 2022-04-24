@@ -31,6 +31,7 @@ namespace stdSimple
 		TSize _size;
 		TSize _count;
 		T* _data;
+		bool _isReadOnly;
 
 	public:
 		class complexVectorIterator : public complexIteratorBase<T>
@@ -75,6 +76,7 @@ namespace stdSimple
 			_data = nullptr;
 			_size = 0;
 			_count = 0;
+			_isReadOnly = false;
 		}
 		
 		vector(int initialSize, int initialCount)
@@ -101,7 +103,7 @@ namespace stdSimple
 
 		~vector()
 		{
-			if (_data != nullptr)
+			if (_data != nullptr && !_isReadOnly)
 			{
 				freeEx(_data);
 			}
@@ -116,6 +118,10 @@ namespace stdSimple
 		/// <returns>The 0-based index of the new element</returns>
 		int push_back(T& object)
 		{
+			if (_isReadOnly)
+			{
+				throw Exception("Cannot modify read-only vector");
+			}
 			if (_count < _size)
 			{
 				_data[_count++] = object;
@@ -153,6 +159,10 @@ namespace stdSimple
 
 		void push_back(const T& object)
 		{
+			if (_isReadOnly)
+			{
+				throw Exception("Cannot modify read-only vector");
+			}
 			if (_count < _size)
 			{
 				_data[_count++] = object;
@@ -191,6 +201,12 @@ namespace stdSimple
 		/// </summary>
 		void truncate()
 		{
+			if (_isReadOnly)
+			{
+				_isReadOnly = false;
+				_data = nullptr;
+				_count = 0;
+			}
 			if (_count != 0)
 			{
 				_size = _count;
@@ -211,6 +227,11 @@ namespace stdSimple
 
 		void initFrom(TSize size, T data)
 		{
+			if (_isReadOnly)
+			{
+				_data = nullptr;
+				_size = 0;
+			}
 			if (_data != nullptr)
 			{
 				freeEx(_data);
@@ -220,15 +241,19 @@ namespace stdSimple
 			}
 			if (size > 0)
 			{
+				_isReadOnly = true;
+				_data = (T*)data;
 				_size = size;
-				_data = (T*)mallocEx(_size * sizeof(T));
-				_count = _size;
-				memcpy(_data, data, _size * sizeof(T));
+				_count = size;
 			}
 		}
 
 		void pop_back()
 		{
+			if (_isReadOnly)
+			{
+				throw Exception("Cannot modify read-only vector");
+			}
 			--_count;
 		}
 
@@ -259,6 +284,12 @@ namespace stdSimple
 
 		void clear(bool truncate = false)
 		{
+			if (_isReadOnly)
+			{
+				_isReadOnly = false;
+				_data = nullptr;
+			}
+
 			if (_data != nullptr)
 			{
 				for (size_t i = 0; i < _count; i++)
@@ -317,8 +348,12 @@ namespace stdSimple
 
 		void remove(int index)
 		{
+			if (_isReadOnly)
+			{
+				throw Exception("Cannot modify read-only vector");
+			}
 			int elementsToMove = _count - (index + 1); // May be 0
-			memmove(&_data[index], &_data[index + 1], elementsToMove);
+			memmove(&_data[index], &_data[index + 1], elementsToMove * sizeof(T));
 			--_count;
 		}
 	};
