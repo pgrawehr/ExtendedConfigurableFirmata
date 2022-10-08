@@ -84,6 +84,10 @@ AnalogOutputFirmata analogOutput;
 #include "FtpServer.h"
 WifiCachingStream serverStream(NETWORK_PORT);
 NtpClient ntpClient;
+#ifdef ARDUINO_M5STACK_Core2
+#include "EspSleep.h"
+EspSleep espSleeper(39, 0);
+#endif
 #endif
 
 #ifdef ENABLE_I2C
@@ -260,6 +264,11 @@ void initFirmata()
 	firmataExt.addFeature(ilExecutor);
 	firmataExt.addFeature(statusLed);
 #endif
+#ifdef ENABLE_WIFI
+#ifdef ARDUINO_M5STACK_Core2
+	firmataExt.addFeature(espSleeper);
+#endif
+#endif
 
 	Firmata.attach(SYSTEM_RESET, systemResetCallback);
 }
@@ -307,5 +316,9 @@ void loop()
 	firmataExt.report(reporting.elapsed());
 #ifdef ENABLE_WIFI
 	serverStream.maintain();
+#ifdef ARDUINO_M5STACK_Core2
+	// Enter sleep mode after a time if not connected and no active code
+	espSleeper.Update(serverStream.isConnected() || ilExecutor.IsExecutingCode());
+#endif
 #endif
 }

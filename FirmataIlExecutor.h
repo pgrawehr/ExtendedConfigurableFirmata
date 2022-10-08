@@ -393,6 +393,8 @@ class FirmataIlExecutor: public FirmataFeature
 		return _lastError;
 	}
 
+	bool IsExecutingCode();
+
  private:
 	ExecutionError LoadInterfaces(int32_t classToken, byte argc, byte* argv);
 	void SendReplyHeader(ExecutorCommand subCommand);
@@ -435,7 +437,6 @@ class FirmataIlExecutor: public FirmataFeature
 	uint32_t DecodePackedUint32(byte* argv);
 	uint64_t DecodePackedUint64(byte* argv);
 	byte* AllocGcInstance(size_t bytes);
-	bool IsExecutingCode();
 	void KillCurrentTask();
 	void TerminateAllThreads();
 	void CleanStack(ExecutionState* state);

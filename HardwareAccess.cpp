@@ -24,9 +24,6 @@ SimulatorClock TheClock;
 // Reference the instance of the firmata i2c driver
 extern I2CFirmata i2c;
 
-// this pin is used as input for the random number generator
-const int OPEN_ANALOG_PIN = A0;
-
 const int IO_COMPLETIONPORT_DUMMY = 0x00DDDBAD;
 
 int64_t HardwareAccess::_tickCountFrequency = 1000000;
