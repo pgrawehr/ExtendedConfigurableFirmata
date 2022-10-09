@@ -77,6 +77,7 @@ namespace stdSimple
 			_size = 0;
 			_count = 0;
 			_isReadOnly = false;
+			verifyIntegrity();
 		}
 		
 		vector(int initialSize, int initialCount)
@@ -99,6 +100,7 @@ namespace stdSimple
 			}
 			_size = initialSize;
 			_count = initialCount;
+			verifyIntegrity();
 		}
 
 		~vector()
@@ -109,6 +111,8 @@ namespace stdSimple
 			}
 			_data = nullptr;
 			_count = 0;
+			_size = 0;
+			verifyIntegrity();
 		}
 
 		/// <summary>
@@ -206,6 +210,7 @@ namespace stdSimple
 				_isReadOnly = false;
 				_data = nullptr;
 				_count = 0;
+				_size = 0;
 			}
 			if (_count != 0)
 			{
@@ -223,6 +228,7 @@ namespace stdSimple
 				freeEx(_data);
 				_data = nullptr;
 			}
+			verifyIntegrity();
 		}
 
 		void initFrom(TSize size, T data)
@@ -230,21 +236,34 @@ namespace stdSimple
 			if (_isReadOnly)
 			{
 				_data = nullptr;
-				_size = 0;
 			}
 			if (_data != nullptr)
 			{
 				freeEx(_data);
 				_data = nullptr;
-				_size = 0;
-				_count = 0;
 			}
+
+			_size = 0;
+			_count = 0;
+
 			if (size > 0)
 			{
 				_isReadOnly = true;
 				_data = (T*)data;
 				_size = size;
 				_count = size;
+				if (_data == nullptr)
+				{
+					throw ExecutionEngineException("Init from empty data");
+				}
+			}
+		}
+
+		void verifyIntegrity()
+		{
+			if (_data == nullptr && _size != 0)
+			{
+				throw new ExecutionEngineException("Inconsistent data container");
 			}
 		}
 
@@ -288,6 +307,7 @@ namespace stdSimple
 			{
 				_isReadOnly = false;
 				_data = nullptr;
+				_size = 0; // Because we cannot use it again in this state.
 			}
 
 			if (_data != nullptr)
@@ -306,6 +326,7 @@ namespace stdSimple
 			}
 			
 			_count = 0;
+			verifyIntegrity();
 		}
 
 		T& operator[] (size_t index)

@@ -76,7 +76,7 @@ boolean FirmataIlExecutor::handlePinMode(byte pin, int mode)
 }
 
 FirmataIlExecutor::FirmataIlExecutor()
-	: _nextStepBehavior()
+	: _nextStepBehavior(), _classes(), _clauses(), _methods(), _constants()
 {
 	ClearHandles();
 
