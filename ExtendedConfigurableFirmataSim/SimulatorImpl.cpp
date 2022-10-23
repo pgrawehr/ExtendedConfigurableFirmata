@@ -25,7 +25,19 @@ static byte temp;
 
 int digitalRead(int pin)
 {
+	if (pin < TOTAL_PINS)
+	{
+		return pinValues[pin];
+	}
 	return 0;
+}
+
+void ToggleSimulatedPin(int pin)
+{
+	if (pin < TOTAL_PINS && pin >= 0)
+	{
+		pinValues[pin] = pinValues[pin] ? 0 : 1;
+	}
 }
 
 void UpdateDisplay()
@@ -35,7 +47,14 @@ void UpdateDisplay()
 	{
 		if (pinModes[i] == PIN_MODE_INPUT)
 		{
-			printf("I");
+			if (pinValues[i])
+			{
+				printf("1");
+			}
+			else
+			{
+				printf("0");
+			}
 		}
 		else if (pinModes[i] == PIN_MODE_OUTPUT)
 		{

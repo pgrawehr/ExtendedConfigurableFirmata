@@ -7,6 +7,8 @@
 #undef INPUT
 #include "WinSock2.h"
 
+void ToggleSimulatedPin(int pin);
+
 class NetworkConnection : public Serial
 {
 private:

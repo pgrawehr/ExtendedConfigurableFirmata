@@ -1,8 +1,9 @@
-﻿// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
+// ExtendedConfigurableFirmataSim.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
 //
 
 #include <iostream>
 #include <conio.h>
+#include "SimulatorImpl.h"
 
 void setup();
 void loop();
@@ -20,6 +21,10 @@ int main()
 			if (c == 27)
 			{
 				break;
+			}
+			else if (c >= '0' && c <= '9')
+			{
+				ToggleSimulatedPin(c - '0');
 			}
 		}
 		loop();
