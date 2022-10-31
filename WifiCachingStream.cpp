@@ -82,7 +82,7 @@ int WifiCachingStream::read()
 	if (result == E_FTP_RESULT_FAILED)
 	{
 		ftp_close_socket(&_connection_sd);
-		Firmata.sendStringf(F("Connection dropped"));
+		Serial.println(F("Connection dropped in read"));
 		Firmata.resetParser();
 	}
 
@@ -106,6 +106,7 @@ int WifiCachingStream::available()
 	if (p < 0)
 	{
 		ftp_close_socket(&_connection_sd);
+		Serial.println(F("Connection dropped while testing for bytes"));
 		Firmata.resetParser();
 		return 0;
 	}
@@ -143,7 +144,7 @@ size_t WifiCachingStream::readBytes(char* buffer, size_t length)
 	if (result == E_FTP_RESULT_FAILED)
 	{
 		ftp_close_socket(&_connection_sd);
-		Firmata.sendStringf(F("Connection dropped"));
+		Serial.println(F("Connection dropped"));
 	}
 
 	return -1;
