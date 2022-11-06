@@ -2027,6 +2027,17 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Type = VariableKind::Boolean;
 		result.Boolean = true;
 		break;
+	case NativeMethod::TypeName:
+	{
+		ASSERT(args.size() == 1);
+		Variable ownTypeInstance = args[0]; // A type instance
+		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+		char buf[15];
+		sprintf(buf, "N:%d", ownToken.Int32);
+		result = CreateStringInstance(strlen(buf), buf);
+	}
+		break;
 	case NativeMethod::TypeGetTypeFromHandle:
 		ASSERT(args.size() == 1);
 		{
@@ -2992,6 +3003,17 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result = Box(value, ty);
 		}
 		break;
+	case NativeMethod::EnumGetHashCode:
+	{
+			ASSERT(args.size() == 1);
+			result.Type = VariableKind::Int32;
+			// The this pointer is passed via a double indirection to this method!
+			ClassDeclaration** reference = (ClassDeclaration**)args[0].Object;
+			int* obj = (int*)AddBytes(reference, 4);
+			int32_t value = *obj;
+			result.Int32 = value;
+			break;
+	}
 	case NativeMethod::GcCollect:
 		ASSERT(args.size() == 4); // Has 4 args, but they mostly are for optimization purposes
 		_gc.Collect(args[0].Int32, this);
