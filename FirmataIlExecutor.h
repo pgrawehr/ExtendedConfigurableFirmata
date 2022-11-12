@@ -82,6 +82,7 @@ enum class TriStateBool
 #define MAX_THREADS 10
 #define MAX_LOCKS 10
 #define MAX_HANDLES 10
+#define CACHE_LINES 4
 
 const int NUM_INSTRUCTIONS_AT_ONCE = 50;
 
@@ -347,6 +348,19 @@ public:
 	}
 };
 
+class FieldLookupCacheEntry
+{
+public:
+	FieldLookupCacheEntry()
+	{
+		FieldToken = 0;
+		Cls = nullptr;
+	}
+
+	int FieldToken;
+	ClassDeclaration* Cls;
+};
+
 
 class FirmataIlExecutor: public FirmataFeature
 {
@@ -542,6 +556,9 @@ class FirmataIlExecutor: public FirmataFeature
 
 	stdSimple::vector<Breakpoint> _breakpoints;
 	Breakpoint _nextStepBehavior;
+
+	FieldLookupCacheEntry _fieldLookupCache[CACHE_LINES];
+	bool _nextLookup;
 public:
 	// Currently public, because DependentHandle is separate
 	stdSimple::vector<pair<void*, void*>> _weakDependencies; // Garbage collector weak dependencies (created using DependentObject)

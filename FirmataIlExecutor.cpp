@@ -97,6 +97,8 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_commandsToSkip = 0;
 	_lastError = 0;
 	_breakOnException = false;
+	_nextLookup = 0;
+	_lastThreadRun = 0;
 }
 
 void FirmataIlExecutor::ClearHandles()
@@ -114,6 +116,11 @@ void FirmataIlExecutor::ClearHandles()
 	for (int i = 0; i < MAX_HANDLES; i++)
 	{
 		_waitHandles[i] = EventWaitHandle();
+	}
+
+	for (int i = 0; i < CACHE_LINES; i++)
+	{
+		_fieldLookupCache[i] = FieldLookupCacheEntry();
 	}
 }
 
@@ -8045,7 +8052,7 @@ void* FirmataIlExecutor::CreateInstanceOfClass(int32_t typeToken, uint32_t lengt
 
 ClassDeclaration* FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken)
 {
-	TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
+	// TRACE(Firmata.sendString(F("Creating instance via .ctor 0x"), ctorToken));
 	for (auto iterator = _classes.GetIterator(); iterator.Next();)
 	{
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
@@ -8065,6 +8072,15 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromCtorToken(int32_t ctorToken
 
 ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldToken)
 {
+	// Profiling shows that this method is a major performance bottleneck, therefore added a small cache
+	for (int i = 0; i < CACHE_LINES; i++)
+	{
+		if (_fieldLookupCache[i].FieldToken == fieldToken)
+		{
+			return _fieldLookupCache[i].Cls;
+		}
+	}
+
 	for (auto iterator = _classes.GetIterator(); iterator.Next();)
 	{
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
@@ -8075,6 +8091,9 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
 			if (field->Int32 == fieldToken)
 			{
+				_nextLookup = (_nextLookup + 1) % CACHE_LINES;
+				_fieldLookupCache[_nextLookup].Cls = current;
+				_fieldLookupCache[_nextLookup].FieldToken = fieldToken;
 				return current;
 			}
 		}
