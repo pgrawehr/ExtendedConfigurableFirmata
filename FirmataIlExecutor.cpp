@@ -1829,6 +1829,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			FirmataStatusLed::FirmataStatusLedInstance->setStatus(STATUS_ERROR, 5000);
 		}
 		thread->managedThreadInstance.Object = args[0].Object;
+		Firmata.sendStringf(F("Created new thread with id %d"), value.Int32);
 		_threads[idx] = thread;
 	}
 		break;
