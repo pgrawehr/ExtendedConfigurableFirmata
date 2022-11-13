@@ -99,6 +99,7 @@ FirmataIlExecutor::FirmataIlExecutor()
 	_breakOnException = false;
 	_nextLookup = 0;
 	_lastThreadRun = 0;
+	_debuggingThread = -1;
 }
 
 void FirmataIlExecutor::ClearHandles()
@@ -547,15 +548,15 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				uint32_t debuggerCommand = DecodePackedUint32(argv + 2);
 				uint32_t debuggerArg1 = 0;
 				uint32_t debuggerArg2 = 0;
-					if (argc >= 17)
+					if (argc >= 12)
 					{
 						debuggerArg1 = DecodePackedUint32(argv + 2 + 5);
 					}
-					if (argc >= 22)
+					if (argc >= 17)
 					{
 						debuggerArg2 = DecodePackedUint32(argv + 2 + 10);
 					}
-					// TODO: Should be able to tell which thread(s) to break on
+
 				SendAckOrNack(subCommand, sequenceNo, ExecuteDebuggerCommand(_threads[0] ? _threads[0]->rootOfExecutionStack : nullptr, (DebuggerCommand)debuggerCommand, debuggerArg1, debuggerArg2));
 				}
 				break;
@@ -922,6 +923,7 @@ void FirmataIlExecutor::KillCurrentTask()
 	_lastError = 0;
 	_breakOnException = false;
 	_lastThreadRun = 0;
+	_debuggingThread = -1;
 	SetMemoryExecutionMode(false);
 }
 
@@ -7475,6 +7477,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 		{
 			_nextStepBehavior.Kind = BreakpointType::Once;
 			_commandsToSkip = 0;
+			_debuggingThread = threadState->threadId;
 		}
 
 		// On an exception, send the state prior to the stack unwinding once
@@ -7766,6 +7769,11 @@ Variable FirmataIlExecutor::GetExceptionObjectFromToken(SystemException exceptio
 bool FirmataIlExecutor::CheckForBreakCondition(ExecutionState* state, uint16_t pc, byte* code)
 {
 	if (!_debuggerEnabled)
+	{
+		return false;
+	}
+
+	if (_debuggingThread != -1 && _debuggingThread != state->TaskId())
 	{
 		return false;
 	}
@@ -8352,6 +8360,7 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(ExecutionState* state, 
 	case DebuggerCommand::Break:
 		_debugBreakActive = false;
 		_nextStepBehavior.Kind = BreakpointType::Once;
+		_debuggingThread = arg1;
 		break;
 	case DebuggerCommand::StepInto:
 		_debugBreakActive = false;
@@ -8371,6 +8380,9 @@ ExecutionError FirmataIlExecutor::ExecuteDebuggerCommand(ExecutionState* state, 
 	case DebuggerCommand::Continue:
 		_commandsToSkip = 1; // Execute at least one command now
 		_debugBreakActive = false;
+		break;
+	case DebuggerCommand::SelectThread: // Only break on this specific thread
+		_debuggingThread = arg1;
 		break;
 	case DebuggerCommand::EnableDebugging:
 		_debugBreakActive = false;
