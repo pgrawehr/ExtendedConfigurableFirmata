@@ -143,7 +143,6 @@ void GarbageCollector::ValidateBlock(GcBlock& block)
 	while (offset < blockLen)
 	{
 		int size = hd->BlockSize;
-#if GC_DEBUG_LEVEL >= 1
 		/*if (size <= 0)
 		{
 			throw ExecutionEngineException("Invalid block size in memory list. That shouldn't happen.");
@@ -159,7 +158,6 @@ void GarbageCollector::ValidateBlock(GcBlock& block)
 		{
 			throw ExecutionEngineException("Block marker missing.");
 		}
-#endif
 
 		if (hd->IsFree())
 		{
@@ -242,7 +240,9 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 
 	if (size > block.FreeBytesInBlock)
 	{
+#if GC_DEBUG_LEVEL >= 2
 		ValidateBlocks();
+#endif
 		return nullptr;
 	}
 	
