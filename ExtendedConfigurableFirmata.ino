@@ -76,7 +76,6 @@ AnalogInputFirmata analogInput;
 
 #include <AnalogOutputFirmata.h>
 AnalogOutputFirmata analogOutput;
-#include <AnalogWrite.h>
 #endif
 
 
