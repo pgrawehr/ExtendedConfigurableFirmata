@@ -154,7 +154,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.cpp" />
