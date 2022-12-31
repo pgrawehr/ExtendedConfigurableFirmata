@@ -74,6 +74,7 @@ enum class TriStateBool
 #define NULLABLE_TOKEN_MASK 0x00800000
 #define ARRAY_DATA_START 12 /* Array type token, array length (in elements), and array content type token */
 #define STRING_DATA_START 8 /* String type token, string length (in chars) */
+#define SIZEOF_VOID (sizeof(void*))
 #define SIZEOF_CHAR (sizeof(uint16_t))
 #define STANDARD_INPUT_HANDLE 0xCEED
 #define STANDARD_OUTPUT_HANDLE 0xCEEE

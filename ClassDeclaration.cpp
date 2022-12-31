@@ -122,6 +122,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(FlashMemoryManage
 
 void SortedClassList::ThrowNotFoundException(int token)
 {
+	Firmata.sendStringf(F("Unable to locate class 0x%x"), token);
 	throw ClrException(SystemException::ClassNotFound, token);
 }
 

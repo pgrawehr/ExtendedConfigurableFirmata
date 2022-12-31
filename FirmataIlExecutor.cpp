@@ -2037,6 +2037,37 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Type = VariableKind::Boolean;
 		result.Boolean = true;
 		break;
+	case NativeMethod::RuntimeHelpersEnumEqualsInternal:
+	{
+		result.Type = VariableKind::Boolean;
+		ASSERT(args.size() == 2);
+			// We know that both arguments are boxed instances of the same enum type
+		Variable self = args[0];
+		Variable other = args[1];
+		ClassDeclaration* tyself = GetClassDeclaration(self);
+		int size = tyself->ClassDynamicSize;
+		int64_t selfvalue = 0;
+		if (size <= 4)
+		{
+			selfvalue = *AddBytes((int32_t*)self.Object, SIZEOF_VOID);
+		}
+		else
+		{
+			selfvalue = *AddBytes((int64_t*)self.Object, SIZEOF_VOID);
+		}
+		int64_t othervalue = 0;
+		if (size <= 4)
+		{
+			othervalue = *AddBytes((int32_t*)other.Object, SIZEOF_VOID);
+		}
+		else
+		{
+			othervalue = *AddBytes((int64_t*)other.Object, SIZEOF_VOID);
+		}
+
+		result.Boolean = selfvalue == othervalue;
+		break;
+	}
 	case NativeMethod::TypeName:
 	{
 		ASSERT(args.size() == 1);
@@ -2047,6 +2078,16 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		sprintf(buf, "N:%d", ownToken.Int32);
 		result = CreateStringInstance(strlen(buf), buf);
 	}
+		break;
+	case NativeMethod::TypeGetHashCode:
+		{
+		ASSERT(args.size() == 1);
+		Variable ownTypeInstance = args[0]; // A type instance
+		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+		result.Int32 = ~ownToken.Int32; // Shouldn't use 1:1 mapping, to be able to distinguish the two
+		result.Type = VariableKind::Int32;
+		}
 		break;
 	case NativeMethod::TypeGetTypeFromHandle:
 		ASSERT(args.size() == 1);
@@ -2180,6 +2221,8 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			searchArray[1] = 1; // Length
 			searchArray[2] = 20; // Int
 			searchArray[3] = tok2.Int32;
+
+			// See also Comment on ExecutionSet.GetOrAddClassToken for the bit combinations used here
 			if (tok2.Int32 & GENERIC_TOKEN_MASK)
 			{
 				// The new token is a special token
@@ -2191,7 +2234,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			}
 			else
 			{
-				token = token + tok2.Int32; // Default case
+				token = token + tok2.Int32; // Default case (also works if tok2 is Nullable)
 			}
 						
 			void* ptr = CreateInstanceOfClass(token, 0);
@@ -2336,6 +2379,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		
 		}
 		break;
+
 	case NativeMethod::EnumInternalGetValues:
 		{
 			ASSERT(args.size() == 1);
@@ -2790,17 +2834,20 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			{
 				throw ClrException(SystemException::ArrayTypeMismatch, srcType->ClassToken);
 			}
-		byte* srcPtr = (byte*)AddBytes(srcArray.Object, ARRAY_DATA_START + (srcType->ClassDynamicSize * srcIndex.Int32));
-		byte* dstPtr = (byte*)AddBytes(dstArray.Object, ARRAY_DATA_START + (dstType->ClassDynamicSize * dstIndex.Int32));
-		int bytesToCopy = 0;
-		if (srcArray.Type == VariableKind::ReferenceArray)
-		{
-			bytesToCopy = sizeof(void*) * length.Int32;
-		}
-		else
-		{
-			bytesToCopy = srcType->ClassDynamicSize * length.Int32;
-		}
+
+			int bytesPerEntry;
+			if (srcArray.Type == VariableKind::ReferenceArray)
+			{
+				bytesPerEntry = sizeof(void*);
+			}
+			else
+			{
+				bytesPerEntry = srcType->ClassDynamicSize;
+			}
+
+		byte* srcPtr = (byte*)AddBytes(srcArray.Object, ARRAY_DATA_START + (bytesPerEntry * srcIndex.Int32));
+		byte* dstPtr = (byte*)AddBytes(dstArray.Object, ARRAY_DATA_START + (bytesPerEntry * dstIndex.Int32));
+		int bytesToCopy = bytesPerEntry * length.Int32;
 		memmove(dstPtr, srcPtr, bytesToCopy);
 		result.Type = VariableKind::Void;
 		}
@@ -6496,7 +6543,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				}
             	if (newMethod == nullptr)
 				{
-					Firmata.sendString(F("Unknown token 0x"), tk);
+					Firmata.sendStringf(F("Unknown method token 0x%x"), tk);
 					throw ClrException("Unknown target method token in call instruction", SystemException::MissingMethod, tk);
 				}
 
@@ -6583,7 +6630,8 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						throw ClrException("Virtual function call on something that is not an object", SystemException::InvalidCast, currentFrame->_executingMethod->methodToken);
 					}
 
-					while (cls->ParentToken >= 1) // System.Object does not inherit methods from anywhere
+					// Do not continue if parent is 0 (System.Object does not inherit methods from anywhere).
+					while (cls->ParentToken != 0)
 					{
 						int idx = 0;
 						for (auto met = cls->GetMethodByIndex(idx); met != nullptr; met = cls->GetMethodByIndex(++idx))
@@ -6977,10 +7025,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					uint32_t* data = (uint32_t*)value1.Object;
 					int32_t arraysize = *(data + 1);
 					int32_t targetType = *(data + 2);
-					if (token != targetType)
-					{
-						throw ClrException("Array element type does not match type to add", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
-					}
 					int32_t index = value2.Int32;
 					if (index < 0 || index >= arraysize)
 					{
@@ -7033,6 +7077,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 							memcpy(&tempVariable->Int32, srcPtr, elemTy->ClassDynamicSize);
 							break;
 						}
+
 						stack->push(*tempVariable);
 						
 					}
@@ -7059,6 +7104,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 								v1.Type = VariableKind::ReferenceArray;
 							}
 						}
+
+						if (v1.Object != nullptr && IsAssignableFrom(elemTy, v1) == MethodState::Aborted)
+						{
+							throw ClrException("Array type mismatch - Element of array has wrong type for target instance", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
+						}
+
 						stack->push(v1);
 					}
 					break;
