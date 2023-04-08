@@ -16,7 +16,6 @@ boolean EspSleep::handleSysex(byte command, byte argc, byte* argv)
 	// This command is very short, so that it would be an error for all other Scheduler modules
 	if (command == SCHEDULER_DATA && argc == 2)
 	{
-		Firmata.sendStringf(F("Activating sleep mode? Len = %d"), argc);
 		_goToSleepAfterDisconnect = argv[0] & 1;
 		_sleepTimeout = 1000 * 60 * argv[1]; // Timeout in minutes, converted to ms
 		if (_goToSleepAfterDisconnect)
