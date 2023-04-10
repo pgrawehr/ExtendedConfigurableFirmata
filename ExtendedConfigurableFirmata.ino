@@ -274,6 +274,7 @@ void initFirmata()
 
 void setup()
 {
+	delay(100);
 	// Set firmware name and version. The name is automatically derived from the name of this file.
 	// Firmata.setFirmwareVersion(FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 	// The usage of the above shortcut is not recommended, since it stores the full path of the file name in a
@@ -281,11 +282,11 @@ void setup()
 #ifdef SIM
 	Firmata.setFirmwareNameAndVersion("SimulatorForFirmata", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 #else
-	Firmata.setFirmwareNameAndVersion("ConfigurableFirmata", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
+	Firmata.setFirmwareNameAndVersion("ArduinoRuntime", FIRMATA_FIRMWARE_MAJOR_VERSION, FIRMATA_FIRMWARE_MINOR_VERSION);
 #endif
 
 	initTransport();
-	// Firmata.sendString(F("Booting device. Stand by..."));
+	Firmata.sendString(F("Booting device. Stand by..."));
 	initFirmata();
 
 	Firmata.parse(SYSTEM_RESET);
