@@ -156,6 +156,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.cpp" />
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ArduinoSleep.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\DhtFirmata.cpp" />
     <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\DigitalInputFirmata.cpp" />
@@ -204,6 +205,7 @@
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogInputFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\AnalogOutputFirmata.h" />
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ArduinoSleep.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ConfigurableFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DhtFirmata.h" />
     <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\DigitalInputFirmata.h" />

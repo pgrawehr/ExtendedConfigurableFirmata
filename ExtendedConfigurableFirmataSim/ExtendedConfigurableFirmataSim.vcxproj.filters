@@ -136,6 +136,9 @@
     <ClCompile Include="FSSim.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\libraries\ConfigurableFirmata\src\ArduinoSleep.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\FirmataIlExecutor.h">
@@ -289,6 +292,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="FSSim.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\libraries\ConfigurableFirmata\src\ArduinoSleep.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

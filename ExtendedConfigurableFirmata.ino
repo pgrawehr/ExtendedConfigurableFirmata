@@ -53,6 +53,10 @@ const int WIFI_STATUS_LED = -1;
 #define ENABLE_ANALOG
 #define ENABLE_DIGITAL
 #define ENABLE_FREQUENCY
+// Currently supported for AVR and ESP32
+#if defined (ESP32) || defined (ARDUINO_ARCH_AVR) || defined(SIM)
+#define ENABLE_SLEEP
+#endif
 
 #ifdef SIM
 #include "SimulatorImpl.h"
@@ -83,10 +87,11 @@ AnalogOutputFirmata analogOutput;
 #include "FtpServer.h"
 WifiCachingStream serverStream(NETWORK_PORT);
 NtpClient ntpClient;
-#ifdef ARDUINO_M5STACK_Core2
-#include "EspSleep.h"
-EspSleep espSleeper(39, 0);
 #endif
+
+#ifdef ENABLE_SLEEP
+#include "ArduinoSleep.h"
+ArduinoSleep sleeper(39, 0);
 #endif
 
 #ifdef ENABLE_I2C
@@ -263,10 +268,8 @@ void initFirmata()
 	firmataExt.addFeature(ilExecutor);
 	firmataExt.addFeature(statusLed);
 #endif
-#ifdef ENABLE_WIFI
-#ifdef ARDUINO_M5STACK_Core2
-	firmataExt.addFeature(espSleeper);
-#endif
+#ifdef ENABLE_SLEEP
+  firmataExt.addFeature(sleeper);
 #endif
 
 	Firmata.attach(SYSTEM_RESET, systemResetCallback);
@@ -316,9 +319,5 @@ void loop()
 	firmataExt.report(reporting.elapsed());
 #ifdef ENABLE_WIFI
 	serverStream.maintain();
-#ifdef ARDUINO_M5STACK_Core2
-	// Enter sleep mode after a time if not connected and no active code
-	espSleeper.Update(serverStream.isConnected() || ilExecutor.IsExecutingCode());
-#endif
 #endif
 }

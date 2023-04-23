@@ -138,9 +138,6 @@
     <ClInclude Include="ArduinoDueSupport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="EspSleep.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FirmataIlExecutor.cpp">
@@ -228,9 +225,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ArduinoDueSupport.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="EspSleep.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
