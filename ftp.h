@@ -78,11 +78,6 @@ typedef enum {
 /******************************************************************************
  DEFINE PRIVATE TYPES
  ******************************************************************************/
-typedef enum {
-    E_FTP_RESULT_OK = 0,
-    E_FTP_RESULT_CONTINUE,
-    E_FTP_RESULT_FAILED
-} ftp_result_t;
 
 typedef struct {
     bool            uservalid : 1;
@@ -168,8 +163,6 @@ typedef enum {
 #define ONFIG_MICROPY_FILESYSTEM_TYPE 0
 #define MICROPY_ALLOC_PATH_MAX (512)
 
-#define MAX_ACTIVE_INTERFACES   3
-
 #define VFS_NATIVE_MOUNT_POINT          "/_#!#_spiffs"
 #define VFS_NATIVE_SDCARD_MOUNT_POINT   "/_#!#_sdcard"
 #define VFS_NATIVE_INTERNAL_PART_LABEL  "internalfs"
@@ -207,13 +200,5 @@ bool ftp_terminate (void);
 bool ftp_stop_requested();
 int32_t ftp_get_maxstack (void);
 
-bool ftp_create_listening_socket(int32_t* sd, uint32_t port, uint8_t backlog);
-void ftp_close_socket(int32_t* sd);
-ftp_result_t ftp_wait_for_connection(int32_t listeningSocket, int32_t* connectionSocket, uint32_t* ip_addr, bool nonblocking);
-ftp_result_t ftp_recv_non_blocking(int32_t sd, char* buff, int32_t maxlen, int32_t* rxLen);
-ftp_result_t ftp_send(int32_t socket, byte b);
-ftp_result_t ftp_send(int32_t socket, byte b, bool isLast);
-ftp_result_t ftp_send(int32_t socket, const byte* data, size_t length);
-int ftp_poll(int32_t* socket);
 
 #endif /* FTP_H_ */

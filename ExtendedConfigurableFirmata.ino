@@ -82,10 +82,18 @@ AnalogOutputFirmata analogOutput;
 #ifdef ENABLE_WIFI
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#include "WifiCachingStream.h"
 #include "NtpClient.h"
 #include "FtpServer.h"
+#ifdef ESP32
+#include "WifiCachingStream.h"
 WifiCachingStream serverStream(NETWORK_PORT);
+#else
+
+// This original wifi stream was tested with Arduino ethernet shields. It works, but is considerably slower than the ESP32 specific implementation
+#include "utility/WiFiClientStream.h"
+#include "utility/WiFiServerStream.h"
+WiFiServerStream serverStream(NETWORK_PORT);
+#endif
 NtpClient ntpClient;
 #endif
 

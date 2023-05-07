@@ -111,9 +111,6 @@
     <ClInclude Include="Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="WifiCachingStream.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="NtpClient.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -201,9 +198,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Utils.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="WifiCachingStream.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="NtpClient.cpp">
