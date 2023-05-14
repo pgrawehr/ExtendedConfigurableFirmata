@@ -33,7 +33,7 @@ void NtpClient::StartTimeSync(int blinkPin)
 	bool pinIsOn = false;
 	const int retry_count = 100;
 	while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
-		ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+		ESP_LOGI("NTP", "Waiting for system time to be set... (%d/%d)", retry, retry_count);
 		delay(100);
 		if (blinkPin >= 0)
 		{
@@ -42,13 +42,13 @@ void NtpClient::StartTimeSync(int blinkPin)
 		}
 	}
 
-	ESP_LOGI(TAG, "Time synchronization complete");
+	ESP_LOGI("NTP", "Time synchronization complete");
 	sntp_stop();
 	char strftime_buf[64];
 	time(&now);
 	localtime_r(&now, &timeinfo);
 	strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-	ESP_LOGI(TAG, "The current date / time in UTC is: %s", strftime_buf);
+	ESP_LOGI("NTP", "The current date / time in UTC is: %s", strftime_buf);
 	if (blinkPin >= 0)
 	{
 		digitalWrite(blinkPin, 0);

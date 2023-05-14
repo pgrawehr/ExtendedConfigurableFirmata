@@ -31,6 +31,7 @@
  */
 
 #include <ConfigurableFirmata.h>
+#include <EspNetworkFunctions.h>
 
 #ifdef ESP32
 #include <stdint.h>
@@ -59,13 +60,12 @@
 
 //#include "freertos/semphr.h"
 
+#include <EspNetworkFunctions.h>
 #include "ftp.h"
 #include <FFat.h>
 
 // extern int FTP_TASK_FINISH_BIT;
 extern EventGroupHandle_t xEventTask;
-
-tcpip_adapter_if_t tcpip_if[MAX_ACTIVE_INTERFACES] = { TCPIP_ADAPTER_IF_MAX };
 
 int ftp_buff_size = CONFIG_MICROPY_FTPSERVER_BUFFER_SIZE;
 int ftp_timeout = FTP_CMD_TIMEOUT_MS;
@@ -99,44 +99,6 @@ uint64_t mp_hal_ticks_ms() {
 	return time_ms;
 }
 
-int network_get_active_interfaces()
-{
-	int n_if = 0;
-
-	for (int i=0; i<MAX_ACTIVE_INTERFACES; i++) {
-		tcpip_if[i] = TCPIP_ADAPTER_IF_MAX;
-	}
-	//if ((wifi_network_state == WIFI_STATE_STARTED) && (wifi_is_started())) {
-		wifi_mode_t mode;
-		esp_err_t ret = esp_wifi_get_mode(&mode);
-		if (ret == ESP_OK) {
-			if (mode == WIFI_MODE_STA) {
-				n_if = 1;
-				tcpip_if[0] = TCPIP_ADAPTER_IF_STA;
-			}
-			else if (mode == WIFI_MODE_AP) {
-				n_if = 1;
-				tcpip_if[0] = TCPIP_ADAPTER_IF_AP;
-			}
-			else if (mode == WIFI_MODE_APSTA) {
-				n_if = 2;
-				tcpip_if[0] = TCPIP_ADAPTER_IF_STA;
-				tcpip_if[1] = TCPIP_ADAPTER_IF_AP;
-			}
-		}
-	//}
-
-#if 0
-	#ifdef CONFIG_MICROPY_USE_ETHERNET
-	if (lan_eth_active) {
-		n_if++;
-		tcpip_if[n_if-1] = TCPIP_ADAPTER_IF_ETH;
-	}
-	#endif
-#endif
-
-	return n_if;
-}
 
 //--------------------------------
 static void stoupper (char *str) {
@@ -187,26 +149,26 @@ static void ftp_close_filesystem_on_error (void) {
 }
 
 //---------------------------------------------------------------------------------------------
-static ftp_result_t ftp_read_file (char *filebuf, uint32_t desiredsize, uint32_t *actualsize) {
-	ftp_result_t result = E_FTP_RESULT_CONTINUE;
+static network_result_t ftp_read_file (char *filebuf, uint32_t desiredsize, uint32_t *actualsize) {
+	network_result_t result = E_NETWORK_RESULT_CONTINUE;
 	*actualsize = ftp_data.fp.readBytes(filebuf, desiredsize);
 	if (*actualsize == 0) {
 		ftp_close_files_dir();
-		result = E_FTP_RESULT_FAILED;
+		result = E_NETWORK_RESULT_FAILED;
 	} else if (*actualsize < desiredsize) {
 		ftp_close_files_dir();
-		result = E_FTP_RESULT_OK;
+		result = E_NETWORK_RESULT_OK;
 	}
 	return result;
 }
 
 //-----------------------------------------------------------------
-static ftp_result_t ftp_write_file (uint8_t *filebuf, uint32_t size)
+static network_result_t ftp_write_file (uint8_t *filebuf, uint32_t size)
 {
-	ftp_result_t result = E_FTP_RESULT_FAILED;
+	network_result_t result = E_NETWORK_RESULT_FAILED;
 	uint32_t actualsize = ftp_data.fp.write(filebuf, size);
 	if (actualsize == size) {
-		result = E_FTP_RESULT_OK;
+		result = E_NETWORK_RESULT_OK;
 	} else {
 		ftp_close_files_dir();
 	}
@@ -214,7 +176,7 @@ static ftp_result_t ftp_write_file (uint8_t *filebuf, uint32_t size)
 }
 
 //---------------------------------------------------------------
-static ftp_result_t ftp_open_dir_for_listing (const char *path) {
+static network_result_t ftp_open_dir_for_listing (const char *path) {
 	if (ftp_data.dp) {
 		ftp_data.dp.close();
 	}
@@ -225,11 +187,11 @@ static ftp_result_t ftp_open_dir_for_listing (const char *path) {
 	ESP_LOGI(FTP_TAG, "ftp_open_dir_for_listing: %s", fullname);
 	ftp_data.dp = FFat.open(fullname);  // Open the directory
 	if (!ftp_data.dp) {
-		return E_FTP_RESULT_FAILED;
+		return E_NETWORK_RESULT_FAILED;
 	}
 	ftp_data.e_open = E_FTP_DIR_OPEN;
 	ftp_data.listroot = false;
-	return E_FTP_RESULT_CONTINUE;
+	return E_NETWORK_RESULT_CONTINUE;
 }
 
 //---------------------------------------------------------------------------------
@@ -296,33 +258,18 @@ static int ftp_get_eplf_item (char *dest, uint32_t destsize, File *de) {
 	return addsize;
 }
 
-#if 0
-//---------------------------------------------------------------------------
-static int ftp_get_eplf_drive (char *dest, uint32_t destsize, char *name) {
-	char *type = "d";
-	struct tm *tm_info;
-	time_t seconds;
-	time(&seconds); // get the time from the RTC
-	tm_info = gmtime(&seconds);
-	char str_time[64];
-	strftime(str_time, 63, "%b %d %Y", tm_info);
-
-	return snprintf(dest, destsize, "%srw-rw-rw-   1 root  root %9u %s %s\r\n", type, 0, str_time, name);
-}
-#endif
-
 //--------------------------------------------------------------------------------------
-static ftp_result_t ftp_list_dir(char *list, uint32_t maxlistsize, uint32_t *listsize) {
+static network_result_t ftp_list_dir(char *list, uint32_t maxlistsize, uint32_t *listsize) {
 	uint next = 0;
 	uint listcount = 0;
-	ftp_result_t result = E_FTP_RESULT_CONTINUE;
+	network_result_t result = E_NETWORK_RESULT_CONTINUE;
 	
 	ftp_data.dp.rewindDirectory();
 	// read up to 8 directory items
 	while (((maxlistsize - next) > 64) && (listcount < 8)) {
 		auto de = ftp_data.dp.openNextFile();															// Read a directory item
 		if (!de) {
-			result = E_FTP_RESULT_OK;
+			result = E_NETWORK_RESULT_OK;
 			break;																			// Break on error or end of dp
 		}
 		const char* name = de.name();
@@ -334,7 +281,7 @@ static ftp_result_t ftp_list_dir(char *list, uint32_t maxlistsize, uint32_t *lis
 		next += ftp_get_eplf_item((list + next), (maxlistsize - next), &de);
 		listcount++;
 	}
-	if (result == E_FTP_RESULT_OK) {
+	if (result == E_NETWORK_RESULT_OK) {
 		ftp_close_files_dir();
 	}
 	*listsize = next;
@@ -352,15 +299,6 @@ static void ftp_close_cmd_data(void) {
 	ftp_close_filesystem_on_error ();
 }
 
-void ftp_close_socket(int32_t* sd)
-{
-	if (*sd < 0)
-	{
-		return;
-	}
-	closesocket(*sd);
-	*sd = -1;
-}
 
 //----------------------------
 static void _ftp_reset(void) {
@@ -375,152 +313,6 @@ static void _ftp_reset(void) {
 	ftp_data.e_open = E_FTP_NOTHING_OPEN;
 	ftp_data.state = E_FTP_STE_START;
 	ftp_data.substate = E_FTP_STE_SUB_DISCONNECTED;
-}
-
-//-------------------------------------------------------------------------------------
-bool ftp_create_listening_socket (int32_t *sd, uint32_t port, uint8_t backlog) {
-	struct sockaddr_in sServerAddress;
-	int32_t _sd;
-	int32_t result;
-
-	// open a socket for ftp data listen
-	*sd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-	_sd = *sd;
-
-	if (_sd > 0) {
-		// enable non-blocking mode
-		uint32_t option = fcntl(_sd, F_GETFL, 0);
-		option |= O_NONBLOCK;
-		fcntl(_sd, F_SETFL, option);
-
-		// enable address reusing
-		option = 1;
-		result = setsockopt(_sd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
-
-		// bind the socket to a port number
-		sServerAddress.sin_family = AF_INET;
-		sServerAddress.sin_addr.s_addr = INADDR_ANY;
-		sServerAddress.sin_len = sizeof(sServerAddress);
-		sServerAddress.sin_port = htons(port);
-
-		result |= bind(_sd, (const struct sockaddr *)&sServerAddress, sizeof(sServerAddress));
-
-		// start listening
-		result |= listen(_sd, backlog);
-
-		if (!result) {
-			return true;
-		}
-		closesocket(*sd);
-	}
-	return false;
-}
-
-//--------------------------------------------------------------------------------------------
-ftp_result_t ftp_wait_for_connection(int32_t listeningSocket, int32_t* connectionSocket, uint32_t* ip_addr, bool nonblocking)
-{
-	struct sockaddr_in	sClientAddress;
-	socklen_t  in_addrSize;
-
-	// accepts a connection from a TCP client, if there is any, otherwise returns EAGAIN
-	*connectionSocket = accept(listeningSocket, (struct sockaddr *)&sClientAddress, (socklen_t *)&in_addrSize);
-	int32_t _sd = *connectionSocket;
-	if (_sd < 0) {
-		if (errno == EAGAIN) {
-			return E_FTP_RESULT_CONTINUE;
-		}
-		// error
-		_ftp_reset();
-		return E_FTP_RESULT_FAILED;
-	}
-
-	if (ip_addr) {
-		// check on which network interface the client was connected and save the IP address
-		tcpip_adapter_ip_info_t ip_info = {0};
-		int n_if = network_get_active_interfaces();
-
-		if (n_if > 0) {
-			struct sockaddr_in clientAddr;
-			in_addrSize = sizeof(struct sockaddr_in);
-			getpeername(_sd, (struct sockaddr *)&clientAddr, (socklen_t *)&in_addrSize);
-			ESP_LOGI(FTP_TAG, "Client IP: %08x", clientAddr.sin_addr.s_addr);
-			*ip_addr = 0;
-			for (int i=0; i<n_if; i++) {
-				tcpip_adapter_get_ip_info(tcpip_if[i], &ip_info);
-				ESP_LOGI(FTP_TAG, "Adapter: %08x, %08x", ip_info.ip.addr, ip_info.netmask.addr);
-				if ((ip_info.ip.addr & ip_info.netmask.addr) == (ip_info.netmask.addr & clientAddr.sin_addr.s_addr)) {
-					*ip_addr = ip_info.ip.addr;
-					ESP_LOGI(FTP_TAG, "Client connected on interface %d", tcpip_if[i]);
-					break;
-				}
-			}
-			if (*ip_addr == 0) {
-				ESP_LOGE(FTP_TAG, "No IP address detected (?!)");
-			}
-		}
-		else {
-			ESP_LOGE(FTP_TAG, "No active interface (?!)");
-		}
-	}
-
-	// enable non-blocking mode if not data channel connection
-	uint32_t option = fcntl(_sd, F_GETFL, 0);
-	if (nonblocking) {
-		option |= O_NONBLOCK;
-	}
-	fcntl(_sd, F_SETFL, option);
-	// This sends all data immediately, which sligly reduces round trip time, but is not the general solution,
-	// because to many packets with 1 byte get transmitted (the way we do our sending)
-	// int flag = 1;
-	// setsockopt(_sd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
-
-	// client connected, so go on
-	return E_FTP_RESULT_OK;
-}
-
-ftp_result_t ftp_send(int32_t socket, byte b)
-{
-	return (ftp_result_t)send(socket, &b, 1, 0);
-}
-
-ftp_result_t ftp_send(int32_t socket, byte b, bool isLast)
-{
-	return (ftp_result_t)send(socket, &b, 1, isLast ? 0 : MSG_MORE);
-}
-
-ftp_result_t ftp_send(int32_t socket, const byte* data, size_t length)
-{
-	return (ftp_result_t)send(socket, data, length, 0);
-}
-
-/// <summary>
-/// Checks whether there's data on the socket
-/// </summary>
-/// <param name="socket">Reference to the socket to probe</param>
-/// <returns>A value > 0 when bytes are available, a value < 0 on error and = 0 when no data is available. In case of an error, the socket is closed.</returns>
-int ftp_poll(int32_t* socket)
-{
-	if (*socket < 0)
-	{
-		return -1;
-	}
-
-	pollfd pd;
-	pd.fd = *socket;
-	pd.events = POLLIN;
-	pd.revents = 0;
-	int ret = poll(&pd, 1, 0);
-	if (pd.revents & POLLIN)
-	{
-		return 1;
-	}
-	if (ret < 0)
-	{
-		ftp_close_socket(socket);
-		return -1;
-	}
-
-	return 0;
 }
 
 //-----------------------------------------------------------
@@ -539,13 +331,13 @@ static void ftp_send_reply (uint32_t status, const char *message) {
 	strcat (replyBuf, "\r\n");
 
 	int32_t timeout = 200;
-	ftp_result_t result;
+	network_result_t result;
 	uint32_t size = strlen((char *)replyBuf);
 
 	vTaskDelay(1);
 
 	while (1) {
-		result = (ftp_result_t)send(ftp_data.c_sd, replyBuf, size, 0);
+		result = (network_result_t)send(ftp_data.c_sd, replyBuf, size, 0);
 		if (result == size) {
 			if (status == 221) {
 				closesocket(ftp_data.d_sd);
@@ -582,13 +374,13 @@ static void ftp_send_reply (uint32_t status, const char *message) {
 static void ftp_send_list(uint32_t datasize)
 {
 	int32_t timeout = 200;
-	ftp_result_t result;
+	network_result_t result;
 
 	ESP_LOGI(FTP_TAG, "Send list data: (%u)", datasize);
 	vTaskDelay(1);
 
 	while (1) {
-		result = (ftp_result_t)send(ftp_data.d_sd, ftp_data.dBuffer, datasize, 0);
+		result = (network_result_t)send(ftp_data.d_sd, ftp_data.dBuffer, datasize, 0);
 		if (result == datasize) {
 			vTaskDelay(1);
 			ESP_LOGI(FTP_TAG, "Send OK");
@@ -610,14 +402,14 @@ static void ftp_send_list(uint32_t datasize)
 //-----------------------------------------------
 static void ftp_send_file_data(uint32_t datasize)
 {
-	ftp_result_t result;
+	network_result_t result;
 	uint32_t timeout = 200;
 
 	ESP_LOGI(FTP_TAG, "Send file data: (%u)", datasize);
 	vTaskDelay(1);
 
 	while (1) {
-		result = (ftp_result_t) send(ftp_data.d_sd, ftp_data.dBuffer, datasize, 0);
+		result = (network_result_t) send(ftp_data.d_sd, ftp_data.dBuffer, datasize, 0);
 		if (result == datasize) {
 			vTaskDelay(1);
 			ESP_LOGI(FTP_TAG, "Send OK");
@@ -636,26 +428,6 @@ static void ftp_send_file_data(uint32_t datasize)
 	}
 }
 
-//------------------------------------------------------------------------------------------------
-ftp_result_t ftp_recv_non_blocking (int32_t sd, char *buff, int32_t maxlen, int32_t *rxLen)
-{
-	if (sd < 0) return E_FTP_RESULT_FAILED;
-	*rxLen = recv(sd, buff, maxlen, 0);
-	if (*rxLen > 0)
-	{
-		return E_FTP_RESULT_OK;
-	}
-	else
-	{
-		if (errno != EAGAIN)
-		{
-			return E_FTP_RESULT_FAILED;
-		}
-	}
-
-	*rxLen = 0;
-	return E_FTP_RESULT_CONTINUE;
-}
 
 // ==== Directory functions =======================
 
@@ -816,7 +588,7 @@ static void ftp_get_param_and_open_child(char **bufptr) {
 static void ftp_process_cmd (void) {
 	int32_t len;
 	char *bufptr = (char *)ftp_cmd_buffer;
-	ftp_result_t result;
+	network_result_t result;
 	struct stat buf;
 	int res;
 
@@ -824,8 +596,8 @@ static void ftp_process_cmd (void) {
 
 	// use the reply buffer to receive new commands
 	char temp[51] = {0};
-	result = ftp_recv_non_blocking(ftp_data.c_sd, temp, 50, &len);
-	if (result == E_FTP_RESULT_OK)
+	result = network_recv_non_blocking(ftp_data.c_sd, temp, 50, &len);
+	if (result == E_NETWORK_RESULT_OK)
 	{
 		temp[len] = '\0';
 		memcpy(ftp_cmd_buffer + strlen(ftp_cmd_buffer), temp, strlen(temp) + 1);
@@ -989,7 +761,7 @@ static void ftp_process_cmd (void) {
 				ftp_data.substate = E_FTP_STE_SUB_DISCONNECTED;
 				bool socketcreated = true;
 				if (ftp_data.ld_sd < 0) {
-					socketcreated = ftp_create_listening_socket(&ftp_data.ld_sd, FTP_PASIVE_DATA_PORT, FTP_DATA_CLIENTS_MAX - 1);
+					socketcreated = network_create_listening_socket(&ftp_data.ld_sd, FTP_PASIVE_DATA_PORT, FTP_DATA_CLIENTS_MAX - 1);
 				}
 				if (socketcreated) {
 					uint8_t *pip = (uint8_t *)&ftp_data.ip_addr;
@@ -1011,7 +783,7 @@ static void ftp_process_cmd (void) {
 			ftp_get_param_and_open_child(&bufptr);
 			if (cmd == E_FTP_CMD_LIST) ftp_nlist = 0;
 			else ftp_nlist = 1;
-			if (ftp_open_dir_for_listing(ftp_path) == E_FTP_RESULT_CONTINUE) {
+			if (ftp_open_dir_for_listing(ftp_path) == E_NETWORK_RESULT_CONTINUE) {
 				ftp_data.state = E_FTP_STE_CONTINUE_LISTING;
 				ftp_send_reply(150, NULL);
 			}
@@ -1177,7 +949,7 @@ static void ftp_process_cmd (void) {
 			remove_fname_from_path(ftp_path, ftp_scratch_buffer);
 		}
 	}
-	else if (result == E_FTP_RESULT_CONTINUE) {
+	else if (result == E_NETWORK_RESULT_CONTINUE) {
 		if (ftp_data.ctimeout > ftp_timeout) {
 			ftp_send_reply(221, "Connection timeout");
 			ESP_LOGI(FTP_TAG, "Connection timeout");
@@ -1268,13 +1040,14 @@ int ftp_run (uint32_t elapsed)
 			ftp_wait_for_enabled();
 			break;
 		case E_FTP_STE_START:
-			if (ftp_create_listening_socket(&ftp_data.lc_sd, FTP_CMD_PORT, FTP_CMD_CLIENTS_MAX - 1)) {
+			if (network_create_listening_socket(&ftp_data.lc_sd, FTP_CMD_PORT, FTP_CMD_CLIENTS_MAX - 1)) {
 				ftp_data.state = E_FTP_STE_READY;
 			}
 			break;
 		case E_FTP_STE_READY:
 			if (ftp_data.c_sd < 0 && ftp_data.substate == E_FTP_STE_SUB_DISCONNECTED) {
-				if (E_FTP_RESULT_OK == ftp_wait_for_connection(ftp_data.lc_sd, &ftp_data.c_sd, &ftp_data.ip_addr, true)) {
+				network_result_t result = network_wait_for_connection(ftp_data.lc_sd, &ftp_data.c_sd, &ftp_data.ip_addr, true);
+				if (result == E_NETWORK_RESULT_OK) {
 					ftp_data.txRetries = 0;
 					ftp_data.logginRetries = 0;
 					ftp_data.ctimeout = 0;
@@ -1284,6 +1057,10 @@ int ftp_run (uint32_t elapsed)
 					ESP_LOGI(FTP_TAG, "Connected.");
 					ftp_send_reply (220, "ESP32 FTP Server");
 					break;
+				}
+				else if (result == E_NETWORK_RESULT_FAILED)
+				{
+					_ftp_reset();
 				}
 			}
 			if (ftp_data.c_sd > 0 && ftp_data.substate != E_FTP_STE_SUB_LISTEN_FOR_DATA) {
@@ -1303,9 +1080,9 @@ int ftp_run (uint32_t elapsed)
 			// go on with listing
 			{
 				uint32_t listsize = 0;
-				ftp_result_t list_res = ftp_list_dir((char *)ftp_data.dBuffer, ftp_buff_size, &listsize);
+				network_result_t list_res = ftp_list_dir((char *)ftp_data.dBuffer, ftp_buff_size, &listsize);
 				if (listsize > 0) ftp_send_list(listsize);
-				if (list_res == E_FTP_RESULT_OK) {
+				if (list_res == E_NETWORK_RESULT_OK) {
 					ftp_send_reply(226, NULL);
 					ftp_data.state = E_FTP_STE_END_TRANSFER;
 				}
@@ -1316,10 +1093,10 @@ int ftp_run (uint32_t elapsed)
 			// read and send the next block from the file
 			{
 				uint32_t readsize;
-				ftp_result_t result;
+				network_result_t result;
 				ftp_data.ctimeout = 0;
 				result = ftp_read_file ((char *)ftp_data.dBuffer, ftp_buff_size, &readsize);
-				if (result == E_FTP_RESULT_FAILED) {
+				if (result == E_NETWORK_RESULT_FAILED) {
 					ftp_send_reply(451, NULL);
 					ftp_data.state = E_FTP_STE_END_TRANSFER;
 				}
@@ -1329,7 +1106,7 @@ int ftp_run (uint32_t elapsed)
 						ftp_data.total += readsize;
 						ESP_LOGI(FTP_TAG, "Sent %u, total: %u", readsize, ftp_data.total);
 					}
-					if (result == E_FTP_RESULT_OK) {
+					if (result == E_NETWORK_RESULT_OK) {
 						ftp_send_reply(226, NULL);
 						ftp_data.state = E_FTP_STE_END_TRANSFER;
 						ESP_LOGI(FTP_TAG, "File sent (%u bytes in %u msek).", ftp_data.total, ftp_data.time);
@@ -1340,15 +1117,15 @@ int ftp_run (uint32_t elapsed)
 		case E_FTP_STE_CONTINUE_FILE_RX:
 			{
 				int32_t len;
-				ftp_result_t result = E_FTP_RESULT_OK;
+				network_result_t result = E_NETWORK_RESULT_OK;
 
-				result = ftp_recv_non_blocking(ftp_data.d_sd, (char*)ftp_data.dBuffer, ftp_buff_size, &len);
-				if (result == E_FTP_RESULT_OK) {
+				result = network_recv_non_blocking(ftp_data.d_sd, (char*)ftp_data.dBuffer, ftp_buff_size, &len);
+				if (result == E_NETWORK_RESULT_OK) {
 					// block of data received
 					ftp_data.dtimeout = 0;
 					ftp_data.ctimeout = 0;
 					// save received data to file
-					if (E_FTP_RESULT_OK != ftp_write_file (ftp_data.dBuffer, len)) {
+					if (E_NETWORK_RESULT_OK != ftp_write_file (ftp_data.dBuffer, len)) {
 						ftp_send_reply(451, NULL);
 						ftp_data.state = E_FTP_STE_END_TRANSFER;
 						ESP_LOGW(FTP_TAG, "Error writing to file");
@@ -1358,7 +1135,7 @@ int ftp_run (uint32_t elapsed)
 						ESP_LOGI(FTP_TAG, "Received %u, total: %u", len, ftp_data.total);
 					}
 				}
-				else if (result == E_FTP_RESULT_CONTINUE) {
+				else if (result == E_NETWORK_RESULT_CONTINUE) {
 					// nothing received
 					if (ftp_data.dtimeout > FTP_DATA_TIMEOUT_MS) {
 						ftp_close_files_dir();
@@ -1385,7 +1162,7 @@ int ftp_run (uint32_t elapsed)
 	case E_FTP_STE_SUB_DISCONNECTED:
 		break;
 	case E_FTP_STE_SUB_LISTEN_FOR_DATA:
-		if (E_FTP_RESULT_OK == ftp_wait_for_connection(ftp_data.ld_sd, &ftp_data.d_sd, NULL, false)) {
+		if (E_NETWORK_RESULT_OK == network_wait_for_connection(ftp_data.ld_sd, &ftp_data.d_sd, NULL, false)) {
 			ftp_data.dtimeout = 0;
 			ftp_data.substate = E_FTP_STE_SUB_DATA_CONNECTED;
 			ESP_LOGI(FTP_TAG, "Data socket connected");
