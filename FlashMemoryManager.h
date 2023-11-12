@@ -54,6 +54,14 @@ public:
 	/// </summary>
 	/// <returns>True on success, false otherwise</returns>
 	bool ValidateFlashContents() const;
+
+private:
+
+	/// <summary>
+	/// Read the header from flash and initialize the addresses
+	/// </summary>
+	/// <returns> True if the header contains a valid signature, false otherwise</returns>
+	bool InitHeader();
 };
 
 #endif

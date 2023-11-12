@@ -27,6 +27,16 @@ public:
 		return address - _memoryBasePtr;
 	}
 
+	void MapFlash()
+	{
+		// Nothing to do
+	}
+
+	void UnmapFlash()
+	{
+		// Nothing to do
+	}
+
 	/// <summary>
 	/// Write a block to flash
 	/// </summary>

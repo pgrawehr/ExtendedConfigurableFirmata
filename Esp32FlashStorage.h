@@ -19,6 +19,8 @@ private:
 
 public:
 	Esp32CliFlashStorage();
+	void MapFlash();
+	void UnmapFlash();
 	void PrintPartitions();
 
 	~Esp32CliFlashStorage();

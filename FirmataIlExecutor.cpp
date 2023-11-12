@@ -8201,7 +8201,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv)
 {
-	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize));
+	Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize);
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
 	ClassDeclarationDynamic* decl;
