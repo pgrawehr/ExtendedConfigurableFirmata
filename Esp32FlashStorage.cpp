@@ -26,10 +26,12 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
 	ESP_LOGI(FLASH_TAG, "Data partition found.");
 
 	// TEST CODE BELOW
-	eraseBlock(0, partitionSize);
-	int a = 0xabcdef01;
-	write((uint32_t)0, (byte*) &a, (uint32_t)4);
 	MapFlash();
+	int c = *(int32_t*)mappedBaseAddress;
+	ESP_LOGI(FLASH_TAG, "Before %d", c);
+	eraseBlock(0, partitionSize);
+	int a = 0xabcdef02;
+	write((uint32_t)0, (byte*) &a, (uint32_t)4);
 	int b = *(int32_t*)mappedBaseAddress;
 	ESP_LOGI(FLASH_TAG, "Flash test: Input %d, output %d", a, b);
 	// PrintPartitions();
