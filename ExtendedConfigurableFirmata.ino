@@ -189,14 +189,17 @@ void initTransport()
 	NetworkSerial.begin();
 	Firmata.begin(NetworkSerial);
 #elif defined(ENABLE_WIFI)
+  if (WIFI_STATUS_LED >= 0)
+  {
+    pinMode(WIFI_STATUS_LED, OUTPUT);
+    digitalWrite(WIFI_STATUS_LED, 1);
+  }
 	Firmata.begin(115200); // To make sure the serial port is also available
+  ESP_LOGI("BOOT", "Booting....");
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 	WiFi.begin(ssid, password);
-	if (WIFI_STATUS_LED >= 0)
-	{
-		pinMode(WIFI_STATUS_LED, OUTPUT);
-	}
+	
 	bool pinIsOn = false;
 	int timeout = 20000;
 	while (WiFi.status() != WL_CONNECTED && timeout > 0)

@@ -21,7 +21,7 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
     spi_flash_mmap_handle_t map_handle;
 
     // Map the partition to data memory
-    if (esp_partition_mmap(partition, 0, partition->size, SPI_FLASH_MMAP_DATA, &map_ptr, &map_handle) != 0)
+    if (esp_partition_mmap(partition, 0, partition->size, ESP_PARTITION_MMAP_DATA, &map_ptr, &map_handle) != 0)
     {
 		ESP_LOGE(FLASH_TAG, "FATAL: Could not map data partition to RAM");
 		return;
@@ -36,7 +36,7 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
 Esp32CliFlashStorage::~Esp32CliFlashStorage()
 {
 	mappedBaseAddress = nullptr;
-	spi_flash_munmap(mapHandle);
+	esp_partition_munmap(mapHandle);
 	mapHandle = 0;
 }
 

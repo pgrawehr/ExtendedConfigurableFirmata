@@ -2075,7 +2075,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 		char buf[15];
-		sprintf(buf, "N:%d", ownToken.Int32);
+		sprintf(buf, "N:%ld", ownToken.Int32);
 		result = CreateStringInstance(strlen(buf), buf);
 	}
 		break;
@@ -5392,14 +5392,14 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_CONV_OVF_U8_UN:
 		intermediate = MakeUnsigned(value1);
-		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(intermediate))
+		if (!FitsIn<uint64_t, true, 0, 0xFFFFFFFFFFFFFFFF>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
 		goto CEE_CONV_U8_LABEL;
 		// Fall trough
 	case CEE_CONV_OVF_U8:
-		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(value1))
+		if (!FitsIn<int64_t, true, 0, 0x7FFFFFFFFFFFFFFF>(value1))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
