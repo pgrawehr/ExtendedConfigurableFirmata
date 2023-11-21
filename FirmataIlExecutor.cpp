@@ -620,7 +620,7 @@ void* FirmataIlExecutor::CopyStringsToFlash()
 	// This is pretty straight-forward: We just copy the whole string heap to flash.
 	// Since it internally only uses relative addresses, we don't have to care about anything else.
 	byte* target = (byte*)_flashMemoryManager->FlashAlloc(_stringHeapRamSize);
-	_flashMemoryManager->CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
+	_flashMemoryManager->CopyToFlash(_stringHeapRam, target, _stringHeapRamSize, "FirmataIlExecutor::CopyStringsToFlash");
 	if (_stringHeapRam != nullptr)
 	{
 		freeEx(_stringHeapRam);
@@ -641,7 +641,7 @@ int* FirmataIlExecutor::CopySpecialTokenListToFlash()
 
 	// This is pretty straight-forward: We just copy the whole thing to flash
 	int* target = (int*)_flashMemoryManager->FlashAlloc(_specialTypeListRamLength * sizeof(int));
-	_flashMemoryManager->CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int));
+	_flashMemoryManager->CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int), "CopySpecialTokenListToFlash");
 	if (_specialTypeListRam != nullptr)
 	{
 		freeEx(_specialTypeListRam);
@@ -8201,7 +8201,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv)
 {
-	Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize);
+	// Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize);
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
 	ClassDeclarationDynamic* decl;

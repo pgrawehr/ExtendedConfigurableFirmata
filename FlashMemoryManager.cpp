@@ -171,9 +171,14 @@ void FlashMemoryManager::Clear()
 	if (!_flashClear)
 	{
 		_endOfHeap = _startOfHeap;
-		_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
+		size_t flashPageSize = storage->getFlashPageSize();
+		if (sizeof(FlashMemoryHeader) > flashPageSize)
+		{
+			Firmata.sendStringf(F("Flash header to big"));
+		}
+		_endOfHeap = AddBytes(_endOfHeap, flashPageSize);
 		_headerClear = true;
-		storage->UnmapFlash();
+		// storage->UnmapFlash();
 		storage->eraseBlock(0, storage->getFlashSize());
 	}
 	_flashClear = true;
@@ -198,8 +203,9 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 	return ret;
 }
 
-void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length)
+void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length, const char* usage)
 {
+	Firmata.sendStringf(F("Flashing block for %s"), usage);
 	_flashClear = false;
 	if (length == 0)
 	{
@@ -240,7 +246,7 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	strncpy_s(hd.FirmwareBuildTime, TIMESTAMP_SIZE, __TIMESTAMP__, _TRUNCATE);
 	
 	storage->write(_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
-	storage->MapFlash(); // All done -> Map again
+	// storage->MapFlash(); // All done -> Map again
 	_headerClear = false;
 	bool success = InitHeader();
 

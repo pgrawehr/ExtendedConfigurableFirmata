@@ -27,13 +27,13 @@ Esp32CliFlashStorage::Esp32CliFlashStorage()
 
 	// TEST CODE BELOW
 	MapFlash();
-	int c = *(int32_t*)mappedBaseAddress;
+	/*int c = *(int32_t*)mappedBaseAddress;
 	ESP_LOGI(FLASH_TAG, "Before %d", c);
 	eraseBlock(0, partitionSize);
 	int a = 0xabcdef02;
 	write((uint32_t)0, (byte*) &a, (uint32_t)4);
 	int b = *(int32_t*)mappedBaseAddress;
-	ESP_LOGI(FLASH_TAG, "Flash test: Input %d, output %d", a, b);
+	ESP_LOGI(FLASH_TAG, "Flash test: Input %d, output %d", a, b);*/
 	// PrintPartitions();
 }
 
@@ -67,6 +67,11 @@ void Esp32CliFlashStorage::UnmapFlash()
 		esp_partition_munmap(mapHandle);
 		mapHandle = 0;
 	}
+}
+
+size_t Esp32CliFlashStorage::getFlashPageSize()
+{
+	return partition->erase_size;
 }
 
 
@@ -122,7 +127,7 @@ boolean Esp32CliFlashStorage::write(byte* address, byte* data, uint32_t dataLeng
 
 boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataLength)
 {
-	Firmata.sendStringf(F("Writing flash at 0x%x, length %lu"), address, dataLength);
+	Firmata.sendStringf(F("Writing flash at 0x%x, length %lu, start 0x%x"), address, dataLength, *(int32_t*)data);
 	esp_err_t errNo = esp_partition_write_raw(partition, address, data, dataLength);
 	if (errNo != 0)
 	{
@@ -130,14 +135,19 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
 	}
 
-	/*byte* physicalAddress = readAddress(address);
-	int result = memcmp(data, physicalAddress, dataLength);
-	if (result != 0)
+	volatile byte* physicalAddress = readAddress(address);
+
+	for (int i = 0; i < dataLength; i++)
 	{
-		Firmata.sendStringf(F("Error: Data at address 0x%x not written correctly"), physicalAddress);
-		return false;
-	}*/
+		if (physicalAddress[i] != data[i])
+		{
+			Firmata.sendStringf(F("Error: Data at offset 0x%x not written correctly. Expected 0x%x, but got 0x%x"), address + i, data[i], physicalAddress[i]);
+			throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
+		}
+	}
+		
 	
+	Firmata.sendStringf(F("...Verified successfully"));
 	return true;
 }
 

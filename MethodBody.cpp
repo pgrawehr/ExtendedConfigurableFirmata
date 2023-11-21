@@ -156,7 +156,7 @@ MethodBodyFlash* SortedMethodList::CreateFlashDeclaration(FlashMemoryManager* ma
 	
 	memcpy(flashCopy, (void*)flash, sizeof(MethodBodyFlash));
 	
-	manager->CopyToFlash(flashCopy, flashTarget, totalSize);
+	manager->CopyToFlash(flashCopy, flashTarget, totalSize, "SortedMethodList::CreateFlashDeclaration");
 	flash->_methodIl = nullptr; // Because the delete shall not touch this
 	delete flash;
 	freeEx(flashCopy);
@@ -245,7 +245,7 @@ ExceptionClause* SortedClauseList::CreateFlashDeclaration(FlashMemoryManager* ma
 	int totalSize = sizeof(ExceptionClause);
 	ExceptionClause* flashTarget = (ExceptionClause*)manager->FlashAlloc(totalSize);
 
-	manager->CopyToFlash(element, flashTarget, totalSize);
+	manager->CopyToFlash(element, flashTarget, totalSize, "SortedClauseList::CreateFlashDeclaration");
 	return flashTarget;
 }
 

@@ -34,7 +34,7 @@ public:
 	/// <returns>A memory address</returns>
 	void* FlashAlloc(size_t bytes);
 
-	void CopyToFlash(void* src, void* flashTarget, size_t length);
+	void CopyToFlash(void* src, void* flashTarget, size_t length, const char* usage);
 	void WriteHeader(int dataVersion, int hashCode, void* classesPtr, void* methodsPtr, void* constantsPtr, void* stringHeapPtr, int*
 	                 specialTokenList, void* clauses, int startupToken, int startupFlags, int staticVectorMemorySize);
 

@@ -57,4 +57,5 @@ public:
 	/// <param name="dataLength">Length of data</param>
 	/// <returns>True on success, false otherwise</returns>
 	boolean write(byte* address, byte* data, uint32_t dataLength);
+	size_t getFlashPageSize();
 };
