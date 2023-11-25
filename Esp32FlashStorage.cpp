@@ -141,8 +141,20 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 	{
 		if (physicalAddress[i] != data[i])
 		{
-			Firmata.sendStringf(F("Error: Data at offset 0x%x not written correctly. Expected 0x%x, but got 0x%x"), address + i, data[i], physicalAddress[i]);
-			throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
+			Firmata.sendStringf(F("Error: Data at offset 0x%x not verified correctly. Expected 0x%x, but got 0x%x"), address + i, data[i], physicalAddress[i]);
+
+			byte* copy = (byte*)malloc(dataLength);
+			errNo = esp_partition_read_raw(partition, address, copy, dataLength);
+			if (copy[i] != data[i])
+			{
+				free(copy);
+				throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
+			}
+			else
+			{
+				Firmata.sendStringf(F("... but reads back correctly"));
+			}
+			free(copy);
 		}
 	}
 		
