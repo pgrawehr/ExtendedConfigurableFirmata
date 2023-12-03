@@ -127,7 +127,7 @@ boolean Esp32CliFlashStorage::write(byte* address, byte* data, uint32_t dataLeng
 
 boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataLength)
 {
-	Firmata.sendStringf(F("Writing flash at 0x%x, length %lu, start 0x%x"), address, dataLength, *(int32_t*)data);
+	// Firmata.sendStringf(F("Writing flash at 0x%x, length %lu, start 0x%x"), address, dataLength, *(int32_t*)data);
 	esp_err_t errNo = esp_partition_write_raw(partition, address, data, dataLength);
 	if (errNo != 0)
 	{
@@ -135,7 +135,9 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 		throw stdSimple::OutOfMemoryException("Esp32FlashStorage: Error writing flash");
 	}
 
-	volatile byte* physicalAddress = readAddress(address);
+	// Commented out until https://github.com/espressif/esp-idf/issues/12679 is fixed.
+	// When we don't access the memory until we are completely done writing, the issue should not show up
+	/*volatile byte* physicalAddress = readAddress(address);
 
 	for (int i = 0; i < dataLength; i++)
 	{
@@ -160,6 +162,7 @@ boolean Esp32CliFlashStorage::write(uint32_t address, byte* data, uint32_t dataL
 		
 	
 	Firmata.sendStringf(F("...Verified successfully"));
+	*/
 	return true;
 }
 

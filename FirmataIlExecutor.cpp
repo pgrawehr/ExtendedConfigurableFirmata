@@ -5857,7 +5857,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						continue;
 					}
-					if (declaration->MethodFlags() == (int)MethodFlags::Ctor && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
+					if ((declaration->MethodFlags() & (int)MethodFlags::Ctor) != 0 && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
 					{
 						newInstance = CreateInstanceOfClass(typeToken, 0);
 						newState = new ExecutionState(currentFrame->TaskId(), declaration->MaxExecutionStack(), declaration);

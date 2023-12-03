@@ -205,7 +205,7 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 
 void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length, const char* usage)
 {
-	Firmata.sendStringf(F("Flashing block for %s"), usage);
+	// Firmata.sendStringf(F("Flashing block for %s"), usage);
 	_flashClear = false;
 	if (length == 0)
 	{
