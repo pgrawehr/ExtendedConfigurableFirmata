@@ -3246,8 +3246,9 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::Kernel32_WriteConsole:
 		{
 		ASSERT(args.size() == 5);
-		result.Type = VariableKind::Int32;
-		result.Int32 = ERROR_SUCCESS;
+		result.Type = VariableKind::Boolean;
+		result.Boolean = true; // This cannot really fail
+		SetLastError(ERROR_SUCCESS);
 			if (args[0].Int32 == STANDARD_OUTPUT_HANDLE || args[0].Int32 == STANDARD_ERROR_HANDLE) // Standard or error outputs
 			{
 				wchar_t* stringData = (wchar_t*)args[1].Object;

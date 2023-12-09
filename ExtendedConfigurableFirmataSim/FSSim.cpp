@@ -88,7 +88,7 @@ File FS::open(const char* path, const char* mode, const bool create)
 	strcat_s(fullPath, MAX_PATH, path);
 	FILE* f = nullptr;
 	errno_t error = fopen_s(&f, fullPath, mode);
-	if (error != 0)
+	if (error == 0)
 	{
 		return File(f);
 	}
@@ -161,5 +161,27 @@ void File::close()
 }
 
 
+size_t File::size() const
+{
+	size_t pos = ftell(_p);
+	fseek(_p, 0, SEEK_END);
+	size_t ret = ftell(_p);
+	fseek(_p, pos, SEEK_SET);
+	return ret;
+}
+
+bool File::seek(uint32_t pos, SeekMode mode)
+{
+	int otherMode = SEEK_SET;
+	if (mode == SeekCur)
+	{
+		otherMode = SEEK_CUR;
+	}
+	if (mode == SeekEnd)
+	{
+		otherMode = SEEK_END;
+	}
+	return fseek(_p, pos, otherMode) == 0;
+}
 
 
