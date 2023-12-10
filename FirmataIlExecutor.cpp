@@ -38,7 +38,9 @@
 #include "interface/NativeMethod.h"
 #include "interface/RuntimeState.h"
 #include "interface/DebuggerCommand.h"
+#ifdef SIM
 #include "ExtendedConfigurableFirmataSim/SimulatorImpl.h"
+#endif
 
 typedef byte BYTE;
 

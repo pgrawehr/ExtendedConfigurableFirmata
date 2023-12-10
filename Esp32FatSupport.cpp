@@ -8,7 +8,9 @@
 #include "Exceptions.h"
 #include "StandardErrorCodes.h"
 #include "ArduinoDueSupport.h"
+#ifdef SIM
 #include "ExtendedConfigurableFirmataSim/SimulatorImpl.h"
+#endif
 
 // Not on Arduino Due (has no built-in file system support)
 // Implementation would be possible when using a library for a SD card

@@ -15,6 +15,6 @@
 #define ERROR_INVALID_PARAMETER 87
 #define ERROR_INSUFFICIENT_BUFFER 122
 #define ERROR_ALREADY_EXISTS 183
-
+#define ERROR_DISK_FULL                  112
 
 #endif
