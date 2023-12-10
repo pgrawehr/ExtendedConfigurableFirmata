@@ -52,7 +52,10 @@ size_t fs::F_Fat::usedBytes()
 
 bool FS::exists(const char* path)
 {
-	HANDLE file = CreateFileA(path, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
+	char fullPath[MAX_PATH];
+	strcpy_s(fullPath, MAX_PATH, FFat.rootPath());
+	strcat_s(fullPath, MAX_PATH, path);
+	HANDLE file = CreateFileA(fullPath, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (file == INVALID_HANDLE_VALUE)
 	{
 		return false;

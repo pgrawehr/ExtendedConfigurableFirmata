@@ -26,7 +26,7 @@ extern I2CFirmata i2c;
 
 const int IO_COMPLETIONPORT_DUMMY = 0x00DDDBAD;
 
-int64_t HardwareAccess::_tickCountFrequency = 1000000;
+int64_t HardwareAccess::_tickCountFrequency = 10000 * 1000; // One tick is 100 ns (one 10th of a microsecond)
 int64_t HardwareAccess::_tickCount64 = 0; // Only upper 32 bits used
 uint32_t HardwareAccess::_lastTickCount = 0;
 
@@ -376,7 +376,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		ASSERT(args.size() == 1);
 		Variable& ptr = args.at(0); // long* lpFrequency
 		int64_t* lpPtr = (int64_t*)ptr.Object;
-		*lpPtr = TickCount64();
+		*lpPtr = TickCount64() * 10000;
 		result.Type = VariableKind::Boolean;
 		result.setSize(4);
 		result.Boolean = true;

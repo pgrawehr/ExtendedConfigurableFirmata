@@ -38,6 +38,7 @@
 #include "interface/NativeMethod.h"
 #include "interface/RuntimeState.h"
 #include "interface/DebuggerCommand.h"
+#include "ExtendedConfigurableFirmataSim/SimulatorImpl.h"
 
 typedef byte BYTE;
 

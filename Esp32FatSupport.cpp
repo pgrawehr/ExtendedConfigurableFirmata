@@ -8,6 +8,7 @@
 #include "Exceptions.h"
 #include "StandardErrorCodes.h"
 #include "ArduinoDueSupport.h"
+#include "ExtendedConfigurableFirmataSim/SimulatorImpl.h"
 
 // Not on Arduino Due (has no built-in file system support)
 // Implementation would be possible when using a library for a SD card
@@ -23,14 +24,16 @@
 #endif
 
 std::vector<File> fileHandles;
+
 #pragma pack (push, 1)
-typedef struct _FILE_STANDARD_INFO {
+// Own copy of definition (already exists on windows, but not on other compilers)
+typedef struct _FILE_STANDARD_INFO_1 {
 	uint64_t AllocationSize;
 	uint64_t EndOfFile;
 	int32_t       NumberOfLinks;
 	int32_t       DeletePending; // Is BOOLEAN really 32 bits?
 	int32_t       Directory;
-} FILE_STANDARD_INFO, * PFILE_STANDARD_INFO;
+} FILE_STANDARD_INFO_1, * PFILE_STANDARD_INFO_1;
 #pragma pack (pop)
 
 Esp32FatSupport::Esp32FatSupport()
@@ -224,14 +227,14 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		if (handle == -1)
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE);
-			result.Int32 = -1;
+			result.Int32 = 0;
 			break;
 		}
 		
 		if (handle < 0 || handle >= (int)fileHandles.size())
 		{
 			executor->SetLastError(ERROR_INVALID_HANDLE); // Invalid handle
-			result.Int32 = -1;
+			result.Int32 = -0;
 			break;
 		}
 
@@ -243,8 +246,15 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		{
 			fileHandles[handle].seek(startOffset, fs::SeekMode::SeekSet);
 		}
-		executor->SetLastError(ERROR_SUCCESS);
 		*bytesWritten = fileHandles[handle].write(buffer, bytesToWrite);
+		if (*bytesWritten != bytesToWrite)
+		{
+			executor->SetLastError(ERROR_DISK_FULL); // Or what else could be the reason?
+			result.Int32 = 0;
+			break;
+		}
+		executor->SetLastError(ERROR_SUCCESS);
+
 		result.Type = VariableKind::Int32;
 		result.Int32 = 1;
 		break;
@@ -283,6 +293,7 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		executor->SetLastError(0);
 
 		fileHandles[index].close();
+		fileHandles.erase(fileHandles.begin() + index);
 		result.Boolean = true;
 		break;
 	}
@@ -301,8 +312,8 @@ bool Esp32FatSupport::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		int length = args[3].Int32;
 			if (fileInformationClass == 1) // FileStandardInfo
 			{
-				PFILE_STANDARD_INFO structurePtr = (PFILE_STANDARD_INFO)args[2].Int32;
-				if (length != sizeof(FILE_STANDARD_INFO))
+				PFILE_STANDARD_INFO_1 structurePtr = (PFILE_STANDARD_INFO_1)args[2].Int32;
+				if (length != sizeof(FILE_STANDARD_INFO_1))
 				{
 					executor->SetLastError(ERROR_INVALID_PARAMETER);
 					result.Int32 = 0;
