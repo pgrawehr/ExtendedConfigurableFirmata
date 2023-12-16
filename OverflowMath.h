@@ -74,7 +74,7 @@ inline bool usub_overflow(uint64_t x, uint64_t y, uint64_t* result)
 
 inline bool uadd_overflow(uint32_t x, uint32_t y, uint32_t* sum)
 {
-	return __builtin_uadd_overflow(x, y, sum);
+	return __builtin_uaddl_overflow(x, y, sum);
 };
 
 inline bool uadd_overflow(uint64_t x, uint64_t y, uint64_t* sum)
@@ -84,7 +84,7 @@ inline bool uadd_overflow(uint64_t x, uint64_t y, uint64_t* sum)
 
 inline bool usub_overflow(uint32_t x, uint32_t y, uint32_t* result)
 {
-	return __builtin_usub_overflow(x, y, result);
+	return __builtin_usubl_overflow(x, y, result);
 }
 
 inline bool usub_overflow(uint64_t x, uint64_t y, uint64_t* result)
@@ -94,12 +94,12 @@ inline bool usub_overflow(uint64_t x, uint64_t y, uint64_t* result)
 
 inline bool smul_overflow(int32_t x, int32_t y, int32_t* result)
 {
-	return __builtin_smul_overflow(x, y, result);
+	return __builtin_smull_overflow(x, y, result);
 }
 
 inline bool umul_overflow(uint32_t x, uint32_t y, uint32_t* result)
 {
-	return __builtin_umul_overflow(x, y, result);
+	return __builtin_umull_overflow(x, y, result);
 }
 
 inline bool smul_overflow(int64_t x, int64_t y, int64_t* result)
@@ -114,7 +114,7 @@ inline bool umul_overflow(uint64_t x, uint64_t y, uint64_t* result)
 
 inline bool ssub_overflow(int32_t x, int32_t y, int32_t* result)
 {
-	return __builtin_ssub_overflow(x, y, result);
+	return __builtin_ssubl_overflow(x, y, result);
 }
 
 inline bool ssub_overflow(int64_t x, int64_t y, int64_t* result)
@@ -124,7 +124,7 @@ inline bool ssub_overflow(int64_t x, int64_t y, int64_t* result)
 
 inline bool sadd_overflow(int32_t x, int32_t y, int32_t* sum)
 {
-	return __builtin_sadd_overflow(x, y, sum);
+	return __builtin_saddl_overflow(x, y, sum);
 };
 
 inline bool sadd_overflow(int64_t x, int64_t y, int64_t* sum)

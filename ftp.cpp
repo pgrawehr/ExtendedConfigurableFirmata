@@ -238,7 +238,7 @@ static int ftp_get_eplf_item (char *dest, uint32_t destsize, File *de) {
 		}
 		else
 		{
-			addsize = snprintf(dest, destsize, "%srw-rw-rw-   1 root  root %9u %s %s\r\n", type, (uint32_t)buf.st_size, str_time, fileName);
+			addsize = snprintf(dest, destsize, "%srw-rw-rw-   1 root  root %9lu %s %s\r\n", type, (uint32_t)buf.st_size, str_time, fileName);
 		}
 		if (addsize >= destsize) {
 			ESP_LOGW(FTP_TAG, "Buffer too small, reallocating [%d > %d]", ftp_buff_size, ftp_buff_size + (addsize - destsize) + 64);
@@ -322,7 +322,7 @@ static void ftp_send_reply (uint32_t status, const char *message) {
 	}
 	char replyBuf[101];
 	memset(replyBuf, 0, 101);
-	snprintf(replyBuf, 4, "%u", status);
+	snprintf(replyBuf, 4, "%lu", status);
 	strncat (replyBuf, " ", 99 - strlen(replyBuf));
 	strncat (replyBuf, message, 99 - strlen(replyBuf));
 
@@ -702,7 +702,7 @@ static void ftp_process_cmd (void) {
 				int res = stat(fullname, &buf);
 				if (res == 0) {
 					// send the file size
-					snprintf((char *)ftp_data.dBuffer, ftp_buff_size, "%u", (uint32_t)buf.st_size);
+					snprintf((char *)ftp_data.dBuffer, ftp_buff_size, "%lu", (uint32_t)buf.st_size);
 					ftp_send_reply(213, (char *)ftp_data.dBuffer);
 				} else {
 					ftp_send_reply(550, NULL);

@@ -414,8 +414,8 @@ public:
 		sizeToAlloc += sizeof(int); // for number of entries
 		byte* target = (byte*)manager->FlashAlloc(sizeToAlloc);
 		int size = _flashEntries.size();
-		manager->CopyToFlash(&size, target, sizeof(int));
-		manager->CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*));
+		manager->CopyToFlash(&size, target, sizeof(int), "SortedList<TBase>::CopyListToFlash::size");
+		manager->CopyToFlash(&_flashEntries.at(0), AddBytes(target, sizeof(int)), size * sizeof(TBase*), "SortedList<TBase>::CopyListToFlash::content");
 		return target;
 	}
 

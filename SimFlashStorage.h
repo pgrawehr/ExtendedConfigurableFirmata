@@ -20,11 +20,26 @@ public:
 
 	uint32_t getFlashSize();
 
+	uint32_t getFlashPageSize()
+	{
+		return 4096;
+	}
+
 	void eraseBlock(uint32_t address, uint32_t length);
 
 	uint32_t getOffset(byte* address)
 	{
 		return address - _memoryBasePtr;
+	}
+
+	void MapFlash()
+	{
+		// Nothing to do
+	}
+
+	void UnmapFlash()
+	{
+		// Nothing to do
 	}
 
 	/// <summary>

@@ -60,6 +60,7 @@ FlashMemoryManager::FlashMemoryManager()
 {
 #ifdef ESP32
 	storage = new Esp32CliFlashStorage();
+	storage->MapFlash();
 #elif SIM
 	storage = new VirtualFlashMemory(1024 * 1024);
 #elif __SAM3X8E__
@@ -68,6 +69,11 @@ FlashMemoryManager::FlashMemoryManager()
 	// TODO: Create a dummy storage driver (with zero bytes size)
 #error No storage driver available
 #endif
+	InitHeader();
+}
+
+bool FlashMemoryManager::InitHeader()
+{
 	_endOfHeap = _startOfHeap = storage->getFirstFreeBlock(); // This just returns the start of the flash memory used by this manager
 	_flashEnd = storage->readAddress(0) + storage->getFlashSize();
 	_header = (FlashMemoryHeader*)_startOfHeap;
@@ -78,7 +84,10 @@ FlashMemoryManager::FlashMemoryManager()
 	{
 		_endOfHeap = _header->EndOfHeap;
 		_headerClear = false;
+		return true;
 	}
+
+	return false;
 }
 
 long FlashMemoryManager::TotalFlashMemory() const
@@ -162,9 +171,15 @@ void FlashMemoryManager::Clear()
 	if (!_flashClear)
 	{
 		_endOfHeap = _startOfHeap;
-		_endOfHeap = AddBytes(_endOfHeap, (sizeof(FlashMemoryHeader) + MEMORY_ALLOCATION_ALIGNMENT) & ~(MEMORY_ALLOCATION_ALIGNMENT - 1));
+		size_t flashPageSize = storage->getFlashPageSize();
+		if (sizeof(FlashMemoryHeader) > flashPageSize)
+		{
+			Firmata.sendStringf(F("Flash header to big"));
+		}
+		_endOfHeap = AddBytes(_endOfHeap, flashPageSize);
 		_headerClear = true;
-		storage->eraseBlock(storage->getOffset(_startOfHeap), _flashEnd - _startOfHeap);
+		// storage->UnmapFlash();
+		storage->eraseBlock(0, storage->getFlashSize());
 	}
 	_flashClear = true;
 }
@@ -188,8 +203,9 @@ void* FlashMemoryManager::FlashAlloc(size_t bytes)
 	return ret;
 }
 
-void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length)
+void FlashMemoryManager::CopyToFlash(void* src, void* flashTarget, size_t length, const char* usage)
 {
+	// Firmata.sendStringf(F("Flashing block for %s"), usage);
 	_flashClear = false;
 	if (length == 0)
 	{
@@ -230,9 +246,19 @@ void FlashMemoryManager::WriteHeader(int dataVersion, int hashCode, void* classe
 	strncpy_s(hd.FirmwareBuildTime, TIMESTAMP_SIZE, __TIMESTAMP__, _TRUNCATE);
 	
 	storage->write(_startOfHeap, (byte*)&hd, sizeof(FlashMemoryHeader));
+	// storage->MapFlash(); // All done -> Map again
 	_headerClear = false;
+	bool success = InitHeader();
 
 	int bytesUsed = _endOfHeap - _startOfHeap;
 	int bytesTotal = _flashEnd - _startOfHeap;
 	Firmata.sendStringf(F("Flash data written: %d bytes of %d used."), bytesUsed, bytesTotal);
+	if (success)
+	{
+		Firmata.sendStringf(F("Data appears to be valid now"));
+	}
+	else
+	{
+		Firmata.sendStringf(F("Remapping flash didn't work, no valid header at address 0x%x"), storage->readAddress(0));
+	}
 }

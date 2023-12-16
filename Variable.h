@@ -306,7 +306,7 @@ inline bool DoubleFitsInIntType(double val)
 	return DstMinD <= val && val <= DstMaxD;
 }
 
-template <typename Dst, bool dstIsSigned, int64_t dstMin, int64_t dstMax>
+template <typename Dst, bool dstIsSigned, int64_t dstMin, uint64_t dstMax>
 inline bool FitsIn(Variable src)
 {
 	switch (src.Type)

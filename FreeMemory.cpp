@@ -47,5 +47,7 @@ void printMemoryStatistics()
 	Firmata.sendStringf(F("Total heap: %dkb"), ESP.getHeapSize() / 1024);
 	Firmata.sendStringf(F("Free PSRAM: %dkb"), ESP.getFreePsram() / 1024);
 	Firmata.sendStringf(F("Total PSRAM: %dkb"), ESP.getPsramSize() / 1024);
+	Firmata.sendStringf(F("Minimum free heap since boot: %d Bytes"), ESP.getMinFreeHeap());
+	Firmata.sendStringf(F("Maximum block that can be allocated: %d bytes"), ESP.getMaxAllocHeap());
 #endif
 }

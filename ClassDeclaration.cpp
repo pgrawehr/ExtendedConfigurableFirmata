@@ -113,7 +113,7 @@ ClassDeclarationFlash* SortedClassList::CreateFlashDeclaration(FlashMemoryManage
 	// The class declaration comes first, copy it there
 	memcpy(flashCopy, (void*)flash, sizeof(ClassDeclarationFlash));
 
-	manager->CopyToFlash(flashCopy, flashTarget, totalSize);
+	manager->CopyToFlash(flashCopy, flashTarget, totalSize, "SortedClassList::CreateFlashDeclaration");
 	delete flash;
 	freeEx(flashCopy);
 
@@ -225,7 +225,7 @@ void SortedConstantList::CopyContentsToFlash(FlashMemoryManager* manager)
 		int length = sourceAddress->Length;
 		length += 2 * sizeof(int);
 		ConstantEntry* target = (ConstantEntry*)manager->FlashAlloc(length);
-		manager->CopyToFlash(sourceAddress, target, length);
+		manager->CopyToFlash(sourceAddress, target, length, "SortedConstantList::CopyContentsToFlash");
 		_flashEntries.push_back(target);
 	}
 

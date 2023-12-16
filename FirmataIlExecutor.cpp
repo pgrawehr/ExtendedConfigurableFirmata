@@ -38,6 +38,9 @@
 #include "interface/NativeMethod.h"
 #include "interface/RuntimeState.h"
 #include "interface/DebuggerCommand.h"
+#ifdef SIM
+#include "ExtendedConfigurableFirmataSim/SimulatorImpl.h"
+#endif
 
 typedef byte BYTE;
 
@@ -620,7 +623,7 @@ void* FirmataIlExecutor::CopyStringsToFlash()
 	// This is pretty straight-forward: We just copy the whole string heap to flash.
 	// Since it internally only uses relative addresses, we don't have to care about anything else.
 	byte* target = (byte*)_flashMemoryManager->FlashAlloc(_stringHeapRamSize);
-	_flashMemoryManager->CopyToFlash(_stringHeapRam, target, _stringHeapRamSize);
+	_flashMemoryManager->CopyToFlash(_stringHeapRam, target, _stringHeapRamSize, "FirmataIlExecutor::CopyStringsToFlash");
 	if (_stringHeapRam != nullptr)
 	{
 		freeEx(_stringHeapRam);
@@ -641,7 +644,7 @@ int* FirmataIlExecutor::CopySpecialTokenListToFlash()
 
 	// This is pretty straight-forward: We just copy the whole thing to flash
 	int* target = (int*)_flashMemoryManager->FlashAlloc(_specialTypeListRamLength * sizeof(int));
-	_flashMemoryManager->CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int));
+	_flashMemoryManager->CopyToFlash(_specialTypeListRam, target, _specialTypeListRamLength * sizeof(int), "CopySpecialTokenListToFlash");
 	if (_specialTypeListRam != nullptr)
 	{
 		freeEx(_specialTypeListRam);
@@ -878,9 +881,11 @@ bool FirmataIlExecutor::IsExecutingCode()
 
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
-	byte* ret = _gc.Allocate(bytes);
+	byte* ret = _gc.Allocate(bytes, this);
 	if (ret != nullptr)
 	{
+		// The runtime guarantees that new object instances are zeroed out. There are some flags to remove that
+		// requirement for certain types, but we can safely ignore that.
 		memset(ret, 0, bytes);
 	}
 
@@ -2075,7 +2080,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 		char buf[15];
-		sprintf(buf, "N:%d", ownToken.Int32);
+		sprintf(buf, "N:%ld", ownToken.Int32);
 		result = CreateStringInstance(strlen(buf), buf);
 	}
 		break;
@@ -3246,8 +3251,9 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::Kernel32_WriteConsole:
 		{
 		ASSERT(args.size() == 5);
-		result.Type = VariableKind::Int32;
-		result.Int32 = ERROR_SUCCESS;
+		result.Type = VariableKind::Boolean;
+		result.Boolean = true; // This cannot really fail
+		SetLastError(ERROR_SUCCESS);
 			if (args[0].Int32 == STANDARD_OUTPUT_HANDLE || args[0].Int32 == STANDARD_ERROR_HANDLE) // Standard or error outputs
 			{
 				wchar_t* stringData = (wchar_t*)args[1].Object;
@@ -5392,14 +5398,14 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	case CEE_CONV_OVF_U8_UN:
 		intermediate = MakeUnsigned(value1);
-		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(intermediate))
+		if (!FitsIn<uint64_t, true, 0, 0xFFFFFFFFFFFFFFFF>(intermediate))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
 		goto CEE_CONV_U8_LABEL;
 		// Fall trough
 	case CEE_CONV_OVF_U8:
-		if (!FitsIn<uint64_t, true, 0, 18446744073709551615>(value1))
+		if (!FitsIn<int64_t, true, 0, 0x7FFFFFFFFFFFFFFF>(value1))
 		{
 			throw ClrException("Integer overflow", SystemException::Overflow, currentFrame->_executingMethod->methodToken);
 		}
@@ -5857,7 +5863,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						continue;
 					}
-					if (declaration->MethodFlags() == (int)MethodFlags::Ctor && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
+					if ((declaration->MethodFlags() & (int)MethodFlags::Ctor) != 0 && MethodMatchesArgumentTypes(declaration, argsArray)) // +1, because a ctor has an implicit this argument
 					{
 						newInstance = CreateInstanceOfClass(typeToken, 0);
 						newState = new ExecutionState(currentFrame->TaskId(), declaration->MaxExecutionStack(), declaration);
@@ -8201,7 +8207,7 @@ uint16_t FirmataIlExecutor::SizeOfClass(ClassDeclaration* cls)
 
 ExecutionError FirmataIlExecutor::LoadClassSignature(bool isLastPart, int32_t classToken, uint32_t parent, uint16_t dynamicSize, uint16_t staticSize, uint16_t flags, uint16_t offset, byte argc, byte* argv)
 {
-	// TRACE(Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize));
+	// Firmata.sendStringf(F("Class %lx has parent %lx and size %d."), classToken, parent, dynamicSize);
 	ClassDeclaration* elem = _classes.GetClassWithToken(classToken, false);
 
 	ClassDeclarationDynamic* decl;

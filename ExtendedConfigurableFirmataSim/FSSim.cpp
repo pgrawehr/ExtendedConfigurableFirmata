@@ -52,7 +52,10 @@ size_t fs::F_Fat::usedBytes()
 
 bool FS::exists(const char* path)
 {
-	HANDLE file = CreateFileA(path, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
+	char fullPath[MAX_PATH];
+	strcpy_s(fullPath, MAX_PATH, FFat.rootPath());
+	strcat_s(fullPath, MAX_PATH, path);
+	HANDLE file = CreateFileA(fullPath, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (file == INVALID_HANDLE_VALUE)
 	{
 		return false;
@@ -88,7 +91,7 @@ File FS::open(const char* path, const char* mode, const bool create)
 	strcat_s(fullPath, MAX_PATH, path);
 	FILE* f = nullptr;
 	errno_t error = fopen_s(&f, fullPath, mode);
-	if (error != 0)
+	if (error == 0)
 	{
 		return File(f);
 	}
@@ -161,5 +164,27 @@ void File::close()
 }
 
 
+size_t File::size() const
+{
+	size_t pos = ftell(_p);
+	fseek(_p, 0, SEEK_END);
+	size_t ret = ftell(_p);
+	fseek(_p, pos, SEEK_SET);
+	return ret;
+}
+
+bool File::seek(uint32_t pos, SeekMode mode)
+{
+	int otherMode = SEEK_SET;
+	if (mode == SeekCur)
+	{
+		otherMode = SEEK_CUR;
+	}
+	if (mode == SeekEnd)
+	{
+		otherMode = SEEK_END;
+	}
+	return fseek(_p, pos, otherMode) == 0;
+}
 
 
