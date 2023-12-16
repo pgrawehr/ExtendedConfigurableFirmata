@@ -7,14 +7,15 @@
 
 void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preallocateSize)
 {
+	_largestFreeBlock = 0;
 	while (_totalGcMemorySize < preallocateSize)
 	{
-		Allocate(0, true);
+		Allocate(0, true, nullptr);
 	}
 	// this performs a GC self-test
-	byte* first = Allocate(20);
-	byte* second = Allocate(31);
-	byte* third = Allocate(40);
+	byte* first = Allocate(20, nullptr);
+	byte* second = Allocate(31, nullptr);
+	byte* third = Allocate(40, nullptr);
 	memset(first, 1, 20);
 	memset(second, 2, 31);
 	memset(third, 3, 40);
@@ -29,9 +30,9 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preall
 	Clear(true, false);
 }
 
-byte* GarbageCollector::Allocate(uint32_t size)
+byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceContainer)
 {
-	return Allocate(size, false);
+	return Allocate(size, false, referenceContainer);
 }
 
 /// <summary>
@@ -40,7 +41,7 @@ byte* GarbageCollector::Allocate(uint32_t size)
 /// <param name="size">Size of the memory block required</param>
 /// <param name="preallocateOnly">True to reserve the memory only (the size will be ignored)</param>
 /// <returns></returns>
-byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly)
+byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly, FirmataIlExecutor* referenceContainer)
 {
 	byte* ret = nullptr;
 	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
@@ -59,14 +60,33 @@ byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly)
 				}
 				break;
 			}
-			else
+		}
+	}
+
+	if (ret == nullptr && referenceContainer != nullptr && preallocateOnly == false)
+	{
+		// Very expensive, but is probably a good idea at this point, before we try to add a new block
+		Collect(0, referenceContainer);
+		ComputeFreeBlockSizes();
+		for (size_t i = 0; i < _gcBlocks.size(); i++)
+		{
+			GcBlock& b = _gcBlocks[i];
+			ret = TryAllocateFromBlock(b, size);
+			if (ret != nullptr)
 			{
-				ValidateBlock(b);
+				// The last of our current blocks is getting full. Increase GC efforts
+				if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+				{
+					_gcPressureHigh = true;
+				}
+				break;
 			}
 		}
 	}
+
 	if (ret == nullptr)
 	{
+		Firmata.sendStringf(F("Unable to allocate a managed block of size %d. Largest free block size %d"), size, _largestFreeBlock);
 		// Allocate a new block
 		_gcPressureHigh = true;
 		uint32_t sizeToAllocate = MAX(DEFAULT_GC_BLOCK_SIZE, size + ALLOCATE_ALLIGNMENT);
@@ -400,6 +420,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 {
 	int totalFreed = 0;
 	int totalMemoryInUse = 0;
+	int largestFreeBlock = 0;
 	for (size_t idx = 0; idx < _gcBlocks.size(); idx++)
 	{
 		uint32_t blockLen = _gcBlocks[idx].BlockSize;
@@ -432,7 +453,12 @@ int GarbageCollector::ComputeFreeBlockSizes()
 					continue;
 				}
 			}
-			
+
+			if (hd->IsFree() && hd->BlockSize > largestFreeBlock)
+			{
+				largestFreeBlock = hd->BlockSize;
+			}
+
 			hd = AddBytes(hd, entryLength + ALLOCATE_ALLIGNMENT);
 			offset = nextOffset;
 		}
@@ -470,6 +496,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 		_gcBlocks[idx].FreeBytesInBlock = (uint16_t)blockFree;
 	}
 
+	_largestFreeBlock = largestFreeBlock;
 	_currentMemoryUsage = totalMemoryInUse;
 	if (totalMemoryInUse > _maxMemoryUsage)
 	{

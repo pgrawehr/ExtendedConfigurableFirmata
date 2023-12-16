@@ -881,9 +881,11 @@ bool FirmataIlExecutor::IsExecutingCode()
 
 byte* FirmataIlExecutor::AllocGcInstance(size_t bytes)
 {
-	byte* ret = _gc.Allocate(bytes);
+	byte* ret = _gc.Allocate(bytes, this);
 	if (ret != nullptr)
 	{
+		// The runtime guarantees that new object instances are zeroed out. There are some flags to remove that
+		// requirement for certain types, but we can safely ignore that.
 		memset(ret, 0, bytes);
 	}
 
