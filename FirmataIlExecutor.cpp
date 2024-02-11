@@ -2080,7 +2080,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 		char buf[15];
-		sprintf(buf, "N:%ld", ownToken.Int32);
+		snprintf(buf, 15, "N:%ld", ownToken.Int32);
 		result = CreateStringInstance(strlen(buf), buf);
 	}
 		break;
