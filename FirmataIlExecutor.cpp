@@ -4028,6 +4028,7 @@ case VariableKind::NativeHandle:\
 case VariableKind::AddressOfVariable:\
 case VariableKind::ReferenceArray:\
 case VariableKind::ValueArray:\
+case VariableKind::FunctionPointer:\
 	intermediate.Boolean = value1.Object op value2.Object; \
 	break;\
 case VariableKind::RuntimeTypeHandle:\
