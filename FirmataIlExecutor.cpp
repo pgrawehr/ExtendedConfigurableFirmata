@@ -2017,6 +2017,24 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			memcpy(targetPtr, field.Object, size * ty->ClassDynamicSize);
 		}
 		break;
+
+	case NativeMethod::RuntimeHelpersGetSpanDataFrom:
+		{
+			ASSERT(args.size() == 3);
+			Variable field = args[0]; // Runtime field type instance
+			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
+			Variable type = args[1];
+			ClassDeclaration* typeOfType = GetClassDeclaration(type);
+			ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
+			int typeToken = GetField(typeOfType, type, 0).Int32;
+			ClassDeclaration* typeOfData = GetClassWithToken(typeToken);
+			Variable refLength = args[2];
+			int len = typeOfData->ClassDynamicSize;
+			*AddBytes<int>((int*)refLength.Object, 0) = len;
+			result.Type = VariableKind::AddressOfVariable;
+			result.Object = field.Object; // This should already point to the data.
+		}
+		break;
 	case NativeMethod::RuntimeHelpersIsReferenceOrContainsReferencesCore:
 		{
 			ASSERT(args.size() == 1);
@@ -2385,33 +2403,33 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 		break;
 
-	case NativeMethod::EnumInternalGetValues:
-		{
-			ASSERT(args.size() == 1);
-			Variable ownTypeInstance = args[0]; // A type instance
-			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
-			ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
-			ASSERT(enumType->IsEnum());
-			// Number of static fields computed as total static size divided by underlying type size
-			int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
-			AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
-			uint64_t* data = (uint64_t*)AddBytes(result.Object, ARRAY_DATA_START);
-			int idx = 0;
-			for (int i = 0; i <= numberOfValues; i++) // One extra, because we later skip the actual value field and use only the static fields here
-			{
-				Variable* field = enumType->GetFieldByIndex(i);
-				if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
-				{
-					continue;
-				}
+	//case NativeMethod::EnumInternalGetValues:
+	//	{
+	//		ASSERT(args.size() == 1);
+	//		Variable ownTypeInstance = args[0]; // A type instance
+	//		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+	//		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+	//		ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
+	//		ASSERT(enumType->IsEnum());
+	//		// Number of static fields computed as total static size divided by underlying type size
+	//		int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
+	//		AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
+	//		uint64_t* data = (uint64_t*)AddBytes(result.Object, ARRAY_DATA_START);
+	//		int idx = 0;
+	//		for (int i = 0; i <= numberOfValues; i++) // One extra, because we later skip the actual value field and use only the static fields here
+	//		{
+	//			Variable* field = enumType->GetFieldByIndex(i);
+	//			if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
+	//			{
+	//				continue;
+	//			}
 
-				// Values are currently never > 32Bit (would need an extension to the class transfer protocol)
-				data[idx] = field->Uint64;
-				idx++;
-			}
-		break;
-		}
+	//			// Values are currently never > 32Bit (would need an extension to the class transfer protocol)
+	//			data[idx] = field->Uint64;
+	//			idx++;
+	//		}
+	//	break;
+	//	}
 	case NativeMethod::TypeIsEnum:
 		ASSERT(args.size() == 1);
 	{
@@ -2751,7 +2769,6 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Boolean = cls1->ClassToken == cls2->ClassToken;
 	}
 		break;
-	case NativeMethod::DelegateCompareUnmanagedFunctionPtrs:
 	case NativeMethod::DelegateInternalEqualMethodHandle:
 	{
 		ASSERT(args.size() == 2);
@@ -6570,13 +6587,18 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						cls = _classes.GetClassWithToken(constrainedTypeToken);
 						if (cls->IsValueType())
 						{
-							// This will be the this pointer for a method call on a value type (we'll have to do a real boxing if the
+							// This will be the "this" pointer for a method call on a value type (we'll have to do a real boxing if the
 							// callee is virtual (can be the methods ToString(), GetHashCode() or Equals() - that is, one of the virtual methods of
 							// System.Object, System.Enum or System.ValueType OR a method implementing an interface)
 							if (!ImplementsMethodDirectly(cls, newMethod->methodToken))
 							{
 								// Box. Actually a rare case.
 								instance = Box(instance, cls);
+							}
+
+							if (newMethod->MethodFlags() & (int)MethodFlags::Static)
+							{
+								throw ClrException("static virtual interface member was not resolved at compile time", SystemException::InvalidOperation, newMethod->methodToken);
 							}
 							// otherwise just passes the reference unmodified as this pointer (the this pointer on a value type method call is 
 							
@@ -6626,6 +6648,11 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						byte* o = (byte*)instance.Object;
 						// Get the first data element of where the object points to
 						cls = ((ClassDeclaration*)(*(int*)o));
+
+						if (cls == nullptr)
+						{
+							throw ClrException("Unable to dereference instance vtable", SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+						}
 					}
 
 					TRACE(Firmata.sendStringf(F("Callvirt on instance of class %lx"), cls->ClassToken));
@@ -7339,7 +7366,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
-					if (value1.Type != VariableKind::AddressOfVariable)
+					if (value1.Type != VariableKind::AddressOfVariable && value1.Type != VariableKind::Object)
 					{
 						throw ClrException("LDOBJ with invalid argument", SystemException::InvalidOperation, token);
 						return MethodState::Aborted;
