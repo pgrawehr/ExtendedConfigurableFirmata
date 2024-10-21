@@ -142,7 +142,8 @@ private:
 	int ComputeFreeBlockSizes();
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
 	void MarkStacks(FirmataIlExecutor* referenceContainer);
-	bool IsValidMemoryPointer(void* ptr);
+	bool IsValidMemoryObject(void* ptr);
+	bool IsValidMemoryObjectOrPointer(void* ptr, BlockHd*& containedInBlock, bool& isObject);
 	void MarkRawMemoryBlock(void* object, size_t objectSize, FirmataIlExecutor* referenceContainer);
 	void MarkVariable(Variable& variable, FirmataIlExecutor* referenceContainer);
 

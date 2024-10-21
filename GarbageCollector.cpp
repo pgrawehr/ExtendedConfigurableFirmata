@@ -535,7 +535,7 @@ void GarbageCollector::MarkDependentHandles(FirmataIlExecutor* referenceContaine
 	{
 		auto p = referenceContainer->_weakDependencies[i];
 		BlockHd* hd = BlockHd::Cast((byte*)p.first - (int32_t)ALLOCATE_ALLIGNMENT);
-		if (!hd->IsFree() && IsValidMemoryPointer(p.second))
+		if (!hd->IsFree() && IsValidMemoryObject(p.second))
 		{
 			// If I got the concept of DependentHandle right, we shall mark the second as used when the first is.
 			hd = BlockHd::Cast((byte*)p.second - (int32_t)ALLOCATE_ALLIGNMENT);
@@ -643,8 +643,19 @@ void GarbageCollector::MarkStacks(FirmataIlExecutor* referenceContainer)
 /// <summary>
 /// Tests whether the given pointer could be an object pointer (means that it contains a value that could be an address in our heap)
 /// </summary>
-bool GarbageCollector::IsValidMemoryPointer(void* ptr)
+
+bool GarbageCollector::IsValidMemoryObject(void* ptr)
 {
+	BlockHd* containedInBlock;
+	bool isObject;
+	return IsValidMemoryObjectOrPointer(ptr, containedInBlock, isObject) && isObject;
+}
+
+
+bool GarbageCollector::IsValidMemoryObjectOrPointer(void* ptr, BlockHd *&containedInBlock, bool& isObject)
+{
+	isObject = false;
+	containedInBlock = nullptr;
 	if (ptr == nullptr)
 	{
 		// Shortcut
@@ -664,8 +675,20 @@ bool GarbageCollector::IsValidMemoryPointer(void* ptr)
 			{
 				int entrySize = hd->BlockSize;
 
-				if (AddBytes(hd, ALLOCATE_ALLIGNMENT) == ptr)
+				void* objectPos = AddBytes(hd, ALLOCATE_ALLIGNMENT);
+
+				if (objectPos == ptr)
 				{
+					// ptr points to the object stored in the block
+					containedInBlock = hd;
+					isObject = true;
+					return true;
+				}
+
+				if (ptr >= objectPos && ptr < AddBytes(objectPos, entrySize))
+				{
+					containedInBlock = hd;
+					isObject = false;
 					return true;
 				}
 
@@ -687,15 +710,24 @@ void GarbageCollector::MarkRawMemoryBlock(void* object, size_t objectSize, Firma
 	for (size_t idx = 0; idx < objectSize / (sizeof(void*)); idx++)
 	{
 		int* ptrToTest = startPtr + idx;
-		if (IsValidMemoryPointer((void*)*ptrToTest))
+		BlockHd* containedInBlock;
+		bool isObject;
+		bool test = IsValidMemoryObjectOrPointer((void*)*ptrToTest, containedInBlock, isObject);
+		if (test && isObject)
 		{
 			Variable referenceField;
 			referenceField.Marker = VARIABLE_DEFAULT_MARKER;
 			referenceField.Type = VariableKind::Object;
 			referenceField.setSize(sizeof(void*));
-			// Create a variable object from a reference field that is stored in an object
+			// Create a variable object from a reference field that is stored in an object.
+			// that way, we can continue recursively from this object
 			referenceField.Object = (void*)*ptrToTest;
 			MarkVariable(referenceField, referenceContainer);
+		}
+		else if (test)
+		{
+			// The pointer is possibly valid, but not an object. Assume we have some Span<T> pointing to the contents of something like a string
+			containedInBlock->flags = BlockFlags::Used; // Mark as in use
 		}
 	}
 }
@@ -861,8 +893,10 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 			{
 				// Could this member be an object reference?
 				void* potentiallyAnObject = (void*) *AddBytes((int*)ptr, offset);
+				BlockHd* containedInBlock;
+				bool isObject;
 				// This tests whether it's really pointing to a valid object start address
-				if (IsValidMemoryPointer(potentiallyAnObject))
+				if (IsValidMemoryObjectOrPointer(potentiallyAnObject, containedInBlock, isObject))
 				{
 					hd = BlockHd::Cast(AddBytes(potentiallyAnObject, -((int32_t)ALLOCATE_ALLIGNMENT)));
 					hd->flags = BlockFlags::Used;
