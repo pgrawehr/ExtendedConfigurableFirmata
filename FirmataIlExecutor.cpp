@@ -2029,8 +2029,17 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			int typeToken = GetField(typeOfType, type, 0).Int32;
 			ClassDeclaration* typeOfData = GetClassWithToken(typeToken);
 			Variable refLength = args[2];
-			int len = typeOfData->ClassDynamicSize;
-			*AddBytes<int>((int*)refLength.Object, 0) = len;
+			int itemLength = typeOfData->ClassDynamicSize;
+			if (itemLength == 0)
+			{
+				throw new ClrException(SystemException::ArrayTypeMismatch, typeToken);
+			}
+
+			// This grabs over to the handle of this runtime field, which contains token and length, in this order.
+			// The length here is in bytes
+			int dataLength = *AddBytes<int>((int*)field.Object, -4);
+			int numberOfEntries = dataLength / itemLength;
+			*AddBytes<int>((int*)refLength.Object, 0) = numberOfEntries;
 			result.Type = VariableKind::AddressOfVariable;
 			result.Object = field.Object; // This should already point to the data.
 		}
