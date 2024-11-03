@@ -7437,10 +7437,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					{
 						throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
 					}
-					if (dest.Type != VariableKind::AddressOfVariable)
+					/*if (dest.Type != VariableKind::AddressOfVariable)
 					{
 						throw ClrException("STOBJ with invalid argument", SystemException::InvalidOperation, token);
-					}
+					}*/
 
 					ClassDeclaration* ty = _classes.GetClassWithToken(token);
 					if (ty->IsValueType())
