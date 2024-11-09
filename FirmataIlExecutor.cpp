@@ -320,7 +320,7 @@ void FirmataIlExecutor::SendQueryHardwareReply()
 {
 	ExecutorCommand subCommand = ExecutorCommand::QueryHardware;
 	SendReplyHeader(subCommand);
-	Firmata.sendPackedUInt14(0); // Some flags
+	Firmata.sendPackedUInt14(1); // Protocol version
 	Firmata.write(sizeof(int));
 	Firmata.write(sizeof(void*));
 	Firmata.sendPackedUInt32(_flashMemoryManager->TotalFlashMemory());
@@ -1106,7 +1106,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (uint16_t)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
 			method->AddArgumentDescription(desc);
 			i += 3;
 		}
@@ -1118,7 +1118,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (uint16_t)(size << 2); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
 			method->AddLocalDescription(desc);
 			i += 3;
 		}
@@ -2561,8 +2561,8 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::UnsafeNullRef:
 		{
 			// This just returns a null pointer
-		result.Object = nullptr;
-		result.Type = VariableKind::AddressOfVariable;
+			result.Object = nullptr;
+			result.Type = VariableKind::AddressOfVariable;
 		}
 		break;
 	case NativeMethod::UnsafeSizeOfType:
@@ -2600,6 +2600,15 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		result.Object = AddBytes(args[0].Object, args[1].Int32);
 		result.setSize(4);
 		}
+		break;
+	case NativeMethod::UnsafeCopyBlockUnaligned:
+	{
+		ASSERT(args.size() == 3);
+		Variable& dst = args[0];
+		Variable& src = args[1];
+		Variable& len = args[2];
+		memcpy(dst.Object, src.Object, len.Int32);
+	}
 		break;
 	case NativeMethod::StringCompareTo:
 		{
@@ -4202,8 +4211,12 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		locals->at(3) = value1;
 		break;
 	case CEE_LDLOC_0:
-		stack->push(locals->at(0));
+	{
+		Variable& local = locals->at(0);
+		SignExtend(local, local.fieldSize());
+		stack->push(local);
 		break;
+	}
 	case CEE_LDLOC_1:
 		stack->push(locals->at(1));
 		break;
@@ -5119,16 +5132,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		case VariableKind::Double:
 			intermediate.Int32 = (byte)value1.Double;
 			break;
+		case VariableKind::Object:
 		case VariableKind::AddressOfVariable:
-			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-			intermediate.Int32 = (int32_t)v;
-			intermediate.Type = VariableKind::AddressOfVariable;
-			break;
+			// Objects and addresses can't be converted to integers with a size of less than 64 bit by definition
+			throw new ClrException(SystemException::InvalidOperation, 0);
 		default: // The conv statement never throws
 			intermediate.Int32 = (int32_t)v;
 			break;
 		}
 	}
+	intermediate.setSize(1);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_U1_UN:
@@ -5168,15 +5181,15 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		case VariableKind::Double:
 			intermediate.Uint32 = (uint8_t)value1.Double;
 			break;
+		case VariableKind::Object:
 		case VariableKind::AddressOfVariable:
-			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-			intermediate.Uint32 = (int32_t)v;
-			intermediate.Type = VariableKind::AddressOfVariable;
-			break;
+			// Objects and addresses can't be converted to integers with a size of less than 64 bit by definition
+			throw new ClrException(SystemException::InvalidOperation, 0);
 		default: // The conv statement never throws
 			intermediate.Uint32 = (uint8_t)v;
 			break;
 		}
+		intermediate.setSize(1);
 		stack->push(intermediate);
 		break;
 	}
@@ -5222,16 +5235,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			case VariableKind::Double:
 				intermediate.Int32 = (short)value1.Double;
 				break;
+			case VariableKind::Object:
 			case VariableKind::AddressOfVariable:
-				// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-				intermediate.Int32 = (int32_t)v;
-				intermediate.Type = VariableKind::AddressOfVariable;
-				break;
+				// Objects and addresses can't be converted to integers with a size of less than 64 bit by definition
+				throw new ClrException(SystemException::InvalidOperation, 0);
 			default: // The conv statement never throws
 				intermediate.Int32 = (int32_t)v;
 				break;
 			}
 		}
+		intermediate.setSize(2);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_U2_UN:
@@ -5272,15 +5285,15 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		case VariableKind::Double:
 			intermediate.Int32 = (uint16_t)value1.Double;
 			break;
+		case VariableKind::Object:
 		case VariableKind::AddressOfVariable:
-			// If it was an address, keep that designation (this converts from Intptr to Uintptr, which is mostly a no-op)
-			intermediate.Int32 = (int32_t)v;
-			intermediate.Type = VariableKind::AddressOfVariable;
-			break;
+			// Objects and addresses can't be converted to integers with a size of less than 64 bit by definition
+			throw new ClrException(SystemException::InvalidOperation, 0);
 		default: // The conv statement never throws
 			intermediate.Uint32 = (uint16_t)v;
 			break;
 		}
+		intermediate.setSize(2);
 		stack->push(intermediate);
 		break;
 	}
@@ -5332,6 +5345,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Int32 = (int32_t)value1.Uint64;
 			break;
 		}
+		intermediate.setSize(4);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_U_UN:
@@ -5380,6 +5394,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Uint32 = (uint32_t)value1.Uint64;
 			break;
 		}
+		intermediate.setSize(4);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_I8_UN:
@@ -5421,6 +5436,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Int64 = value1.Int64;
 			break;
 		}
+		intermediate.setSize(8);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_OVF_U8_UN:
@@ -5462,6 +5478,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Uint64 = value1.Uint64;
 			break;
 		}
+		intermediate.setSize(8);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_R8:
@@ -5490,6 +5507,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Double = value1.Double;
 			break;
 		}
+		intermediate.setSize(8);
 		stack->push(intermediate);
 		break;
 	case CEE_CONV_R4:
@@ -5518,6 +5536,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			intermediate.Float = value1.Float;
 			break;
 		}
+		intermediate.setSize(4);
 		stack->push(intermediate);
 		break;
 	case CEE_VOLATILE_:
