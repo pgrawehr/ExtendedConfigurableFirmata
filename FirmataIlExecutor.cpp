@@ -1106,7 +1106,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (uint16_t)(size); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size); // The maximum size of a variable is 2^14 bytes
 			method->AddArgumentDescription(desc);
 			i += 3;
 		}
@@ -1118,7 +1118,7 @@ ExecutionError FirmataIlExecutor::LoadMethodSignature(int methodToken, byte sign
 		{
 			desc.Type = (VariableKind)argv[i];
 			size = argv[i + 1] | argv[i + 2] << 7;
-			desc.Size = (uint16_t)(size); // Size is given as multiples of 4 (so we can again gain the full 16 bit with only 2 7-bit values)
+			desc.Size = (uint16_t)(size);
 			method->AddLocalDescription(desc);
 			i += 3;
 		}
@@ -2412,33 +2412,33 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 		break;
 
-	//case NativeMethod::EnumInternalGetValues:
-	//	{
-	//		ASSERT(args.size() == 1);
-	//		Variable ownTypeInstance = args[0]; // A type instance
-	//		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
-	//		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
-	//		ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
-	//		ASSERT(enumType->IsEnum());
-	//		// Number of static fields computed as total static size divided by underlying type size
-	//		int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
-	//		AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
-	//		uint64_t* data = (uint64_t*)AddBytes(result.Object, ARRAY_DATA_START);
-	//		int idx = 0;
-	//		for (int i = 0; i <= numberOfValues; i++) // One extra, because we later skip the actual value field and use only the static fields here
-	//		{
-	//			Variable* field = enumType->GetFieldByIndex(i);
-	//			if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
-	//			{
-	//				continue;
-	//			}
+	case NativeMethod::EnumInternalGetValues:
+		{
+			ASSERT(args.size() == 1);
+			Variable ownTypeInstance = args[0]; // A type instance
+			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
+			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
+			ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
+			ASSERT(enumType->IsEnum());
+			// Number of static fields computed as total static size divided by underlying type size
+			int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
+			AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
+			uint64_t* data = (uint64_t*)AddBytes(result.Object, ARRAY_DATA_START);
+			int idx = 0;
+			for (int i = 0; i <= numberOfValues; i++) // One extra, because we later skip the actual value field and use only the static fields here
+			{
+				Variable* field = enumType->GetFieldByIndex(i);
+				if ((field->Type & VariableKind::StaticMember) == VariableKind::Void)
+				{
+					continue;
+				}
 
-	//			// Values are currently never > 32Bit (would need an extension to the class transfer protocol)
-	//			data[idx] = field->Uint64;
-	//			idx++;
-	//		}
-	//	break;
-	//	}
+				// Values are currently never > 32Bit (would need an extension to the class transfer protocol)
+				data[idx] = field->Uint64;
+				idx++;
+			}
+		break;
+		}
 	case NativeMethod::TypeIsEnum:
 		ASSERT(args.size() == 1);
 	{
@@ -2577,7 +2577,14 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			// The type represented by the type instance (it were quite pointless if Type.IsValueType returned whether System::Type was a value type - it is not)
 			ClassDeclaration* t1 = _classes.GetClassWithToken(ownToken.Int32);
 			result.Type = VariableKind::Int32;
-			result.Int32 = t1->ClassDynamicSize;
+			if (t1->IsValueType())
+			{
+				result.Int32 = t1->ClassDynamicSize;
+			}
+			else
+			{
+				result.Int32 = sizeof(void*);
+			}
 			result.setSize(4);
 		}
 		break;
@@ -4218,14 +4225,26 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		break;
 	}
 	case CEE_LDLOC_1:
-		stack->push(locals->at(1));
+	{
+		Variable& local = locals->at(1);
+		SignExtend(local, local.fieldSize());
+		stack->push(local);
 		break;
+	}
 	case CEE_LDLOC_2:
-		stack->push(locals->at(2));
+	{
+		Variable& local = locals->at(2);
+		SignExtend(local, local.fieldSize());
+		stack->push(local);
 		break;
+	}
 	case CEE_LDLOC_3:
-		stack->push(locals->at(3));
+	{
+		Variable& local = locals->at(3);
+		SignExtend(local, local.fieldSize());
+		stack->push(local);
 		break;
+	}
 	case CEE_LDNULL:
 		intermediate.Object = nullptr;
 		intermediate.Type = VariableKind::Object;
@@ -6214,8 +6233,12 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 						stack->push(intermediate);
 						break;
 					case CEE_LDLOC_S:
-						stack->push(locals->at(data));
+					{
+						Variable& local = locals->at(data);
+						SignExtend(local, local.fieldSize());
+						stack->push(local);
 						break;
+					}
 					case CEE_STLOC_S:
 						locals->at(data) = stack->top();
 						stack->pop();
