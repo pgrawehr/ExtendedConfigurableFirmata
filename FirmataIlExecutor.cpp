@@ -4766,6 +4766,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			stack->push(intermediate);
 		}
 		break;
+	case CEE_LDIND_I:
 	case CEE_LDIND_I4:
 		{
 			int32_t i = *((int32_t*)GetRealTargetAddress(value1));
