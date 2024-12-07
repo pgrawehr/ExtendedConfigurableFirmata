@@ -5326,6 +5326,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 		}
 		goto CEE_CONV_I4_LABEL;
 		// Fall trough
+	case CEE_CONV_OVF_I:
 	case CEE_CONV_OVF_I4:
 		if (!FitsIn<int32_t, true, -2147483648, 2147483647>(value1))
 		{
@@ -8232,6 +8233,11 @@ ClassDeclaration* FirmataIlExecutor::ResolveClassFromFieldToken(int32_t fieldTok
 		// TRACE(Firmata.sendString(F("Class "), cls.ClassToken));
 		int idx = 0;
 		ClassDeclaration* current = iterator.Current();
+		if (current->IsEnum())
+		{
+			// Enum fields can't be queried using this method (their "Int32" member is the value, not the field token)
+			continue;
+		}
 		for (auto field = current->GetFieldByIndex(idx); field != nullptr; field = current->GetFieldByIndex(++idx))
 		{
 			// TRACE(Firmata.sendString(F("Member "), member.Uint32));
