@@ -1915,6 +1915,28 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			result.Boolean = true;
 		}
 		break;
+	case NativeMethod::Interop_Kernel32SetEvent:
+		{
+		if (args[0].Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+		}
+		EventWaitHandle* handle = (EventWaitHandle*)args[0].Object;
+		handle->signaled = true;
+		result.Int32 = 1; // Can't really fail
+		}
+		break;
+	case NativeMethod::Interop_Kernel32ResetEvent:
+	{
+		if (args[0].Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+		}
+		EventWaitHandle* handle = (EventWaitHandle*)args[0].Object;
+		handle->signaled = false;
+		result.Int32 = 1;
+	}
+	break;
 	case NativeMethod::WaitHandleWaitOneCore:
 		{
 		ASSERT(args.size() == 2); // private static extern int WaitOneCore(IntPtr waitHandle, int millisecondsTimeout);
@@ -1927,7 +1949,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			EventWaitHandle* handle = (EventWaitHandle*)args[0].Object;
 			if (handle->signaled)
 			{
-				if (handle->flags & 1) // Autoreset?
+				if ((handle->flags & 1) == 0) // It's an auto-reset event if the bit is not set
 				{
 					handle->signaled = false;
 				}
