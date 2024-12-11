@@ -24,11 +24,12 @@ SimulatorClock TheClock;
 // Reference the instance of the firmata i2c driver
 extern I2CFirmata i2c;
 
-const int IO_COMPLETIONPORT_DUMMY = 0x00DDDBAD;
+const int IO_COMPLETIONPORT_START = 0x00DDDBAD;
 
 int64_t HardwareAccess::_tickCountFrequency = 10000 * 1000; // One tick is 100 ns (one 10th of a microsecond)
 int64_t HardwareAccess::_tickCount64 = 0; // Only upper 32 bits used
 uint32_t HardwareAccess::_lastTickCount = 0;
+uint32_t HardwareAccess::_nextIoCompletionPortHandle = IO_COMPLETIONPORT_START;
 
 
 
@@ -267,7 +268,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		Variable& self = args.at(0);
 		Variable& data = args.at(1);
 		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
-		Variable address = executor->GetField(cls, self, 1);
+		Variable address = executor->GetField(cls, self, 0);
 		// Since the implementation of I2CFirmata::handleI2CRequest is stateless, we can as well directly call the wire library. It's easier here.
 		// Note that this works only after an init
 		Wire.beginTransmission((byte)address.Int32);
@@ -280,7 +281,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			ASSERT(args.size() == 1);
 			Variable& self = args.at(0);
 			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
-			Variable address = executor->GetField(cls, self, 1);
+			Variable address = executor->GetField(cls, self, 0);
 			// Since the implementation of I2CFirmata::handleI2CRequest is stateless, we can as well directly call the wire library. It's easier here.
 			// Note that this works only after an init
 			Wire.requestFrom((byte)address.Int32, (byte)1);
@@ -297,7 +298,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 			ASSERT(args.size() == 2);
 			Variable& self = args.at(0);
 			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
-			Variable address = executor->GetField(cls, self, 1);
+			Variable address = executor->GetField(cls, self, 0);
 			Variable& span = args.at(1);
 			
 			// Span is a value type that contains a pointer and a length field (both as 32 bit fields). Let's hope the order matches
@@ -330,7 +331,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		ASSERT(args.size() == 2);
 		Variable& self = args.at(0);
 		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
-		Variable address = executor->GetField(cls, self, 1);
+		Variable address = executor->GetField(cls, self, 0);
 		Variable& span = args.at(1);
 
 		// Span is a value type that contains a pointer and a length field (both as 32 bit fields). Let's hope the order matches
@@ -438,7 +439,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32CreateIoCompletionPort:
 		result.Type = VariableKind::AddressOfVariable;
-		result.Int32 = IO_COMPLETIONPORT_DUMMY; // For now, just return a dummy handle (we won't be using this just yet)
+		result.Uint32 = _nextIoCompletionPortHandle++;
 		result.setSize(4);
 		break;
 	case NativeMethod::Interop_Kernel32GetFileType:

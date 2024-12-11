@@ -25,6 +25,7 @@ class HardwareAccess : public LowlevelInterface
 	static int64_t _tickCount64;
 	static int64_t _tickCountFrequency;
 	static uint32_t _lastTickCount;
+	static uint32_t _nextIoCompletionPortHandle;
 public:
 	void Init() override;
 	void Update() override; // Called regularly by the execution engine, to also keep track of overflows if no tickcount methods are being used for some time

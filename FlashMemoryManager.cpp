@@ -62,7 +62,7 @@ FlashMemoryManager::FlashMemoryManager()
 	storage = new Esp32CliFlashStorage();
 	storage->MapFlash();
 #elif SIM
-	storage = new VirtualFlashMemory(1024 * 1024);
+	storage = new VirtualFlashMemory(1024 * 1024 * 2);
 #elif __SAM3X8E__
 	storage = new DueFlashStorage();
 #else
