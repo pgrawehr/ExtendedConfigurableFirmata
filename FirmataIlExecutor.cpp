@@ -464,6 +464,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				break;
 			case ExecutorCommand::EraseFlash:
 				KillCurrentTask();
+				TerminateAllThreads();
 				_startupToken = 0;
 				_startupFlags = 0;
 				_flashMemoryManager->Clear();
@@ -487,6 +488,7 @@ boolean FirmataIlExecutor::handleSysex(byte command, byte argc, byte* argv)
 				if (argv[2] == 1)
 				{
 					KillCurrentTask();
+					TerminateAllThreads();
 					reset();
 					SendAckOrNack(subCommand, sequenceNo, ExecutionError::None);
 				}
@@ -1027,8 +1029,9 @@ void FirmataIlExecutor::report(bool elapsed)
 	int methodindex = _threads[0]->rootOfExecutionStack->TaskId();
 	SendExecutionResult(methodindex, _threads[0]->currentException, retVal, execResult);
 
-	// The method ended
-	TerminateAllThreads();
+	// The method ended, terminate the primary thread (this will suspend all others, but not delete them, because when we
+	// later continue or restart the main method, their thread object might still be in memory)
+	CleanStack(0);
 }
 
 int FirmataIlExecutor::ThreadToSchedule()
@@ -1757,13 +1760,16 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::Thread_get_IsThreadPoolThread:
 		{
 			ThreadState* t = FindThread(args[0]);
+			result.Type = VariableKind::Boolean;
 			if (t == nullptr)
 			{
-				throw ClrException(SystemException::NullReference, currentFrame->MethodToken());
+				// The thread has already ended, so just return false. We don't really know.
+				result.Boolean = false;
 			}
-
-			result.Type = VariableKind::Boolean;
-			result.Boolean = t->threadFlags & 1;
+			else
+			{
+				result.Boolean = t->threadFlags & 1;
+			}
 		}
 		break;
 	case NativeMethod::Thread_set_IsThreadPoolThread:
@@ -5071,6 +5077,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			}
 		}
 		break;
+	case CEE_LDELEM_R8:
 	case CEE_LDELEM_I8:
 	{
 		if (value1.Object == nullptr)
@@ -5088,8 +5095,16 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 
 		if (value1.Type == VariableKind::ValueArray)
 		{
-			intermediate.Type = VariableKind::Int64;
-			intermediate.Int64 = *AddBytes(data, ARRAY_DATA_START + index * 8);
+			if (instr == CEE_LDELEM_I8)
+			{
+				intermediate.Type = VariableKind::Int64;
+				intermediate.Int64 = *AddBytes(data, ARRAY_DATA_START + index * 8);
+			}
+			else
+			{
+				intermediate.Type = VariableKind::Double;
+				intermediate.Double = *AddBytes(data, ARRAY_DATA_START + index * 8);
+			}
 
 			stack->push(intermediate);
 		}
@@ -5100,6 +5115,7 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 	}
 	break;
 	case CEE_STELEM_REF:
+	case CEE_STELEM_R4:
 	case CEE_STELEM_I4:
 	{
 		if (value1.Object == nullptr)
@@ -5129,6 +5145,32 @@ MethodState FirmataIlExecutor::BasicStackInstructions(ExecutionState* currentFra
 			}
 			// can only be an object now
 			*(data + ARRAY_DATA_START/4 + index) = (uint32_t)value3.Object;
+		}
+	}
+	break;
+	case CEE_STELEM_R8:
+	case CEE_STELEM_I8:
+	{
+		if (value1.Object == nullptr)
+		{
+			throw ClrException(SystemException::NullReference, currentFrame->_executingMethod->methodToken);
+		}
+		// The instruction suffix (here .i4) indicates the element size
+		uint32_t* data = (uint32_t*)AddBytes(value1.Object, ARRAY_DATA_START);
+		int32_t size = *AddBytes((uint32_t*)value1.Object, 4);
+		int32_t index = value2.Int32;
+		if (index < 0 || index >= size)
+		{
+			throw ClrException("Index out of range in STELEM.I4 operation", SystemException::IndexOutOfRange, currentFrame->_executingMethod->methodToken);
+		}
+
+		if (value1.Type == VariableKind::ValueArray)
+		{
+			*AddBytes((uint64_t*)data, index * 8) = value3.Int64; // Just a bitwise copy, so this also works for R8 (double)
+		}
+		else
+		{
+			throw ClrException("Can't store I8 or R8 in a reference array", SystemException::ArrayTypeMismatch, currentFrame->_executingMethod->methodToken);
 		}
 	}
 	break;
