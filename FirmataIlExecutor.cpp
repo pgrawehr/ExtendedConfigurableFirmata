@@ -2256,12 +2256,47 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ObjectGetType:
 		{
-		ASSERT(args.size() == 1); // The this pointer
-		ClassDeclaration* cls = GetClassDeclaration(args[0]);
+			ASSERT(args.size() == 1); // The this pointer
+			ClassDeclaration* cls = GetClassDeclaration(args[0]);
 			Variable type;
+			bool found = false;
+			if (cls->ClassToken == (int)KnownTypeTokens::Array)
+			{
+				// We need to find the class that represents T[], cls at this point just represents System.Array.
+				// This is ugly, because we don't really have the metadata to determine the class type of T[] from an instance
+				// of System.Array.
+				// Therefore, we use this trick: Locate the class type that implements IEnumerable<T> and is an array.
+				int token = *AddBytes((int*)args[0].Object, 8); // This gets T
+				ClassDeclaration* innerType = GetClassWithToken(token, false);
+				if (innerType != nullptr && (innerType->ClassToken & GENERIC_TOKEN_MASK) == 0)
+				{
+					int interfaceTokenToFind = innerType->ClassToken | (int)KnownTypeTokens::IEnumerableOfT;
+					for (auto iterator = _classes.GetIterator(); iterator.Next();)
+					{
+						auto current = iterator.Current();
+						if (current->IsArray() && current->ImplementsInterface(interfaceTokenToFind))
+						{
+							type.Int32 = current->ClassToken;
+							type.Type = VariableKind::RuntimeTypeHandle;
+							GetTypeFromHandle(currentFrame, result, type);
+							found = true;
+							break;
+						}
+					}
+				}
+
+				if (found)
+				{
+					break;
+				}
+				// If the inner type is already complex (the thing is an array of IDictionary<TKey, TValue> or so), we're lost here
+				Firmata.sendStringf(F("Cannot derive array type from 0x%x, too complex"), innerType->ClassToken);
+			}
+
 			type.Int32 = cls->ClassToken;
 			type.Type = VariableKind::RuntimeTypeHandle;
 			GetTypeFromHandle(currentFrame, result, type);
+			
 		}
 		break;
 	case NativeMethod::TypeCreateInstanceForAnotherGenericParameter:
@@ -3513,6 +3548,10 @@ void FirmataIlExecutor::SetField4(ClassDeclaration* type, const Variable& data, 
 ClassDeclaration* FirmataIlExecutor::GetClassDeclaration(Variable& obj)
 {
 	byte* o = (byte*)obj.Object;
+	if (o == nullptr)
+	{
+		throw ClrException(SystemException::NullReference, 0);
+	}
 	ClassDeclaration* vtable = (ClassDeclaration*)(*(int32_t*)o);
 	return vtable;
 }
@@ -7832,7 +7871,7 @@ bool FirmataIlExecutor::LocateCatchHandler(ThreadState *threadState, ExecutionSt
 					}
 				}
 			}
-			else if (c->ClauseType == ExceptionHandlingClauseOptions::Finally && tryBlockOffset >= c->TryOffset && tryBlockOffset <= c->TryOffset + c->TryLength)
+			else if ((c->ClauseType == ExceptionHandlingClauseOptions::Finally) && (tryBlockOffset >= c->TryOffset) && (tryBlockOffset <= c->TryOffset + c->TryLength))
 			{
 				if (bestClause == nullptr)
 				{

@@ -102,6 +102,7 @@ public:
 		_numAllocsSinceLastGc = 0;
 		_bytesAllocatedSinceLastGc = 0;
 		_totalGcMemorySize = 0;
+		_largestFreeBlock = 0;
 		_gcPressureHigh = false;
 	}
 
