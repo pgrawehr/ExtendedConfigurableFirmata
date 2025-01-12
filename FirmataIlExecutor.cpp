@@ -6083,14 +6083,6 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 				newState->ActivateState(&PC, &stack, &locals, &arguments);
 				delete exitingFrame;
     		}
-			else if (specialMethod == NativeMethod::MiniTimerQueueFireCallback)
-			{
-				// This method needs to call back to the managed method "AppDomainTimerCallback".
-				MethodBody* body = GetMethodByToken((int)KnownTypeTokens::AppDomainTimerCallback);
-				// Replace the current frame with the target method (it has the same signature as we do)
-				currentFrame->UpdatePc(0);
-				currentFrame->_executingMethod = body;
-			}
 			else
 			{
 				if (specialMethod == NativeMethod::ThreadYield)
