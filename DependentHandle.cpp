@@ -19,8 +19,8 @@ bool DependentHandle::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 	{
 	case NativeMethod::DependentHandle_InternalInitialize:
 		{
-		ASSERT(args.size() == 2);
-			// We're currently not reusing existing entries. But these handles are rarely used, so this should not normally cause a memory leak
+		ASSERT_ARGS(args, 2, method);
+		// We're currently not reusing existing entries. But these handles are rarely used, so this should not normally cause a memory leak
 		pair<void*, void*> newElem(args[0].Object, args[1].Object);
 		int offset = executor->_weakDependencies.push_back(newElem);
 		result.Type = VariableKind::Int32;
@@ -30,7 +30,7 @@ bool DependentHandle::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executi
 		break;
 	case NativeMethod::DependentHandle_InternalFree:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		size_t handle = args[0].Uint32;
 		if (handle >= executor->_weakDependencies.size())
 		{

@@ -567,5 +567,9 @@ public:
 	stdSimple::vector<pair<FinalizerFunction, void*>> _criticalFinalizers;
 };
 
+void ASSERT(bool condition, const char* message);
+
+void ASSERT_ARGS(const VariableVector& arglist, int i, NativeMethod functionNumber);
+
 
 #endif 

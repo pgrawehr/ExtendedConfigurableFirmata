@@ -142,12 +142,12 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.Type = VariableKind::Uint32;
 		break;
 	case NativeMethod::HardwareLevelAccessGetPinCount:
-		ASSERT(args.size() == 1); // unused this pointer
+		ASSERT_ARGS(args, 1, method); // unused this pointer
 		result.Int32 = TOTAL_PINS;
 		result.Type = VariableKind::Int32;
 		break;
 	case NativeMethod::HardwareLevelAccessIsPinModeSupported:
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		// TODO: Ask firmata (but for simplicity, we can assume the Digital I/O module is always present)
 		// We support Output, Input and PullUp
 		result.Boolean = (args[2].Int32 == 0 || args[2].Int32 == 1 || args[2].Int32 == 3) && IS_PIN_DIGITAL(args[1].Int32);
@@ -155,7 +155,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::HardwareLevelAccessGetPinMode:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		byte mode = Firmata.getPinMode((byte)args[1].Int32);
 		if (mode == PIN_MODE_INPUT)
 		{
@@ -179,7 +179,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::InteropGetRandomBytes:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		byte* ptr = (byte*)args[0].Object; // This is an unmanaged pointer
 		int size = args[1].Int32;
 
@@ -198,7 +198,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 
 	case NativeMethod::ArduinoNativeI2cDeviceInit:
-		ASSERT(args.size() == 3); // 0: this, 1: bus id, 2: device address
+		ASSERT_ARGS(args, 3, method); // 0: this, 1: bus id, 2: device address
 	{
 		byte zero[2] = { 0, 0 }; // Delay (0)
 		i2c.handleSysex(I2C_CONFIG, 2, zero); // Configure and enable the bus
@@ -231,7 +231,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::ArduinoNativeBoardActivatePinModeInternal:
 		{
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		byte pin = (byte)args[1].Int32;
 		PinUsage usage = (PinUsage)args[2].Int32;
 			switch(usage)
@@ -264,7 +264,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::ArduinoNativeI2cDeviceWriteByte:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		Variable& self = args.at(0);
 		Variable& data = args.at(1);
 		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
@@ -278,7 +278,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::ArduinoNativeI2cDeviceReadByte:
 		{
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			Variable& self = args.at(0);
 			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
 			Variable address = executor->GetField(cls, self, 0);
@@ -295,7 +295,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::ArduinoNativeI2cDeviceReadSpan:
 		{
-			ASSERT(args.size() == 2);
+			ASSERT_ARGS(args, 2, method);
 			Variable& self = args.at(0);
 			ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
 			Variable address = executor->GetField(cls, self, 0);
@@ -328,7 +328,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::ArduinoNativeI2cDeviceWriteSpan:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		Variable& self = args.at(0);
 		ClassDeclaration* cls = FirmataIlExecutor::GetClassDeclaration(self);
 		Variable address = executor->GetField(cls, self, 0);
@@ -352,7 +352,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	break;
 	case NativeMethod::InteropQueryPerformanceFrequency:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& ptr = args.at(0); // long* lpFrequency
 		int64_t* lpPtr = (int64_t*)ptr.Object;
 		*lpPtr = _tickCountFrequency;
@@ -363,7 +363,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32QueryUnbiasedInterruptTime:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& ptr = args.at(0); // long* lpFrequency
 		int64_t* lpPtr = (int64_t*)ptr.Object;
 		*lpPtr = TickCount64() * 10000; // This returns in 100ns-resolution
@@ -374,7 +374,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	}
 	case NativeMethod::InteropQueryPerformanceCounter:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& ptr = args.at(0); // long* lpFrequency
 		int64_t* lpPtr = (int64_t*)ptr.Object;
 		*lpPtr = TickCount64() * 10000;
@@ -385,7 +385,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32AllocHGlobal:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& size = args.at(0);
 		result.Type = VariableKind::AddressOfVariable;
 		void* memory = mallocEx(size.Int32);
@@ -399,18 +399,18 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::Interop_Kernel32FreeHGlobal:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& ptr = args.at(0);
-		ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+		ASSERT(ptr.Type == VariableKind::AddressOfVariable, "RT_KT_1");
 		freeEx(ptr.Object);
 		ptr.Object = nullptr;
 	}
 		break;
 	case NativeMethod::Interop_Kernel32InitializeCriticalSection:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		{
 			Variable& ptr = args.at(0);
-			ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+			ASSERT(ptr.Type == VariableKind::AddressOfVariable, "RT_KT_2");
 			if (ptr.Object == nullptr)
 			{
 				throw ClrException("InitializeCriticalSection on a null reference.", SystemException::InvalidOperation, 0);
@@ -419,10 +419,10 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		}
 		break;
 	case NativeMethod::Interop_Kernel32InitializeConditionVariable:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		{
 			Variable& ptr = args.at(0);
-			ASSERT(ptr.Type == VariableKind::AddressOfVariable);
+			ASSERT(ptr.Type == VariableKind::AddressOfVariable, "RT_KT_3");
 			if (ptr.Object == nullptr)
 			{
 				throw ClrException("InitializeCriticalSection on a null reference.", SystemException::InvalidOperation, 0);
@@ -443,7 +443,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		result.setSize(4);
 		break;
 	case NativeMethod::Interop_Kernel32GetFileType:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 	{
 			result.Type = VariableKind::Int32;
 			int handle = args[0].Int32;
@@ -462,7 +462,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 	}		
 		break;
 	case NativeMethod::InterlockedCompareExchange_Object:
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 	{
 			result.Type = VariableKind::Object;
 			result.setSize(4);
@@ -483,7 +483,7 @@ bool HardwareAccess::ExecuteHardwareAccess(FirmataIlExecutor* executor, Executio
 		break;
 	case NativeMethod::InterlockedExchangeObject:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		result.Type = VariableKind::Object;
 		result.setSize(4);
 		Variable& location = args[0]; // Arg0 is a reference to an object

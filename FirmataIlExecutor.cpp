@@ -1459,7 +1459,7 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args)
 
 bool FirmataIlExecutor::StringEquals(const VariableVector& args, int stringComparison)
 {
-	ASSERT(args.size() >= 2);
+	ASSERT(args.size() >= 2, "StringEquals");
 	Variable& a = args[0];
 	Variable& b = args[1];
 	if (a.Object == b.Object)
@@ -1473,8 +1473,8 @@ bool FirmataIlExecutor::StringEquals(const VariableVector& args, int stringCompa
 
 	ClassDeclaration* ty1 = GetClassDeclaration(a);
 	ClassDeclaration* ty2 = GetClassDeclaration(b);
-	ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String);
-	ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String);
+	ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String, "IsString1");
+	ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String, "IsString2");
 	int len1 = *AddBytes((int*)a.Object, 4);
 	int len2 = *AddBytes((int*)b.Object, 4);
 	if (len1 != len2)
@@ -1816,7 +1816,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	break;
 	case NativeMethod::ThreadInitialize:
 	{
-		ASSERT(args.size() == 1); // This is a member method
+		ASSERT_ARGS(args, 1, method); // This is a member method
 			// What do we have to do here?
 			// We already need to make sure the internal thread variable is not 0, so we allocate the thread block here.
 		ClassDeclaration* ty = GetClassDeclaration(args[0]);
@@ -1849,7 +1849,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 
 	case NativeMethod::ThreadStartInternal:
 		{
-			ASSERT(args.size() == 4); // public static unsafe void StartInternal(IntPtr t, int stackSize, int priority, char* pThreadName)
+			ASSERT_ARGS(args, 4, method); // public static unsafe void StartInternal(IntPtr t, int stackSize, int priority, char* pThreadName)
 			int threadHandle = args[0].Int32 - MAX_THREADS;
 			if (threadHandle < 0 || threadHandle >= MAX_THREADS)
 			{
@@ -1881,7 +1881,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ThreadJoin:
 		{
-			ASSERT(args.size() == 2); // public extern bool Join(int millisecondsTimeout);
+			ASSERT_ARGS(args, 2, method); // public extern bool Join(int millisecondsTimeout);
 			Variable& targetThread = args[0];
 			result.Type = VariableKind::Boolean;
 			if (currentThread->managedThreadInstance.Object == targetThread.Object)
@@ -1945,7 +1945,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	break;
 	case NativeMethod::WaitHandleWaitOneCore:
 		{
-		ASSERT(args.size() == 2); // private static extern int WaitOneCore(IntPtr waitHandle, int millisecondsTimeout);
+		ASSERT_ARGS(args, 2, method); // private static extern int WaitOneCore(IntPtr waitHandle, int millisecondsTimeout);
 		result.Type = VariableKind::Int32;
 		int timeout = args[1].Int32;
 			if (args[0].Object == nullptr)
@@ -1978,7 +1978,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 	case NativeMethod::Interop_Kernel32CreateEventEx:
 	{
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		if (args[0].Object != nullptr) // name
 		{
 			// Named events are not supported (they are in fact only supported on windows)
@@ -2005,7 +2005,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	break;
 	case NativeMethod::TypeEquals:
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		{
 			// This implements System::Type::Equals(object)
 			result.Type = VariableKind::Boolean;
@@ -2031,12 +2031,12 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	
 	case NativeMethod::RuntimeHelpersInitializeArray:
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		{
 			Variable array = args[0]; // Target array
-			ASSERT(array.Type == VariableKind::ValueArray);
+			ASSERT(array.Type == VariableKind::ValueArray, "RT_TYPE1");
 			Variable field = args[1]; // Runtime field type instance
-			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
+			ASSERT(field.Type == VariableKind::RuntimeFieldHandle, "RT_TYPE2");
 			uint32_t* data = (uint32_t*)array.Object;
 			// TODO: Maybe we should directly store the class pointer instead of the token - or at least use a fast map<> implementation
 			ClassDeclaration* ty = _classes.GetClassWithToken(*(data + 2));
@@ -2048,12 +2048,12 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 
 	case NativeMethod::RuntimeHelpersGetSpanDataFrom:
 		{
-			ASSERT(args.size() == 3);
+			ASSERT_ARGS(args, 3, method);
 			Variable field = args[0]; // Runtime field type instance
-			ASSERT(field.Type == VariableKind::RuntimeFieldHandle);
+			ASSERT(field.Type == VariableKind::RuntimeFieldHandle, "RT_TYPE3");
 			Variable type = args[1];
 			ClassDeclaration* typeOfType = GetClassDeclaration(type);
-			ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
+			ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type, "RT_TYPE4");
 			int typeToken = GetField(typeOfType, type, 0).Int32;
 			ClassDeclaration* typeOfData = GetClassWithToken(typeToken);
 			Variable refLength = args[2];
@@ -2074,7 +2074,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::RuntimeHelpersIsReferenceOrContainsReferencesCore:
 		{
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
@@ -2100,7 +2100,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::RuntimeHelpersEnumEqualsInternal:
 	{
 		result.Type = VariableKind::Boolean;
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 			// We know that both arguments are boxed instances of the same enum type
 		Variable self = args[0];
 		Variable other = args[1];
@@ -2130,7 +2130,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	case NativeMethod::TypeName:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable ownTypeInstance = args[0]; // A type instance
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
@@ -2141,7 +2141,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::TypeGetHashCode:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable ownTypeInstance = args[0]; // A type instance
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 		Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
@@ -2150,21 +2150,21 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 		break;
 	case NativeMethod::TypeGetTypeFromHandle:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		{
 			Variable type = args[0]; // type handle
-			ASSERT(type.Type == VariableKind::RuntimeTypeHandle);
+			ASSERT(type.Type == VariableKind::RuntimeTypeHandle, "RT_TYPE5");
 			GetTypeFromHandle(currentFrame, result, type);
 		}
 		break;
 	case NativeMethod::ObjectEquals: // this is an instance method with 1 argument
 	case NativeMethod::ObjectReferenceEquals: // This is a static method with 2 arguments, but implicitly the same as the above
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 			result.Type = VariableKind::Boolean;
 			result.Boolean = args[0].Object == args[1].Object; // This implements reference equality (or binary equality for value types)
 		break;
 	case NativeMethod::ObjectMemberwiseClone:
-		ASSERT(args.size() == 1); // just the "this" pointer
+		ASSERT_ARGS(args, 1, method); // just the "this" pointer
 		{
 			Variable& self = args[0];
 			ClassDeclaration* ty = GetClassDeclaration(self);
@@ -2200,11 +2200,11 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			break;
 		}
 	case NativeMethod::TypeMakeGenericType:
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		{
 			Variable type = args[0]; // type or type handle
 			Variable& arguments = args[1]; // An array of types
-			ASSERT(arguments.Type == VariableKind::ReferenceArray);
+			ASSERT(arguments.Type == VariableKind::ReferenceArray, "RT_TYPE6");
 			uint32_t* data = (uint32_t*)arguments.Object;
 			int32_t size = *(data + 1);
 			ClassDeclaration* typeOfType = _classes.GetClassWithToken(2);
@@ -2256,7 +2256,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ObjectGetType:
 		{
-			ASSERT(args.size() == 1); // The this pointer
+			ASSERT_ARGS(args, 1, method); // The this pointer
 			ClassDeclaration* cls = GetClassDeclaration(args[0]);
 			Variable type;
 			bool found = false;
@@ -2342,7 +2342,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::TypeIsAssignableTo:
 		{
 			// Returns true if "this" type can be assigned to a variable of type "other"
-			ASSERT(args.size() == 2);
+			ASSERT_ARGS(args, 2, method);
 			Variable ownTypeInstance = args[0]; // A type instance
 			Variable otherTypeInstance = args[1]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
@@ -2392,7 +2392,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		// Returns true if "this" type can be assigned from a variable of type "other"
 		// This is almost the inverse of the above, except for the identity case
 		// TODO: Combine the two
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		Variable ownTypeInstance = args[0]; // A type instance
 		Variable otherTypeInstance = args[1]; // A type instance
 		ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
@@ -2442,7 +2442,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::TypeGetGenericTypeDefinition:
 		{
 			// Given a constructed generic type, this returns the open generic type.
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
 			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
@@ -2477,12 +2477,12 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 
 	case NativeMethod::EnumInternalGetValues:
 		{
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			Variable ownTypeInstance = args[0]; // A type instance
 			ClassDeclaration* typeClassDeclaration = GetClassDeclaration(ownTypeInstance);
 			Variable ownToken = GetField(typeClassDeclaration, ownTypeInstance, 0);
 			ClassDeclaration* enumType = _classes.GetClassWithToken(ownToken.Int32);
-			ASSERT(enumType->IsEnum());
+			ASSERT(enumType->IsEnum(), "RT_TYPE_E1");
 			// Number of static fields computed as total static size divided by underlying type size
 			int numberOfValues = enumType->ClassStaticSize / enumType->ClassDynamicSize;
 			AllocateArrayInstance((int)KnownTypeTokens::Uint64, numberOfValues, result);
@@ -2503,7 +2503,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 		}
 	case NativeMethod::TypeIsEnum:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 	{
 		// Find out whether the current type inherits (directly) from System.Enum
 			Variable ownTypeInstance = args[0]; // A type instance
@@ -2516,7 +2516,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			if (result.Boolean)
 			{
 				// Secondary verification
-				ASSERT(t1->IsEnum());
+				ASSERT(t1->IsEnum(), "RT_TYPE_E2");
 			}
 			break;
 	}
@@ -2529,10 +2529,9 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 		break;
 	case NativeMethod::TypeGetGenericArguments:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		{
 			// Get the type of the generic argument as an array. It is similar to GetGenericTypeDefinition, but returns the other part (for a single generic argument)
-			ASSERT(args.size() == 1);
 			Variable type1 = args[0]; // type1. An (instantiated) generic type
 			ClassDeclaration* ty = _classes.GetClassWithToken(KnownTypeTokens::Type);
 			Variable tok1 = GetField(ty, type1, 0);
@@ -2590,33 +2589,33 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::BitOperationsLog2SoftwareFallback:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Int32 = Log2_32(args[0].Uint32);
 		result.Type = VariableKind::Int32;
 		}
 		break;
 	case NativeMethod::BitOperationsTrailingZeroCount:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Int32 = TrailingZeroCount(args[0].Uint32);
 		result.Type = VariableKind::Int32;
 		}
 		break;
 	case NativeMethod::BitConverterDoubleToUInt64Bits:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.setSize(8);
 		result.Type = VariableKind::Uint64;
 		result.Uint64 = args[0].Uint64; // Using the wrong union element here does what we want: A binary conversion from double to int64
 		break;
 	case NativeMethod::BitConverterDoubleToInt64Bits:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.setSize(8);
 		result.Type = VariableKind::Int64;
 		result.Int64 = args[0].Int64; // Using the wrong union element here does what we want: A binary conversion from double to int64
 		break;
 	case NativeMethod::UInt64BitsToDouble:
 	case NativeMethod::BitConverterInt64BitsToDouble:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.setSize(8);
 		result.Type = VariableKind::Double;
 		result.Double = args[0].Double;
@@ -2654,18 +2653,18 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::UnsafeAreSame:
 		{
 			// This compares two references for equality
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		Variable a = args[0];
 		Variable b = args[1];
-		ASSERT(a.Type == VariableKind::AddressOfVariable);
-		ASSERT(b.Type == VariableKind::AddressOfVariable);
+		ASSERT(a.Type == VariableKind::AddressOfVariable, "ADDR_1");
+		ASSERT(b.Type == VariableKind::AddressOfVariable, "ADDR_2");
 		result.Type = VariableKind::Boolean;
 		result.Boolean = a.Object == b.Object;
 		}
 		break;
 	case NativeMethod::UnsafeAddByteOffset:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		result.Type = VariableKind::AddressOfVariable;
 		result.Object = AddBytes(args[0].Object, args[1].Int32);
 		result.setSize(4);
@@ -2673,7 +2672,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::UnsafeCopyBlockUnaligned:
 	{
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		Variable& dst = args[0];
 		Variable& src = args[1];
 		Variable& len = args[2];
@@ -2683,7 +2682,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::StringCompareTo:
 		{
 			// Actually, this should do a language-dependent sorting. But for now, the implementation is the same as CompareStringsOrdinal
-			ASSERT(args.size() == 2);
+			ASSERT_ARGS(args, 2, method);
 			result.Type = VariableKind::Int32;
 			result.setSize(4);
 			Variable& a = args[0];
@@ -2696,8 +2695,8 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			{
 				ClassDeclaration* ty1 = GetClassDeclaration(a);
 				ClassDeclaration* ty2 = GetClassDeclaration(b);
-				ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String);
-				ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String);
+				ASSERT(ty1->ClassToken == (int)KnownTypeTokens::String, "RT_STRING_C1");
+				ASSERT(ty2->ClassToken == (int)KnownTypeTokens::String, "RT_STRING_C2");
 				int len1 = *AddBytes((int*)a.Object, 4);
 				int len2 = *AddBytes((int*)b.Object, 4);
 				int min = MIN(len1, len2);
@@ -2731,7 +2730,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::UnsafeAs2:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 			if (args[0].fieldSize() > 8)
 			{
 				// LargeValueStructs not supported here (TODO)
@@ -2742,14 +2741,14 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::UnsafeAsPointer:
 		{
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			result = args[0];
 			result.Type = VariableKind::Uint32;
 		}
 		break;
 	case NativeMethod::ByReferenceCtor:
 		{
-		ASSERT(args.size() == 2); // this + object
+		ASSERT_ARGS(args, 2, method); // this + object
 		Variable ptr = args[1];
 		Variable& self = args[0]; // ByReference<T> is a struct, therefore the "this" pointer is a reference
 		// *((int*)self.Object) = ptr.Uint32;
@@ -2763,7 +2762,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ByReferenceValue:
 		{
-		ASSERT(args.size() == 1); // property getter
+		ASSERT_ARGS(args, 1, method); // property getter
 		Variable& self = args[0]; // ByReference<T> is a struct, therefore the "this" pointer is a reference
 		//result.Uint32 = *((int*)self.Object);
 		//result.Type = VariableKind::AddressOfVariable;
@@ -2775,7 +2774,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 		break;
 	case NativeMethod::StringGetElem:
-		ASSERT(args.size() == 2); // indexer
+		ASSERT_ARGS(args, 2, method); // indexer
 	{
 		Variable& self = args[0];
 		Variable& index = args[1];
@@ -2808,19 +2807,19 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	break;
 	case NativeMethod::StringGetHashCode:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Int32;
 		result.Int32 = (int32_t)args[0].Object; // Use memory address as hash code
 		break;
 	case NativeMethod::StringToString:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Object;
 		result.Object = args[0].Object; // Return "this"
 		break;
 	case NativeMethod::StringFastAllocateString:
 		{
 		// This creates an instance of System.String with the indicated length but no content.
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& lengthVar = args[0];
 		int length = lengthVar.Int32;
 		result.Type = VariableKind::Object;
@@ -2836,7 +2835,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 	break;
 	case NativeMethod::StringGetPinnableReference:
-		ASSERT(args.size() == 1); // this
+		ASSERT_ARGS(args, 1, method); // this
 		{
 			Variable& self = args[0];
 			result.setSize(sizeof(void*));
@@ -2846,10 +2845,10 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::DelegateInternalEqualTypes:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		// Both parameters should be of the same delegate type.
-		ASSERT(args[0].Type == VariableKind::Object);
-		ASSERT(args[1].Type == VariableKind::Object);
+		ASSERT(args[0].Type == VariableKind::Object, "RT_DEL_1");
+		ASSERT(args[1].Type == VariableKind::Object, "RT_DEL_2");
 		ClassDeclaration* cls1 = GetClassDeclaration(args[0]);
 		ClassDeclaration* cls2 = GetClassDeclaration(args[1]);
 		result.Type = VariableKind::Boolean;
@@ -2859,7 +2858,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::DelegateInternalEqualMethodHandle:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		ClassDeclaration* cls1 = GetClassDeclaration(args[0]);
 		ClassDeclaration* cls2 = GetClassDeclaration(args[1]);
 		Variable methodPtr1 = GetField(cls1, args[0], 2);
@@ -2873,15 +2872,15 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 				break;
 			}
 
-			ASSERT(methodPtr1.Type == VariableKind::FunctionPointer);
-			ASSERT(methodPtr2.Type == VariableKind::FunctionPointer);
+			ASSERT(methodPtr1.Type == VariableKind::FunctionPointer, "RT_FN1");
+			ASSERT(methodPtr2.Type == VariableKind::FunctionPointer, "RT_FN2");
 			result.Boolean = methodPtr1.Object == methodPtr2.Object;
 	}
 	break;
 	case NativeMethod::RuntimeHelpersGetHashCode:
 	case NativeMethod::ObjectGetHashCode:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Int32;
 		result.setSize(4);
 		// The memory address serves pretty fine as general hash code, as long as we don't have a heap compacting GC.
@@ -2890,9 +2889,9 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::MemoryMarshalGetArrayDataReference:
 	{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& array = args[0];
-		ASSERT(array.Type == VariableKind::ReferenceArray || array.Type == VariableKind::ValueArray || array.Type == VariableKind::Object);
+		ASSERT(array.Type == VariableKind::ReferenceArray || array.Type == VariableKind::ValueArray || array.Type == VariableKind::Object, "RT_TYPE_M1");
 		result.Object = AddBytes(array.Object, ARRAY_DATA_START);
 		result.Type = VariableKind::AddressOfVariable;
 		result.setSize(sizeof(void*));
@@ -2900,7 +2899,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	break;
 	case NativeMethod::MarshalCopyReverse4: // Marshal.Copy(byte[] source, int startIndex, IntPtr destination, int length)
 	{
-		ASSERT(args.size() == 4);
+		ASSERT_ARGS(args, 4, method);
 		Variable& array = args[0];
 		byte* src = AddBytes((byte*)array.Object, ARRAY_DATA_START);
 		src += args[1].Int32;
@@ -2911,7 +2910,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	break;
 	case NativeMethod::BufferZeroMemory:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		result.Type = VariableKind::Void;
 		Variable& b = args[0];
 		Variable& length = args[1];
@@ -2920,7 +2919,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::BufferMemmove:
 		{
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		result.Type = VariableKind::Void;
 		Variable& dest = args[0];
 		Variable& src = args[1];
@@ -2930,14 +2929,14 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ArrayCopyCore:
 		{
-		ASSERT(args.size() == 5);
+		ASSERT_ARGS(args, 5, method);
 		Variable& srcArray = args[0];
 		Variable& srcIndex = args[1];
 		Variable& dstArray = args[2];
 		Variable& dstIndex = args[3];
 		Variable& length = args[4];
-		ASSERT(srcArray.Type == VariableKind::ReferenceArray || srcArray.Type == VariableKind::ValueArray);
-		ASSERT(dstArray.Type == VariableKind::ReferenceArray || dstArray.Type == VariableKind::ValueArray);
+		ASSERT(srcArray.Type == VariableKind::ReferenceArray || srcArray.Type == VariableKind::ValueArray, "RT_ARR_1");
+		ASSERT(dstArray.Type == VariableKind::ReferenceArray || dstArray.Type == VariableKind::ValueArray, "RT_ARR_2");
 		ClassDeclaration* srcType = GetClassWithToken(*AddBytes((int32_t*)srcArray.Object, 8));
 		ClassDeclaration* dstType = GetClassWithToken(*AddBytes((int32_t*)srcArray.Object, 8));
 			if (srcType != dstType)
@@ -2964,7 +2963,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ArrayInternalCreate:
 	{
-		ASSERT(args.size() == 4);
+		ASSERT_ARGS(args, 4, method);
 		Variable& ownTypeInstance = args[0];
 		Variable& dimensions = args[1];
 		Variable& pLengths = args[2];
@@ -2986,7 +2985,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	case NativeMethod::ArrayGetLength:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& value1 = args[0];
 		uint32_t* data = (uint32_t*)value1.Object;
 		int32_t size = *(data + 1);
@@ -2996,7 +2995,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 	case NativeMethod::ArrayClear:
 		{
-		ASSERT(args.size() == 3); // Array, startindex, length
+		ASSERT_ARGS(args, 3, method); // Array, startindex, length
 		Variable& value1 = args[0];
 		uint32_t* data = (uint32_t*)value1.Object;
 		int32_t token = *(data + 2); // Array type token
@@ -3023,7 +3022,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::ArrayGetValue1:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		Variable& value1 = args[0];
 		if (value1.Object == nullptr)
 		{
@@ -3061,7 +3060,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::ArraySetValue1:
 	{
 		// This operation is (for single-dimensional arrays) equivalent to STELEM with the given target type
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		Variable& value1 = args[0];
 		if (value1.Object == nullptr)
 		{
@@ -3142,7 +3141,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::EnumToUInt64:
 		{
 		// The this pointer is passed via a double indirection to this method!
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Int64;
 		result.setSize(8);
 		ClassDeclaration** reference = (ClassDeclaration**)args[0].Object;
@@ -3164,7 +3163,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 	case NativeMethod::EnumInternalBoxEnum:
 		{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		ClassDeclaration* ty = GetTypeFromTypeInstance(args[0]);
 		Variable& value = args[1];
 		result = Box(value, ty);
@@ -3172,7 +3171,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::EnumGetHashCode:
 	{
-			ASSERT(args.size() == 1);
+			ASSERT_ARGS(args, 1, method);
 			result.Type = VariableKind::Int32;
 			// The this pointer is passed via a double indirection to this method!
 			ClassDeclaration** reference = (ClassDeclaration**)args[0].Object;
@@ -3182,23 +3181,23 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 			break;
 	}
 	case NativeMethod::GcCollect:
-		ASSERT(args.size() == 4); // Has 4 args, but they mostly are for optimization purposes
+		ASSERT_ARGS(args, 4, method); // Has 4 args, but they mostly are for optimization purposes
 		_gc.Collect(args[0].Int32, this);
 		result.Type = VariableKind::Void;
 		break;
 	case NativeMethod::GcGetTotalAllocatedBytes:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Int64;
 		result.Int64 = _gc.TotalAllocatedBytes();
 		break;
 	case NativeMethod::GcGetTotalMemory:
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		result.Type = VariableKind::Int64;
 		result.Int64 = _gc.TotalMemory();
 		break;
 	case NativeMethod::GcTotalAvailableMemoryBytes:
 		{
-		ASSERT(args.size() == 0);
+		ASSERT_ARGS(args, 0, method);
 		result.Type = VariableKind::Int64;
 		result.Int64 = _gc.AllocatedMemory();
 		break;
@@ -3206,7 +3205,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	case NativeMethod::StringCtorCharCount:
 	{
 		// This is a ctor. The actual implementation is in the NEWOBJ instruction, therefore this just needs to copy the reference back
-		ASSERT(args.size() == 3);
+		ASSERT_ARGS(args, 3, method);
 		result = args[0];
 		break;
 	}
@@ -3275,7 +3274,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	case NativeMethod::MathPow:
 	{
-		ASSERT(args.size() == 2);
+		ASSERT_ARGS(args, 2, method);
 		result = args[0]; // Copy input type
 		result.Double = pow(args[0].Double, args[1].Double);
 		break;
@@ -3294,7 +3293,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 	}
 	case NativeMethod::DebugWriteLine:
 		{
-		ASSERT(args.size() == 1);
+		ASSERT_ARGS(args, 1, method);
 		Variable& string = args.at(0);
 		char* cstr = GetAsUtf8String(string);
 		Firmata.sendString(STRING_DATA, cstr);
@@ -3303,7 +3302,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		}
 	case NativeMethod::Kernel32_WideCharToMultiByte:
 		{
-		ASSERT(args.size() == 8);
+		ASSERT_ARGS(args, 8, method);
 		result.Type = VariableKind::Int32;
 			// Arg0 is the destination code page
 		int codePage = args[0].Int32;
@@ -3355,7 +3354,7 @@ bool FirmataIlExecutor::ExecuteSpecialMethod(ThreadState* currentThread, Executi
 		break;
 	case NativeMethod::Kernel32_WriteConsole:
 		{
-		ASSERT(args.size() == 5);
+		ASSERT_ARGS(args, 5, method);
 		result.Type = VariableKind::Boolean;
 		result.Boolean = true; // This cannot really fail
 		SetLastError(ERROR_SUCCESS);
@@ -3524,7 +3523,7 @@ Variable FirmataIlExecutor::GetField(ClassDeclaration* type, const Variable& ins
 			// TODO: This is just wrong: Use a reference instead (not critical as long as this method is only
 			// used from native methods, where the actual size of the arguments is known)
 			Variable v;
-			ASSERT(handle->fieldSize() <= 8);
+			ASSERT(handle->fieldSize() <= 8, "GetField_Size");
 			memcpy(&v.Object, (o + offset), handle->fieldSize());
 			v.Type = handle->Type;
 			return v;
@@ -3835,7 +3834,7 @@ void FirmataIlExecutor::InitStaticVector()
 				memcpy(&var->Int64, &initValue->DataStart, sizeToUse);
 			}
 			currentPtr = AddBytes(currentPtr, 4 + 4 + sizeToUse);
-			ASSERT(currentPtr <= _staticVector + _staticVectorMemorySize);
+			ASSERT(currentPtr <= _staticVector + _staticVectorMemorySize, "StaticVectorInit1");
 		}
 	}
 }
@@ -3978,7 +3977,7 @@ void FirmataIlExecutor::Stsfld(ThreadState* thread, int token, Variable& value)
 	}
 	else
 	{
-		ASSERT(value.fieldSize() <= ptr->fieldSize());
+		ASSERT(value.fieldSize() <= ptr->fieldSize(), "Stsfld_1");
 		memcpy(&ptr->Int32, &value.Int32, ptr->fieldSize());
 	}
 }
@@ -5888,7 +5887,7 @@ uint16_t FirmataIlExecutor::CreateExceptionFrame(ExecutionState* currentFrame, u
 {
 	ExceptionFrame* frame = new ExceptionFrame(c);
 	frame->ContinuationPc = continuationAddress;
-	ASSERT(exception.Type == VariableKind::Object || exception.Type == VariableKind::Void);
+	ASSERT(exception.Type == VariableKind::Object || exception.Type == VariableKind::Void, "CreateExceptionFrame");
 	frame->Exception = exception;
 	uint16_t newPc = c->HandlerOffset;
 	if (currentFrame->_exceptionFrame == nullptr)
@@ -6007,10 +6006,10 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
     			// This very special function is directly handled here, because it needs to manipulate the call stack, so that
     			// we can execute the called ctor.
     			// This function has 6 arguments, but most of them are irrelevant or we don't care.
-				ASSERT(arguments->size() == 6);
+				ASSERT_ARGS(*arguments, 6, specialMethod);
 				Variable& type = arguments->at(0);
 				ClassDeclaration* typeOfType = GetClassDeclaration(type);
-				ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type);
+				ASSERT(typeOfType->ClassToken == (int)KnownTypeTokens::Type, "SP_TK_1");
 				int typeToken = GetField(typeOfType, type, 0).Int32;
 				ClassDeclaration* typeToCreate = GetClassWithToken(typeToken);
     			if (typeToCreate->IsValueType())
@@ -6019,7 +6018,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
     			}
     			
 				Variable& argsArray = arguments->at(3);
-				ASSERT(argsArray.Type == VariableKind::ReferenceArray);
+				ASSERT(argsArray.Type == VariableKind::ReferenceArray, "SP_TY_1");
 				int* data = (int*)argsArray.Object;
 				int argsLen = *(data + 1);
 				int idx = 0;
@@ -6682,7 +6681,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 			{
 				Variable& methodTarget = stack->top();
 				stack->pop();
-				ASSERT(methodTarget.Type == VariableKind::FunctionPointer);
+				ASSERT(methodTarget.Type == VariableKind::FunctionPointer, "SIG_FN_1");
 				target = (MethodBody*)methodTarget.Object;
 			}
 			[[fallthrough]];
@@ -6731,7 +6730,7 @@ MethodState FirmataIlExecutor::ExecuteIlCode(ThreadState *threadState, Variable*
 					// TODO: Add test that checks the different cases
 					if (constrainedTypeToken != 0)
 					{
-						ASSERT(instance.Type == VariableKind::AddressOfVariable);
+						ASSERT(instance.Type == VariableKind::AddressOfVariable, "CALLVIRT_VAR1");
 						// The reference points to an instance of type constrainedTypeToken
 						cls = _classes.GetClassWithToken(constrainedTypeToken);
 						if (cls->IsValueType())

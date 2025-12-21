@@ -3,19 +3,11 @@
 #include "Variable.h"
 #include "VariableVector.h"
 #include "VariableDynamicStack.h"
+#include "interface/NativeMethod.h"
 #ifdef ESP32
 #include <esp_log.h>
 #endif
 const char* SELFTTEST_TAG = "SELFTEST";
-void ASSERT(bool x)
-{
-	if (!x)
-	{
-		ESP_LOGE(SELFTTEST_TAG, "Assertion failed");
-		delay(1000);
-		throw stdSimple::ExecutionEngineException("Assertion failed");
-	}
-}
 
 void ASSERT(bool condition, const char* message)
 {
@@ -24,6 +16,15 @@ void ASSERT(bool condition, const char* message)
 		ESP_LOGE(SELFTTEST_TAG, "%s", message);
 		delay(1000);
 		throw stdSimple::ExecutionEngineException(message);
+	}
+}
+
+void ASSERT_ARGS(const VariableVector& arglist, int i, NativeMethod functionNumber)
+{
+	if (arglist.size() != i)
+	{
+		Firmata.sendStringf(F("Incorrect number of args for function 0x%x: %d instead of %d"), functionNumber, i, arglist.size());
+		throw stdSimple::ExecutionEngineException("Argument count mismatch");
 	}
 }
 

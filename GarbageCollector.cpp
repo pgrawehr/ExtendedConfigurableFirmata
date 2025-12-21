@@ -21,11 +21,11 @@ void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preall
 	memset(third, 3, 40);
 
 	// This line is machine-specific, but currently helps in verifying the size of the BlockHd structure
-	ASSERT(ALLOCATE_ALLIGNMENT == 4);
+	ASSERT(ALLOCATE_ALLIGNMENT == 4, "GC_ALLIGN_FAIL");
 	ValidateBlocks();
 	first = second = third = nullptr;
 	int collected = Collect(0, referenceContainer);
-	ASSERT(collected > 90);
+	ASSERT(collected > 90, "GC_MEM_FULL");
 	ValidateBlocks();
 	Clear(true, false);
 }
@@ -144,11 +144,11 @@ byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly, FirmataIlE
 	_bytesAllocatedSinceLastGc += size;
 	_numAllocsSinceLastGc++;
 
-	ASSERT(((uint32_t)ret % ALLOCATE_ALLIGNMENT) == 0);
+	ASSERT(((uint32_t)ret % ALLOCATE_ALLIGNMENT) == 0, "GC_ALIGN");
 
 	BlockHd* hd = BlockHd::Cast(ret - (int32_t)ALLOCATE_ALLIGNMENT);
-	ASSERT(!hd->IsFree());
-	ASSERT(hd->Marker == BLOCK_MARKER);
+	ASSERT(!hd->IsFree(), "GC_NOTFREE");
+	ASSERT(hd->Marker == BLOCK_MARKER, "GC_NOTBLOCK");
 	
 	return ret;
 }
@@ -279,7 +279,7 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		// There's room at the end of the block. Just use this.
 		hd = block.Tail;
 		uint16_t availableToEnd = hd->BlockSize;
-		ASSERT(hd->flags == BlockFlags::Free && (availableToEnd >= realSizeToReserve));
+		ASSERT(hd->flags == BlockFlags::Free && (availableToEnd >= realSizeToReserve), "GC_BLOCK_ISSUE");
 		hd->BlockSize = (uint16_t)realSizeToReserve;
 		hd->flags = BlockFlags::Used;
 		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
