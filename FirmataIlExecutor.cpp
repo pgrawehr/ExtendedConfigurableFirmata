@@ -198,20 +198,12 @@ void FirmataIlExecutor::Init()
 		_lowLevelLibraries.push_back(fat);
 #endif
 	}
-
-	size_t memToPreallocate = MIN(freeMemory() / 2, 128 * 1024);
 	
 	void* classes, *methods, *constants, *stringHeap, *clauses;
 	int* specialTokens;
 	_flashMemoryManager->Init(classes, methods, constants, stringHeap, specialTokens, clauses, _startupToken, _startupFlags, _staticVectorMemorySize);
 
-	if (classes == nullptr)
-	{
-		// If the flash is empty, don't preallocate, as we need the RAM for the upload.
-		memToPreallocate = 0;
-	}
-
-	_gc.Init(this, memToPreallocate);
+	_gc.Init(this);
 	_classes.ReadListFromFlash(classes);
 	_methods.ReadListFromFlash(methods);
 	_constants.ReadListFromFlash(constants);

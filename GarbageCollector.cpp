@@ -5,65 +5,33 @@
 #include "SelfTest.h"
 #include "FreeMemory.h"
 
-void GarbageCollector::Init(FirmataIlExecutor* referenceContainer, size_t preallocateSize)
+void GarbageCollector::Init(FirmataIlExecutor* referenceContainer)
 {
-	_largestFreeBlock = 0;
-	while (_totalGcMemorySize < preallocateSize)
-	{
-		Allocate(0, true, nullptr);
-	}
-	// this performs a GC self-test
-	byte* first = Allocate(20, nullptr);
-	byte* second = Allocate(31, nullptr);
-	byte* third = Allocate(40, nullptr);
-	memset(first, 1, 20);
-	memset(second, 2, 31);
-	memset(third, 3, 40);
-
-	// This line is machine-specific, but currently helps in verifying the size of the BlockHd structure
-	ASSERT(ALLOCATE_ALLIGNMENT == 4, "GC_ALLIGN_FAIL");
 	ValidateBlocks();
-	first = second = third = nullptr;
-	int collected = Collect(0, referenceContainer);
-	ASSERT(collected > 90, "GC_MEM_FULL");
-	ValidateBlocks();
-	Clear(true, false);
+	Clear(false, false);
 }
 
 byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceContainer)
 {
-	return Allocate(size, false, referenceContainer);
-}
-
-/// <summary>
-/// Allocate a GC block of the given size
-/// </summary>
-/// <param name="size">Size of the memory block required</param>
-/// <param name="preallocateOnly">True to reserve the memory only (the size will be ignored)</param>
-/// <returns></returns>
-byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly, FirmataIlExecutor* referenceContainer)
-{
 	byte* ret = nullptr;
 	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
-	if (!preallocateOnly)
+	
+	for (size_t i = 0; i < _gcBlocks.size(); i++)
 	{
-		for (size_t i = 0; i < _gcBlocks.size(); i++)
+		GcBlock& b = _gcBlocks[i];
+		ret = TryAllocateFromBlock(b, size);
+		if (ret != nullptr)
 		{
-			GcBlock& b = _gcBlocks[i];
-			ret = TryAllocateFromBlock(b, size);
-			if (ret != nullptr)
+			// The last of our current blocks is getting full. Increase GC efforts
+			if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
 			{
-				// The last of our current blocks is getting full. Increase GC efforts
-				if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
-				{
-					_gcPressureHigh = true;
-				}
-				break;
+				_gcPressureHigh = true;
 			}
+			break;
 		}
 	}
 
-	if (ret == nullptr && referenceContainer != nullptr && preallocateOnly == false)
+	if (ret == nullptr && referenceContainer != nullptr)
 	{
 		// Very expensive, but is probably a good idea at this point, before we try to add a new block
 		Collect(0, referenceContainer);
@@ -86,7 +54,7 @@ byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly, FirmataIlE
 
 	if (ret == nullptr)
 	{
-		Firmata.sendStringf(F("Unable to allocate a managed block of size %d. Largest free block size %d"), size, _largestFreeBlock);
+		Firmata.sendStringf(F("Unable to allocate a managed block of size %d."), size);
 		// Allocate a new block
 		_gcPressureHigh = true;
 		uint32_t sizeToAllocate = MAX(DEFAULT_GC_BLOCK_SIZE, size + ALLOCATE_ALLIGNMENT);
@@ -116,19 +84,15 @@ byte* GarbageCollector::Allocate(uint32_t size, bool preallocateOnly, FirmataIlE
 		block.BlockStart = (BlockHd*)newBlockPtr;
 		block.FreeBytesInBlock = (uint16_t)(sizeToAllocate - ALLOCATE_ALLIGNMENT);
 		block.Tail = block.BlockStart;
-		block.Preallocated = preallocateOnly;
+		block.Preallocated = false;
 		BlockHd::SetBlockAtAddress(newBlockPtr, block.FreeBytesInBlock, BlockFlags::Free);
 		
 		_gcBlocks.push_back(block);
 		_totalGcMemorySize += sizeToAllocate;
 
 		PrintStatistics();
-		if (preallocateOnly)
-		{
-			return nullptr;
-		}
 
-		ret = TryAllocateFromBlock(_gcBlocks.back(), size);
+		ret = TryAllocateFromBlock(block, size);
 	}
 
 	if (ret == nullptr)
@@ -496,7 +460,6 @@ int GarbageCollector::ComputeFreeBlockSizes()
 		_gcBlocks[idx].FreeBytesInBlock = (uint16_t)blockFree;
 	}
 
-	_largestFreeBlock = largestFreeBlock;
 	_currentMemoryUsage = totalMemoryInUse;
 	if (totalMemoryInUse > _maxMemoryUsage)
 	{

@@ -102,13 +102,11 @@ public:
 		_numAllocsSinceLastGc = 0;
 		_bytesAllocatedSinceLastGc = 0;
 		_totalGcMemorySize = 0;
-		_largestFreeBlock = 0;
 		_gcPressureHigh = false;
 	}
 
 	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
 	byte* Allocate(uint32_t size, FirmataIlExecutor* referenceContainer);
-	byte* Allocate(uint32_t size, bool preallocateOnly, FirmataIlExecutor* referenceContainer);
 	void ValidateBlock(GcBlock& block);
 	void ValidateBlocks();
 	byte* AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd);
@@ -125,7 +123,7 @@ public:
 		return _gcPressureHigh;
 	}
 
-	void Init(FirmataIlExecutor* referenceContainer, size_t preallocateSize);
+	void Init(FirmataIlExecutor* referenceContainer);
 	int64_t TotalAllocatedBytes() const
 	{
 		return _totalAllocSize;
@@ -155,7 +153,6 @@ private:
 	int _numAllocsSinceLastGc;
 	int _bytesAllocatedSinceLastGc;
 	size_t _totalGcMemorySize;
-	size_t _largestFreeBlock;
 	bool _gcPressureHigh;
 	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
 };
