@@ -87,12 +87,12 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 		block.Preallocated = false;
 		BlockHd::SetBlockAtAddress(newBlockPtr, block.FreeBytesInBlock, BlockFlags::Free);
 		
+		// Do this first, block is a stack object here
+		ret = TryAllocateFromBlock(block, size);
 		_gcBlocks.push_back(block);
 		_totalGcMemorySize += sizeToAllocate;
 
 		PrintStatistics();
-
-		ret = TryAllocateFromBlock(block, size);
 	}
 
 	if (ret == nullptr)
