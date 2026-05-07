@@ -16,14 +16,14 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 	byte* ret = nullptr;
 	TRACE(Firmata.sendStringf(F("Allocating %d bytes"), size));
 	
-	for (size_t i = 0; i < _gcBlocks.size(); i++)
+	GcBlock* currentBlock = _gcBlockHead;
+	while (currentBlock != nullptr)
 	{
-		GcBlock& b = _gcBlocks[i];
-		ret = TryAllocateFromBlock(b, size);
+		ret = TryAllocateFromBlock(currentBlock, size);
 		if (ret != nullptr)
 		{
 			// The last of our current blocks is getting full. Increase GC efforts
-			if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+			if (currentBlock->Next == nullptr && currentBlock->FreeBytesInBlock < 512)
 			{
 				_gcPressureHigh = true;
 			}
@@ -36,14 +36,14 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 		// Very expensive, but is probably a good idea at this point, before we try to add a new block
 		Collect(0, referenceContainer);
 		ComputeFreeBlockSizes();
-		for (size_t i = 0; i < _gcBlocks.size(); i++)
+		currentBlock = _gcBlockHead;
+		while (currentBlock != nullptr)
 		{
-			GcBlock& b = _gcBlocks[i];
-			ret = TryAllocateFromBlock(b, size);
+			ret = TryAllocateFromBlock(currentBlock, size);
 			if (ret != nullptr)
 			{
 				// The last of our current blocks is getting full. Increase GC efforts
-				if (i == _gcBlocks.size() - 1 && b.FreeBytesInBlock < 512)
+				if (currentBlock->Next == nullptr && currentBlock->FreeBytesInBlock < 512)
 				{
 					_gcPressureHigh = true;
 				}
@@ -79,18 +79,34 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 
 		Firmata.sendStringf(F("Allocated new GC memory block at 0x%lx, size %ld"), newBlockPtr, sizeToAllocate);
 		
-		GcBlock block;
-		block.BlockSize = sizeToAllocate;
-		block.BlockStart = (BlockHd*)newBlockPtr;
-		block.FreeBytesInBlock = (uint16_t)(sizeToAllocate - ALLOCATE_ALLIGNMENT);
-		block.Tail = block.BlockStart;
-		block.Preallocated = false;
-		BlockHd::SetBlockAtAddress(newBlockPtr, block.FreeBytesInBlock, BlockFlags::Free);
-		
-		// Do this first, block is a stack object here
-		ret = TryAllocateFromBlock(block, size);
-		_gcBlocks.push_back(block);
+		GcBlock* block = (GcBlock*)mallocEx(sizeof(GcBlock));
+		if (block == nullptr)
+		{
+			free(newBlockPtr);
+			OutOfMemoryException::Throw("Out of memory for memory management");
+		}
+		block->BlockSize = sizeToAllocate;
+		block->BlockStart = (BlockHd*)newBlockPtr;
+		block->FreeBytesInBlock = (uint16_t)(sizeToAllocate - ALLOCATE_ALLIGNMENT);
+		block->Tail = block->BlockStart;
+		block->Next = nullptr;
+		BlockHd::SetBlockAtAddress(newBlockPtr, block->FreeBytesInBlock, BlockFlags::Free);
+
 		_totalGcMemorySize += sizeToAllocate;
+		if (_gcBlockHead == nullptr)
+		{
+			_gcBlockHead = block;
+		}
+		else
+		{
+			GcBlock* current = _gcBlockHead;
+			while (current->Next != nullptr)
+			{
+				current = current->Next;
+			}
+			current->Next = block;
+		}
+		ret = TryAllocateFromBlock(block, size);
 
 		PrintStatistics();
 	}
@@ -117,11 +133,11 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 	return ret;
 }
 
-void GarbageCollector::ValidateBlock(GcBlock& block)
+void GarbageCollector::ValidateBlock(GcBlock* block)
 {
-	int blockLen = block.BlockSize;
+	int blockLen = block->BlockSize;
 	int offset = 0;
-	BlockHd* hd = block.BlockStart;
+	BlockHd* hd = block->BlockStart;
 	int free = 0;
 	int used = 0;
 	while (offset < blockLen)
@@ -163,27 +179,28 @@ void GarbageCollector::ValidateBlock(GcBlock& block)
 		throw ExecutionEngineException("Memory list inconsistent");
 	}
 
-	if (free != block.FreeBytesInBlock)
+	if (free != block->FreeBytesInBlock)
 	{
-		Firmata.sendStringf(F("Inconsistent free memory size. Expected %d bytes free, but actually %d bytes available"), block.FreeBytesInBlock, free);
+		Firmata.sendStringf(F("Inconsistent free memory size. Expected %d bytes free, but actually %d bytes available"), block->FreeBytesInBlock, free);
 	}
 
-	if (free + used != block.BlockSize)
+	if (free + used != block->BlockSize)
 	{
-		Firmata.sendStringf(F("Inconsistent memory allocation sizes. Free bytes %d, used bytes (including headers) %d. Sum is %d but should be %d"), free, used, free + used, block.BlockSize);
+		Firmata.sendStringf(F("Inconsistent memory allocation sizes. Free bytes %d, used bytes (including headers) %d. Sum is %d but should be %d"), free, used, free + used, block->BlockSize);
 	}
 }
 
 void GarbageCollector::ValidateBlocks()
 {
-	for (size_t i = 0; i < _gcBlocks.size(); i++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		GcBlock& block = _gcBlocks[i];
-		ValidateBlock(block);
+		ValidateBlock(current);
+		current = current->Next;
 	}
 }
 
-byte* GarbageCollector::AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd)
+byte* GarbageCollector::AllocateBlock(GcBlock* block, uint32_t realSizeToReserve, BlockHd* hd)
 {
 	byte* ret;
 	uint16_t thisBlockSize = hd->BlockSize;
@@ -195,34 +212,29 @@ byte* GarbageCollector::AllocateBlock(GcBlock& block, uint32_t realSizeToReserve
 		hd->BlockSize = realSizeToReserve;
 		hd->flags = BlockFlags::Used;
 		hd = AddBytes(hd, ALLOCATE_ALLIGNMENT + realSizeToReserve);
-		if (hd < block.BlockStart + block.BlockSize)
+		if (hd < block->BlockStart + block->BlockSize)
 		{
 			BlockHd::SetBlockAtAddress(hd, thisBlockSize - ALLOCATE_ALLIGNMENT - realSizeToReserve, BlockFlags::Free);
 		}
 				
-		block.FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
+		block->FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
 	}
 	else
 	{
 		// Take the whole block (it's exactly the size we need)
 		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
 		hd->flags = BlockFlags::Used; // Reserve the whole block
-		block.FreeBytesInBlock -= thisBlockSize;
+		block->FreeBytesInBlock -= thisBlockSize;
 	}
 
 	return ret;
 }
 
-byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
+byte* GarbageCollector::TryAllocateFromBlock(GcBlock* block, uint32_t size)
 {
-	if (size == 0)
-	{
-		// Allocating empty blocks always returns the same address (that's probably never going to happen, since
-		// every object at least has a vtable)
-		return (byte*)block.BlockStart;
-	}
+	ASSERT(size != 0, "GC_ZERO_ALLOC");
 
-	if (size > block.FreeBytesInBlock)
+	if (size > block->FreeBytesInBlock)
 	{
 #if GC_DEBUG_LEVEL >= 2
 		ValidateBlocks();
@@ -238,10 +250,10 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		realSizeToReserve = (realSizeToReserve + ALLOCATE_ALLIGNMENT) & ~(ALLOCATE_ALLIGNMENT - 1);
 	}
 	// The + ALLOCATE_ALLIGNMENT here is so that we don't create a zero-length block at the end
-	if (AddBytes(block.Tail, realSizeToReserve + ALLOCATE_ALLIGNMENT) < AddBytes(block.BlockStart, block.BlockSize))
+	if (AddBytes(block->Tail, realSizeToReserve + ALLOCATE_ALLIGNMENT) < AddBytes(block->BlockStart, block->BlockSize))
 	{
 		// There's room at the end of the block. Just use this.
-		hd = block.Tail;
+		hd = block->Tail;
 		uint16_t availableToEnd = hd->BlockSize;
 		ASSERT(hd->flags == BlockFlags::Free && (availableToEnd >= realSizeToReserve), "GC_BLOCK_ISSUE");
 		hd->BlockSize = (uint16_t)realSizeToReserve;
@@ -249,17 +261,17 @@ byte* GarbageCollector::TryAllocateFromBlock(GcBlock& block, uint32_t size)
 		ret = (byte*)AddBytes(hd, ALLOCATE_ALLIGNMENT);
 		hd = AddBytes(hd, ALLOCATE_ALLIGNMENT + realSizeToReserve);
 		BlockHd::SetBlockAtAddress(hd, availableToEnd - (int)realSizeToReserve - ALLOCATE_ALLIGNMENT, BlockFlags::Free); // It's free memory
-		block.Tail = hd;
-		block.FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
+		block->Tail = hd;
+		block->FreeBytesInBlock -= realSizeToReserve + ALLOCATE_ALLIGNMENT;
 		return ret;
 	}
 
 	// If we get here, the block has been filled for the first time, therefore move it's tail to the end
-	block.Tail = block.BlockStart + block.BlockSize;
+	block->Tail = block->BlockStart + block->BlockSize;
 	// There's not enough room at the end of the block. Check whether we find a place within the block
-	hd = block.BlockStart;
+	hd = block->BlockStart;
 	BlockHd* possibleHd = nullptr;
-	while (hd < AddBytes(block.BlockStart,block.BlockSize) && hd->BlockSize != 0)
+	while (hd < AddBytes(block->BlockStart, block->BlockSize) && hd->BlockSize != 0)
 	{
 		uint16_t thisBlockSize = hd->BlockSize;
 		if (!hd->IsFree())
@@ -298,7 +310,7 @@ void GarbageCollector::PrintStatistics()
 {
 	Firmata.sendStringf(F("Total GC memory allocated: %d bytes in %d instances"), _totalAllocSize, _totalAllocations);
 	Firmata.sendStringf(F("Current/Maximum GC memory used: %d/%d bytes"), _currentMemoryUsage, _maxMemoryUsage);
-	Firmata.sendStringf(F("Total size of GC controlled heap: %d in %d blocks"), _totalGcMemorySize, _gcBlocks.size());
+	Firmata.sendStringf(F("Total size of GC controlled heap: %d"), _totalGcMemorySize);
 	printMemoryStatistics();
 }
 
@@ -309,27 +321,17 @@ void GarbageCollector::Clear(bool printStatistics, bool all)
 		PrintStatistics();
 	}
 
-	int totalSize = 0;
-	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		GcBlock& block = _gcBlocks[idx1];
-		if (block.Preallocated == false || all)
-		{
-			freeEx(block.BlockStart);
-			_gcBlocks.remove(idx1);
-			idx1--;
-		}
-		else
-		{
-			BlockHd* hd = block.BlockStart;
-			totalSize += block.BlockSize; // This is including the overhead
-			hd->BlockSize = block.BlockSize - ALLOCATE_ALLIGNMENT;
-			hd->flags = BlockFlags::Free;
-			block.Tail = block.BlockStart;
-		}
+		GcBlock* next = current->Next;
+		freeEx(current->BlockStart);
+		freeEx(current);
+		current = next;
 	}
-
-	_totalGcMemorySize = totalSize;
+	
+	_gcBlockHead = nullptr;
+	_totalGcMemorySize = 0;
 	_totalAllocSize = 0;
 	_totalAllocations = 0;
 	_currentMemoryUsage = 0;
@@ -344,9 +346,11 @@ void GarbageCollector::Clear(bool printStatistics, bool all)
 int64_t GarbageCollector::AllocatedMemory()
 {
 	int64_t memorySum = 0;
-	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		memorySum += _gcBlocks[idx1].BlockSize;
+		memorySum += current->BlockSize;
+		current = current->Next;
 	}
 
 	return memorySum;
@@ -354,17 +358,19 @@ int64_t GarbageCollector::AllocatedMemory()
 
 void GarbageCollector::MarkAllFree()
 {
-	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		MarkAllFree(_gcBlocks[idx1]);
+		MarkAllFree(current);
+		current = current->Next;
 	}
 }
 
-void GarbageCollector::MarkAllFree(GcBlock& block)
+void GarbageCollector::MarkAllFree(GcBlock* block)
 {
-	int blockLen = block.BlockSize;
+	int blockLen = block->BlockSize;
 	int offset = 0;
-	BlockHd* hd = block.BlockStart;
+	BlockHd* hd = block->BlockStart;
 	while (offset < blockLen)
 	{
 		int blockSize = hd->BlockSize;
@@ -378,6 +384,7 @@ void GarbageCollector::MarkAllFree(GcBlock& block)
 
 /// <summary>
 /// Computes the "result" of the garbage collect operation (how much memory was freed, how much total memory is now available etc.)
+/// Also connects consecutive free blocks, so that the next allocation can use them as a single block.
 /// </summary>
 /// <returns>The number of bytes freed</returns>
 int GarbageCollector::ComputeFreeBlockSizes()
@@ -385,11 +392,12 @@ int GarbageCollector::ComputeFreeBlockSizes()
 	int totalFreed = 0;
 	int totalMemoryInUse = 0;
 	int largestFreeBlock = 0;
-	for (size_t idx = 0; idx < _gcBlocks.size(); idx++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		uint32_t blockLen = _gcBlocks[idx].BlockSize;
+		uint32_t blockLen = current->BlockSize;
 		uint32_t offset = 0;
-		BlockHd* hd = _gcBlocks[idx].BlockStart;
+		BlockHd* hd = current->BlockStart;
 		// Chain adjacent free blocks
 		while (offset < blockLen)
 		{
@@ -409,7 +417,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 					{
 						// If we extended the tail block, we need to reset the tail pointer, otherwise
 						// we would allocate a block from there, which is not valid
-						_gcBlocks[idx].Tail = hd;
+						current->Tail = hd;
 						break;
 					}
 
@@ -427,7 +435,7 @@ int GarbageCollector::ComputeFreeBlockSizes()
 			offset = nextOffset;
 		}
 
-		hd = _gcBlocks[idx].BlockStart;
+		hd = current->BlockStart;
 		int blockFree = 0;
 		offset = 0;
 		// Calculate free bytes in block
@@ -452,12 +460,13 @@ int GarbageCollector::ComputeFreeBlockSizes()
 			hd = AddBytes(hd, entryLength + ALLOCATE_ALLIGNMENT);
 			offset = offset + entryLength + ALLOCATE_ALLIGNMENT;
 		}
-		if (blockFree > _gcBlocks[idx].FreeBytesInBlock)
+		if (blockFree > current->FreeBytesInBlock)
 		{
-			totalFreed += blockFree - _gcBlocks[idx].FreeBytesInBlock;
+			totalFreed += blockFree - current->FreeBytesInBlock;
 		}
 
-		_gcBlocks[idx].FreeBytesInBlock = (uint16_t)blockFree;
+		current->FreeBytesInBlock = (uint16_t)blockFree;
+		current = current->Next;
 	}
 
 	_currentMemoryUsage = totalMemoryInUse;
@@ -625,15 +634,16 @@ bool GarbageCollector::IsValidMemoryObjectOrPointer(void* ptr, BlockHd *&contain
 		return false;
 	}
 
-	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
 		// Equality is not valid (an object cannot be at the beginning of the heap nor at the very end)
-		if (ptr > _gcBlocks[idx1].BlockStart && ptr < AddBytes(_gcBlocks[idx1].BlockStart, _gcBlocks[idx1].BlockSize))
+		if (ptr > current->BlockStart && ptr < AddBytes(current->BlockStart, current->BlockSize))
 		{
 			// This pointer does point to an object in this block. Check that it points to a valid object start address
-			BlockHd* hd = _gcBlocks[idx1].BlockStart;
+			BlockHd* hd = current->BlockStart;
 			int offset = 0;
-			int blockLen = _gcBlocks[idx1].BlockSize;
+			int blockLen = current->BlockSize;
 			while (offset < blockLen)
 			{
 				int entrySize = hd->BlockSize;
@@ -662,6 +672,8 @@ bool GarbageCollector::IsValidMemoryObjectOrPointer(void* ptr, BlockHd *&contain
 			// Gets here when the value was within the range of this block, but apparently only by accident
 			return false;
 		}
+
+		current = current->Next;
 	}
 
 	return false;
@@ -722,11 +734,13 @@ void GarbageCollector::MarkVariable(Variable& variable, FirmataIlExecutor* refer
 	}
 	
 	BlockHd* hd = nullptr;
-	for (size_t idx1 = 0; idx1 < _gcBlocks.size(); idx1++)
+	GcBlock* current = _gcBlockHead;
+	while (current != nullptr)
 	{
-		if (ptr < _gcBlocks[idx1].BlockStart || ptr > AddBytes(_gcBlocks[idx1].BlockStart, _gcBlocks[idx1].BlockSize))
+		if (ptr < current->BlockStart || ptr > AddBytes(current->BlockStart, current->BlockSize))
 		{
 			// This pointer does not point to an object in this block.
+			current = current->Next;
 			continue;
 		}
 

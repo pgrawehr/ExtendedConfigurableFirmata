@@ -81,13 +81,13 @@ public:
 		BlockSize = 0;
 		FreeBytesInBlock = 0;
 		Tail = nullptr;
-		Preallocated = false;
+		Next = nullptr;
 	}
 	BlockHd* BlockStart;
 	uint16_t BlockSize;
 	uint16_t FreeBytesInBlock;
 	BlockHd* Tail;
-	bool Preallocated;
+	GcBlock* Next;
 };
 
 class GarbageCollector
@@ -103,13 +103,14 @@ public:
 		_bytesAllocatedSinceLastGc = 0;
 		_totalGcMemorySize = 0;
 		_gcPressureHigh = false;
+		_gcBlockHead = nullptr;
 	}
 
-	byte* TryAllocateFromBlock(GcBlock& block, uint32_t size);
+	byte* TryAllocateFromBlock(GcBlock* block, uint32_t size);
 	byte* Allocate(uint32_t size, FirmataIlExecutor* referenceContainer);
-	void ValidateBlock(GcBlock& block);
+	void ValidateBlock(GcBlock* block);
 	void ValidateBlocks();
-	byte* AllocateBlock(GcBlock& block, uint32_t realSizeToReserve, BlockHd* hd);
+	byte* AllocateBlock(GcBlock* block, uint32_t realSizeToReserve, BlockHd* hd);
 
 	void MarkDependentHandles(FirmataIlExecutor* referenceContainer);
 	int Collect(int generation, FirmataIlExecutor* referenceContainer);
@@ -137,7 +138,7 @@ public:
 	int64_t AllocatedMemory();
 private:
 	void MarkAllFree();
-	void MarkAllFree(GcBlock& block);
+	void MarkAllFree(GcBlock* block);
 	int ComputeFreeBlockSizes();
 	void MarkStatics(FirmataIlExecutor* referenceContainer);
 	void MarkStacks(FirmataIlExecutor* referenceContainer);
@@ -154,5 +155,5 @@ private:
 	int _bytesAllocatedSinceLastGc;
 	size_t _totalGcMemorySize;
 	bool _gcPressureHigh;
-	stdSimple::vector<GcBlock, size_t, 10> _gcBlocks;
+	GcBlock* _gcBlockHead;
 };
