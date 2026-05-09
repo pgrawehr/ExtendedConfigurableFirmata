@@ -29,6 +29,8 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 			}
 			break;
 		}
+
+		currentBlock = currentBlock->Next;
 	}
 
 	if (ret == nullptr && referenceContainer != nullptr)
@@ -49,6 +51,8 @@ byte* GarbageCollector::Allocate(uint32_t size, FirmataIlExecutor* referenceCont
 				}
 				break;
 			}
+
+			currentBlock = currentBlock->Next;
 		}
 	}
 
